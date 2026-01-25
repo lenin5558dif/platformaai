@@ -712,6 +712,13 @@ export default function ChatApp() {
   }
 
   async function persistUserMessage(chatId: string, content: string) {
+    const tokenCount = estimateTokens(content);
+    const cost = estimateUsdCost({
+      promptTokens: tokenCount,
+      completionTokens: 0,
+      pricing: selectedModelInfo?.pricing,
+    });
+
     await fetch("/api/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -719,8 +726,8 @@ export default function ChatApp() {
         chatId,
         role: "USER",
         content,
-        tokenCount: 0,
-        cost: 0,
+        tokenCount,
+        cost,
       }),
     });
   }
@@ -1204,7 +1211,7 @@ export default function ChatApp() {
                 <div className="size-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg ring-1 ring-black/10 mb-6">
                   <span className="material-symbols-outlined text-white text-[32px]">smart_toy</span>
                 </div>
-                <h1 className="text-2xl font-bold text-text-main font-display mb-2">Hello! I'm ready to assist.</h1>
+                <h1 className="text-2xl font-bold text-text-main font-display mb-2">Hello! I&apos;m ready to assist.</h1>
                 <p className="text-text-secondary text-sm mb-8">Choose a prompt or type your own.</p>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 w-full max-w-2xl px-4">
