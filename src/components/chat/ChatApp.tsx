@@ -427,7 +427,6 @@ export default function ChatApp() {
             : "assistant") as ChatMessage["role"],
           content: message.content,
           createdAt: message.createdAt,
-          tokenCount: message.tokenCount,
         }));
       setMessages(mapped);
       setAttachments((data?.data?.attachments ?? []) as Attachment[]);
@@ -724,8 +723,8 @@ export default function ChatApp() {
     });
   }
 
-  async function handleUpload(file: File) {
-    const chatId = await ensureChatId(
+  async function handleUpload(file: File, targetChatId?: string) {
+    const chatId = targetChatId || await ensureChatId(
       file.name ? file.name.slice(0, 40) : "New Chat"
     );
     if (!chatId) return;
@@ -1203,7 +1202,7 @@ export default function ChatApp() {
                 <div className="size-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg ring-1 ring-black/10 mb-6">
                   <span className="material-symbols-outlined text-white text-[32px]">smart_toy</span>
                 </div>
-                <h1 className="text-2xl font-bold text-text-main font-display mb-2">Hello! I'm ready to assist.</h1>
+                <h1 className="text-2xl font-bold text-text-main font-display mb-2">Hello! I&apos;m ready to assist.</h1>
                 <p className="text-text-secondary text-sm mb-8">Choose a prompt or type your own.</p>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 w-full max-w-2xl px-4">
@@ -1330,8 +1329,19 @@ export default function ChatApp() {
                 multiple
                 className="hidden"
                 ref={fileInputRef}
-                onChange={(e) => {
-                  if (e.target.files?.[0]) handleUpload(e.target.files[0]);
+                onChange={async (e) => {
+                  if (e.target.files && e.target.files.length > 0) {
+                    let chatId = activeChatId;
+                    if (!chatId) {
+                      chatId = await createChat(e.target.files[0].name.slice(0, 40));
+                    }
+
+                    if (chatId) {
+                      for (const file of Array.from(e.target.files)) {
+                        await handleUpload(file, chatId);
+                      }
+                    }
+                  }
                 }}
               />
 
