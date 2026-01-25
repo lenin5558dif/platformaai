@@ -35,6 +35,7 @@ type MessageRecord = {
   content: string;
   createdAt: string;
   modelId?: string | null;
+  tokenCount?: number;
 };
 
 type Attachment = {
@@ -1203,7 +1204,7 @@ export default function ChatApp() {
                 <div className="size-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg ring-1 ring-black/10 mb-6">
                   <span className="material-symbols-outlined text-white text-[32px]">smart_toy</span>
                 </div>
-                <h1 className="text-2xl font-bold text-text-main font-display mb-2">Hello! I'm ready to assist.</h1>
+                <h1 className="text-2xl font-bold text-text-main font-display mb-2">Hello! I&apos;m ready to assist.</h1>
                 <p className="text-text-secondary text-sm mb-8">Choose a prompt or type your own.</p>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 w-full max-w-2xl px-4">
@@ -1246,7 +1247,9 @@ export default function ChatApp() {
                     <div className={`flex flex-col gap-2 max-w-[85%] md:max-w-[75%] ${!isAI && 'items-end'}`}>
                       <div className="flex items-baseline gap-2">
                         <span className="text-sm font-bold text-text-primary">{isAI ? "PlatformaAI" : "You"}</span>
-                        <span className="text-xs text-text-secondary" suppressHydrationWarning>{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        <span className="text-xs text-text-secondary" suppressHydrationWarning>
+                          {new Date(message.createdAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
                       </div>
 
                       <div className={`p-5 text-sm md:text-base leading-relaxed text-text-primary shadow-sm
