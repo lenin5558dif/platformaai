@@ -60,6 +60,7 @@ enum AuditAction {
   SCIM_USER_SYNC
   SCIM_GROUP_SYNC
   SSO_DOMAIN_UPDATED
+  BILLING_REFILL
 }
 
 model User {
