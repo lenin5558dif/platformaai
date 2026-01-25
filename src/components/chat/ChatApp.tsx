@@ -35,6 +35,7 @@ type MessageRecord = {
   content: string;
   createdAt: string;
   modelId?: string | null;
+  tokenCount?: number;
 };
 
 type Attachment = {
