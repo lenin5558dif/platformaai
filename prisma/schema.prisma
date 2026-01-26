@@ -185,6 +185,14 @@ model Transaction {
   @@index([costCenterId])
 }
 
+model StripeWebhookEvent {
+  id        String   @id @default(cuid())
+  eventId   String   @unique
+  eventType String
+  sessionId String?
+  createdAt DateTime @default(now())
+}
+
 model Account {
   id                String  @id @default(cuid())
   userId            String

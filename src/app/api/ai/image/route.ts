@@ -10,6 +10,7 @@ import { spendCredits } from "@/lib/billing";
 import { getOrgModelPolicy } from "@/lib/org-settings";
 import { isModelAllowed } from "@/lib/model-policy";
 import { logAudit } from "@/lib/audit";
+import { findOwnedChat } from "@/lib/chat-ownership";
 
 const requestSchema = z.object({
   attachmentId: z.string().min(1),
@@ -35,6 +36,17 @@ export async function POST(request: Request) {
 
   if (!attachment.mimeType.startsWith("image/")) {
     return NextResponse.json({ error: "Not an image" }, { status: 400 });
+  }
+
+  const ownedChat = body.chatId
+    ? await findOwnedChat({
+        chatId: body.chatId,
+        userId: session.user.id,
+        select: { id: true },
+      })
+    : null;
+  if (body.chatId && !ownedChat) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
   const allowUserKey =

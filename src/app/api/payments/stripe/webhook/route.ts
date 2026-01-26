@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getStripe } from "@/lib/stripe";
 import { prisma } from "@/lib/db";
+import { recordStripeWebhookEvent } from "@/lib/stripe-webhook";
 
 export async function POST(request: Request) {
   const signature = request.headers.get("stripe-signature");
@@ -29,13 +30,25 @@ export async function POST(request: Request) {
 
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as {
+      id?: string;
       metadata?: Record<string, string>;
     };
     const credits = Number(session.metadata?.credits ?? 0);
     const userId = session.metadata?.userId;
+    const eventId = event.id;
+    const sessionId = session.id ?? null;
+    const result = await prisma.$transaction(async (tx) => {
+      const recorded = await recordStripeWebhookEvent({
+        eventId,
+        eventType: event.type,
+        sessionId,
+        client: tx,
+      });
+      if (!recorded) {
+        return { duplicate: true };
+      }
 
-    if (credits > 0 && userId) {
-      await prisma.$transaction(async (tx) => {
+      if (credits > 0 && userId) {
         const user = await tx.user.findUnique({
           where: { id: userId },
           select: { costCenterId: true },
@@ -55,6 +68,16 @@ export async function POST(request: Request) {
             description: "Stripe пополнение",
           },
         });
+      }
+
+      return { duplicate: false };
+    });
+
+    if (result?.duplicate) {
+      console.warn("Stripe webhook duplicate ignored", {
+        eventId,
+        eventType: event.type,
+        sessionId,
       });
     }
   }

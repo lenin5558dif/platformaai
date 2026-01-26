@@ -16,6 +16,7 @@ import { getOrgDlpPolicy, getOrgModelPolicy } from "@/lib/org-settings";
 import { evaluateDlp } from "@/lib/dlp";
 import { isModelAllowed } from "@/lib/model-policy";
 import { logAudit } from "@/lib/audit";
+import { findOwnedChat } from "@/lib/chat-ownership";
 import {
   buildCacheKey,
   getCachedResponse,
@@ -89,6 +90,19 @@ export async function POST(request: Request) {
   const dlpPolicy = getOrgDlpPolicy(org?.settings ?? null);
 
   const body = requestSchema.parse(await request.json());
+  const ownedChat = body.chatId
+    ? await findOwnedChat({
+        chatId: body.chatId,
+        userId: session.user.id,
+        select: {
+          summary: true,
+          attachments: { orderBy: { createdAt: "asc" } },
+        },
+      })
+    : null;
+  if (body.chatId && !ownedChat) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
   if (!isModelAllowed(body.model, modelPolicy)) {
     await logAudit({
       action: "POLICY_BLOCKED",
@@ -119,22 +133,14 @@ export async function POST(request: Request) {
 
   let attachmentMessages: Array<{ role: "system"; content: string }> = [];
   if (body.chatId) {
-    const chat = await prisma.chat.findFirst({
-      where: { id: body.chatId, userId: session.user.id },
-      select: {
-        summary: true,
-        attachments: { orderBy: { createdAt: "asc" } },
-      },
-    });
-
-    if (chat?.summary?.trim()) {
+    if (ownedChat?.summary?.trim()) {
       systemMessages.push({
         role: "system",
-        content: `Контекст диалога:\n${chat.summary}`,
+        content: `Контекст диалога:\n${ownedChat.summary}`,
       });
     }
 
-    attachmentMessages = (chat?.attachments ?? [])
+    attachmentMessages = (ownedChat?.attachments ?? [])
       .filter((attachment) => attachment.textContent?.trim())
       .slice(-3)
       .map((attachment) => ({
