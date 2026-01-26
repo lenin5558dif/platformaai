@@ -205,6 +205,7 @@ export default function ChatApp() {
   >("all");
   const [modelQuery, setModelQuery] = useState("");
   const [isOnline, setIsOnline] = useState(true);
+  const [streamingChatId, setStreamingChatId] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<{
     email?: string | null;
     role?: string | null;
@@ -660,6 +661,11 @@ export default function ChatApp() {
   }, [filteredChats, activeChatId, isDraft]);
 
   useEffect(() => {
+    if (isSending && streamingChatId && activeChatId !== streamingChatId) {
+      setIsSending(false);
+      setStreamingChatId(null);
+    }
+
     if (!activeChatId) {
       setMessages([]);
       setAttachments([]);
@@ -779,6 +785,7 @@ export default function ChatApp() {
     const assistantIndex = messageList.length;
     setMessages([...messageList, { role: "assistant", content: "" }]);
     setIsSending(true);
+    setStreamingChatId(chatId);
 
     if (!activeChatId) {
       skipNextLoadRef.current = chatId;
@@ -832,6 +839,7 @@ export default function ChatApp() {
             const delta = parsed?.choices?.[0]?.delta?.content;
             if (delta) {
               setMessages((prev) => {
+                if (activeChatId !== chatId) return prev;
                 const updated = [...prev];
                 const current = updated[assistantIndex];
                 if (current) {
@@ -850,6 +858,7 @@ export default function ChatApp() {
       }
     } finally {
       setIsSending(false);
+      setStreamingChatId(null);
       await loadChats();
       if (activeChatId === chatId) {
         await loadChatDetails(chatId);
