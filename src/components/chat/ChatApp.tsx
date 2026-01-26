@@ -712,7 +712,7 @@ export default function ChatApp() {
   }
 
   async function persistUserMessage(chatId: string, content: string) {
-    await fetch("/api/messages", {
+    const response = await fetch("/api/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -723,6 +723,11 @@ export default function ChatApp() {
         cost: 0,
       }),
     });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data?.error ?? "Failed to save message.");
+    }
   }
 
   async function handleUpload(file: File) {
@@ -875,8 +880,14 @@ export default function ChatApp() {
       { role: "user", content: text },
     ];
     setMessages(nextMessages);
-    await persistUserMessage(chatId, text);
-    await runAssistant(chatId, nextMessages);
+
+    try {
+      await persistUserMessage(chatId, text);
+      await runAssistant(chatId, nextMessages);
+    } catch (err: any) {
+      setError(err.message ?? "Failed to send message.");
+      setMessages(messages);
+    }
   }
 
   async function sendQuickPrompt(text: string) {
@@ -889,8 +900,14 @@ export default function ChatApp() {
       { role: "user", content: text },
     ];
     setMessages(nextMessages);
-    await persistUserMessage(chatId, text);
-    await runAssistant(chatId, nextMessages);
+
+    try {
+      await persistUserMessage(chatId, text);
+      await runAssistant(chatId, nextMessages);
+    } catch (err: any) {
+      setError(err.message ?? "Failed to send message.");
+      setMessages(messages);
+    }
   }
 
   async function handleContinue() {
@@ -1087,7 +1104,7 @@ export default function ChatApp() {
               </button>
               <h2 className="text-text-primary text-base md:text-lg font-bold leading-tight flex items-center gap-2">
                 {activeChat ? activeChat.title : "New Session"}
-                {(!activeChat || activeChat) && (
+                {activeChat && (
                   <span className="hidden sm:inline-block px-2 py-0.5 rounded text-[10px] bg-primary/10 text-primary border border-primary/20">
                     Active
                   </span>
