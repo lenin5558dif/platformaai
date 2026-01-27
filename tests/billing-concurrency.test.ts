@@ -1,8 +1,5 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { spendCredits } from "../src/lib/billing";
-import { prisma } from "../src/lib/db";
-
 // Note: This test requires a running database or a very sophisticated mock.
 // Since we are in a CLI environment, we'll implement a unit test that 
 // demonstrates the logic if we had a mock, or just acknowledge manual verification.

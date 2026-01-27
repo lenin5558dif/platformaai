@@ -604,7 +604,7 @@ export default function ChatApp() {
     }
 
     void loadChatDetails(activeChatId);
-  }, [activeChatId, loadChatDetails]);
+  }, [activeChatId, loadChatDetails, isSending, streamingChatId]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
