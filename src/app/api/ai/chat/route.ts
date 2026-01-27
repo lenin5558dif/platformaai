@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
 import { getOpenRouterBaseUrl, getOpenRouterHeaders } from "@/lib/openrouter";
 import { trimMessages } from "@/lib/context";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { calculateCreditsFromUsage } from "@/lib/pricing";
 import { spendCredits } from "@/lib/billing";
+import { mapBillingError } from "@/lib/billing-errors";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { logEvent } from "@/lib/telemetry";
 import { getUserOpenRouterKey } from "@/lib/user-settings";
@@ -23,24 +23,7 @@ import {
   setCachedResponse,
 } from "@/lib/cache";
 import { updateChatSummary } from "@/lib/summary";
-
-const messageSchema = z.object({
-  role: z.enum(["user", "assistant", "system"]),
-  content: z.string().min(1),
-});
-
-const requestSchema = z.object({
-  model: z.string().min(1),
-  messages: z.array(messageSchema),
-  temperature: z.number().min(0).max(2).optional(),
-  max_tokens: z.number().int().positive().optional(),
-  stream: z.boolean().optional().default(true),
-  chatId: z.string().optional(),
-  contextLength: z.number().int().positive().optional(),
-  fallbackModels: z.array(z.string().min(1)).optional(),
-  useWebSearch: z.boolean().optional(),
-  cache: z.boolean().optional(),
-});
+import { requestSchema } from "@/lib/chat-request-schema";
 
 export async function POST(request: Request) {
   const session = await auth(request);
@@ -48,6 +31,7 @@ export async function POST(request: Request) {
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const userId = session.user.id;
 
   const rate = checkRateLimit({
     key: `ai:${session.user.id}`,
@@ -89,18 +73,34 @@ export async function POST(request: Request) {
   const modelPolicy = getOrgModelPolicy(org?.settings ?? null);
   const dlpPolicy = getOrgDlpPolicy(org?.settings ?? null);
 
-  const body = requestSchema.parse(await request.json());
-  const ownedChat = body.chatId
-    ? await findOwnedChat({
-        chatId: body.chatId,
-        userId: session.user.id,
-        select: {
-          summary: true,
-          attachments: { orderBy: { createdAt: "asc" } },
-        },
-      })
-    : null;
-  if (body.chatId && !ownedChat) {
+  const parsedBody = requestSchema.safeParse(await request.json());
+  if (!parsedBody.success) {
+    const hasChatIdIssue = parsedBody.error.issues.some(
+      (issue) => issue.path[0] === "chatId"
+    );
+    return NextResponse.json(
+      { error: hasChatIdIssue ? "chatId is required" : "Invalid request" },
+      { status: 400 }
+    );
+  }
+  const body = parsedBody.data;
+  const chatId = body.chatId;
+  const buildBillingErrorResponse = (message: string) => {
+    const result = mapBillingError(message);
+    return NextResponse.json(
+      { error: result.error },
+      { status: result.status }
+    );
+  };
+  const ownedChat = await findOwnedChat({
+    chatId,
+    userId: session.user.id,
+    select: {
+      summary: true,
+      attachments: { orderBy: { createdAt: "asc" } },
+    },
+  });
+  if (!ownedChat) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
   if (!isModelAllowed(body.model, modelPolicy)) {
@@ -132,25 +132,23 @@ export async function POST(request: Request) {
   }
 
   let attachmentMessages: Array<{ role: "system"; content: string }> = [];
-  if (body.chatId) {
-    if (ownedChat?.summary?.trim()) {
-      systemMessages.push({
-        role: "system",
-        content: `Контекст диалога:\n${ownedChat.summary}`,
-      });
-    }
-
-    attachmentMessages = (ownedChat?.attachments ?? [])
-      .filter((attachment) => attachment.textContent?.trim())
-      .slice(-3)
-      .map((attachment) => ({
-        role: "system" as const,
-        content: [
-          `Файл: ${attachment.filename} (${attachment.mimeType})`,
-          attachment.textContent.slice(0, 6000),
-        ].join("\n"),
-      }));
+  if (ownedChat.summary?.trim()) {
+    systemMessages.push({
+      role: "system",
+      content: `Контекст диалога:\n${ownedChat.summary}`,
+    });
   }
+
+  attachmentMessages = (ownedChat.attachments ?? [])
+    .filter((attachment) => attachment.textContent?.trim())
+    .slice(-3)
+    .map((attachment) => ({
+      role: "system" as const,
+      content: [
+        `Файл: ${attachment.filename} (${attachment.mimeType})`,
+        attachment.textContent.slice(0, 6000),
+      ].join("\n"),
+    }));
 
   if (body.useWebSearch) {
     const lastUserMessage = [...body.messages]
@@ -293,6 +291,7 @@ export async function POST(request: Request) {
   const useCache = body.cache !== false;
   const cacheKey = useCache
     ? buildCacheKey({
+        userId: session.user.id,
         model: body.model,
         messages: trimmedMessages,
         temperature: body.temperature,
@@ -302,8 +301,8 @@ export async function POST(request: Request) {
 
   const cached = cacheKey ? getCachedResponse(cacheKey) : null;
   if (cached) {
-    if (body.chatId) {
-      let creditsResult = { credits: 0 };
+    let creditsResult = { credits: 0 };
+    try {
       if (cached.usage) {
         creditsResult = await calculateCreditsFromUsage({
           modelId: cached.modelId,
@@ -320,30 +319,40 @@ export async function POST(request: Request) {
           description: `OpenRouter ${cached.modelId} (cache)`,
         });
       }
-
-      await prisma.message.create({
-        data: {
-          chatId: body.chatId,
-          userId: session.user.id,
-          costCenterId: user?.costCenterId ?? undefined,
-          role: "ASSISTANT",
-          content: cached.content,
-          tokenCount: cached.usage?.total_tokens ?? 0,
-          cost: creditsResult.credits,
-          modelId: cached.modelId,
-        },
-      });
-
-      await prisma.chat.update({
-        where: { id: body.chatId },
-        data: { updatedAt: new Date() },
-      });
-      void updateChatSummary({
-        chatId: body.chatId,
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Billing error";
+      await logEvent({
+        type: "BILLING_ERROR",
         userId: session.user.id,
-        apiKey: userKey,
+        chatId,
+        modelId: cached.modelId,
+        message,
       });
+      return buildBillingErrorResponse(message);
     }
+
+    await prisma.message.create({
+      data: {
+        chatId,
+        userId: session.user.id,
+        costCenterId: user?.costCenterId ?? undefined,
+        role: "ASSISTANT",
+        content: cached.content,
+        tokenCount: cached.usage?.total_tokens ?? 0,
+        cost: creditsResult.credits,
+        modelId: cached.modelId,
+      },
+    });
+
+    await prisma.chat.update({
+      where: { id: chatId },
+      data: { updatedAt: new Date() },
+    });
+    void updateChatSummary({
+      chatId,
+      userId: session.user.id,
+      apiKey: userKey,
+    });
 
     if (!body.stream) {
       return NextResponse.json({
@@ -462,58 +471,59 @@ export async function POST(request: Request) {
       }
     }
 
-    if (body.chatId) {
-      let creditsResult = { credits: 0 };
-      const tokenCount = usage?.total_tokens ?? 0;
+    let creditsResult = { credits: 0 };
+    const tokenCount = usage?.total_tokens ?? 0;
 
-      if (usage) {
-        try {
-          creditsResult = await calculateCreditsFromUsage({
-            modelId: usedModel,
-            promptTokens: usage.prompt_tokens ?? 0,
-            completionTokens: usage.completion_tokens ?? 0,
-            apiKey: userKey,
-          });
+    if (usage) {
+      try {
+        creditsResult = await calculateCreditsFromUsage({
+          modelId: usedModel,
+          promptTokens: usage.prompt_tokens ?? 0,
+          completionTokens: usage.completion_tokens ?? 0,
+          apiKey: userKey,
+        });
 
-          if (creditsResult.credits > 0) {
-            await spendCredits({
-              userId: session.user.id,
-              amount: creditsResult.credits,
-              description: `OpenRouter ${usedModel}`,
-            });
-          }
-        } catch (error) {
-          await logEvent({
-            type: "BILLING_ERROR",
+        if (creditsResult.credits > 0) {
+          await spendCredits({
             userId: session.user.id,
-            chatId: body.chatId,
-            modelId: usedModel,
-            message: error instanceof Error ? error.message : "Billing error",
+            amount: creditsResult.credits,
+            description: `OpenRouter ${usedModel}`,
           });
         }
-      }
-
-      await prisma.message.create({
-        data: {
-          chatId: body.chatId,
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Billing error";
+        await logEvent({
+          type: "BILLING_ERROR",
           userId: session.user.id,
-          costCenterId: user?.costCenterId ?? undefined,
-          role: "ASSISTANT",
-          content: assistantContent,
-          tokenCount,
-          cost: creditsResult.credits,
+          chatId,
           modelId: usedModel,
-        },
-      });
-
-      await prisma.chat.update({
-        where: { id: body.chatId },
-        data: { updatedAt: new Date() },
-      });
+          message,
+        });
+        return buildBillingErrorResponse(message);
+      }
     }
+
+    await prisma.message.create({
+      data: {
+        chatId,
+        userId: session.user.id,
+        costCenterId: user?.costCenterId ?? undefined,
+        role: "ASSISTANT",
+        content: assistantContent,
+        tokenCount,
+        cost: creditsResult.credits,
+        modelId: usedModel,
+      },
+    });
+
+    await prisma.chat.update({
+      where: { id: chatId },
+      data: { updatedAt: new Date() },
+    });
 
     if (useCache) {
       const finalCacheKey = buildCacheKey({
+        userId: session.user.id,
         model: usedModel,
         messages: trimmedMessages,
         temperature: body.temperature,
@@ -540,159 +550,164 @@ export async function POST(request: Request) {
   let buffer = "";
   let assistantText = "";
   let usage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | null = null;
+  let sentAny = false;
+  const reader = response.body?.getReader();
 
-  const stream = new ReadableStream({
-    async start(controller) {
-      const reader = response.body?.getReader();
+  if (!reader) {
+    return NextResponse.json({ error: "OpenRouter error" }, { status: 502 });
+  }
 
-      if (!reader) {
-        controller.close();
-        return;
-      }
+  async function finalizeStream() {
+    let creditsResult = { credits: 0 };
+    const tokenCount = usage?.total_tokens ?? 0;
 
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-
-        const chunk = decoder.decode(value, { stream: true });
-        buffer += chunk;
-
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed.startsWith("data:")) continue;
-
-          const payload = trimmed.replace(/^data:\s*/, "");
-          if (!payload || payload === "[DONE]") continue;
-
-          try {
-            const parsed = JSON.parse(payload);
-            const delta = parsed?.choices?.[0]?.delta?.content;
-            if (delta) {
-              assistantText += delta;
-            }
-
-            if (parsed?.usage) {
-              usage = parsed.usage;
-            }
-          } catch {
-            // Ignore malformed chunks
-          }
-        }
-
-        controller.enqueue(encoder.encode(chunk));
-      }
-
-      if (!assistantText.trim() && modelsToTry.length > 1) {
-        const fallback = modelsToTry.find((modelId) => modelId !== usedModel);
-        if (fallback) {
-          const fallbackResponse = await fetch(
-            `${baseUrl}/chat/completions`,
-            {
-              method: "POST",
-              headers: requestHeaders,
-              body: JSON.stringify({
-                model: fallback,
-                messages: trimmedMessages,
-                temperature: body.temperature,
-                max_tokens: body.max_tokens,
-                stream: false,
-              }),
-            }
-          );
-
-          if (fallbackResponse.ok) {
-            const fallbackData = await fallbackResponse.json();
-            const fallbackText =
-              fallbackData?.choices?.[0]?.message?.content ?? "";
-            const fallbackUsage = fallbackData?.usage ?? null;
-            if (fallbackText.trim()) {
-              usedModel = fallback;
-              assistantText = fallbackText;
-              usage = fallbackUsage;
-              const payload = JSON.stringify({
-                choices: [{ delta: { content: fallbackText } }],
-              });
-              controller.enqueue(encoder.encode(`data: ${payload}\n\n`));
-              controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-            }
-          }
-        }
-      }
-
-      if (body.chatId) {
-        let creditsResult = { credits: 0 };
-        const tokenCount = usage?.total_tokens ?? 0;
-
-        if (usage) {
-          try {
-            creditsResult = await calculateCreditsFromUsage({
-              modelId: usedModel,
-              promptTokens: usage.prompt_tokens ?? 0,
-              completionTokens: usage.completion_tokens ?? 0,
-              apiKey: userKey,
-            });
-
-            if (creditsResult.credits > 0) {
-              await spendCredits({
-                userId: session.user.id,
-                amount: creditsResult.credits,
-                description: `OpenRouter ${usedModel}`,
-              });
-            }
-          } catch (error) {
-            await logEvent({
-              type: "BILLING_ERROR",
-              userId: session.user.id,
-              chatId: body.chatId,
-              modelId: usedModel,
-              message: error instanceof Error ? error.message : "Billing error",
-            });
-          }
-        }
-
-        await prisma.message.create({
-          data: {
-            chatId: body.chatId,
-            userId: session.user.id,
-            costCenterId: user?.costCenterId ?? undefined,
-            role: "ASSISTANT",
-            content: assistantText,
-            tokenCount,
-            cost: creditsResult.credits,
-            modelId: usedModel,
-          },
-        });
-
-        await prisma.chat.update({
-          where: { id: body.chatId },
-          data: { updatedAt: new Date() },
-        });
-        void updateChatSummary({
-          chatId: body.chatId,
-          userId: session.user.id,
+    if (usage) {
+      try {
+        creditsResult = await calculateCreditsFromUsage({
+          modelId: usedModel,
+          promptTokens: usage.prompt_tokens ?? 0,
+          completionTokens: usage.completion_tokens ?? 0,
           apiKey: userKey,
         });
-      }
 
-      if (useCache && assistantText.trim()) {
-        const finalCacheKey = buildCacheKey({
-          model: usedModel,
-          messages: trimmedMessages,
-          temperature: body.temperature,
-          max_tokens: body.max_tokens,
-        });
-        setCachedResponse(finalCacheKey, {
-          content: assistantText,
-          usage: usage ?? undefined,
+        if (creditsResult.credits > 0) {
+          await spendCredits({
+            userId,
+            amount: creditsResult.credits,
+            description: `OpenRouter ${usedModel}`,
+          });
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Billing error";
+        await logEvent({
+          type: "BILLING_ERROR",
+          userId,
+          chatId,
           modelId: usedModel,
-          createdAt: Date.now(),
+          message,
         });
       }
+    }
 
-      controller.close();
+    await prisma.message.create({
+      data: {
+        chatId,
+        userId,
+        costCenterId: user?.costCenterId ?? undefined,
+        role: "ASSISTANT",
+        content: assistantText,
+        tokenCount,
+        cost: creditsResult.credits,
+        modelId: usedModel,
+      },
+    });
+
+    await prisma.chat.update({
+      where: { id: chatId },
+      data: { updatedAt: new Date() },
+    });
+    void updateChatSummary({
+      chatId,
+      userId,
+      apiKey: userKey,
+    });
+
+    if (useCache && assistantText.trim()) {
+      const finalCacheKey = buildCacheKey({
+        userId,
+        model: usedModel,
+        messages: trimmedMessages,
+        temperature: body.temperature,
+        max_tokens: body.max_tokens,
+      });
+      setCachedResponse(finalCacheKey, {
+        content: assistantText,
+        usage: usage ?? undefined,
+        modelId: usedModel,
+        createdAt: Date.now(),
+      });
+    }
+  }
+
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          if (!value) continue;
+          sentAny = true;
+          controller.enqueue(value);
+
+          const chunk = decoder.decode(value, { stream: true });
+          buffer += chunk;
+
+          const lines = buffer.split("\n");
+          buffer = lines.pop() ?? "";
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed.startsWith("data:")) continue;
+
+            const payload = trimmed.replace(/^data:\s*/, "");
+            if (!payload || payload === "[DONE]") continue;
+
+            try {
+              const parsed = JSON.parse(payload);
+              const delta = parsed?.choices?.[0]?.delta?.content;
+              if (delta) {
+                assistantText += delta;
+              }
+
+              if (parsed?.usage) {
+                usage = parsed.usage;
+              }
+            } catch {
+              // Ignore malformed chunks
+            }
+          }
+        }
+
+        if (!assistantText.trim() && !sentAny && modelsToTry.length > 1) {
+          const fallback = modelsToTry.find((modelId) => modelId !== usedModel);
+          if (fallback) {
+            const fallbackResponse = await fetch(
+              `${baseUrl}/chat/completions`,
+              {
+                method: "POST",
+                headers: requestHeaders,
+                body: JSON.stringify({
+                  model: fallback,
+                  messages: trimmedMessages,
+                  temperature: body.temperature,
+                  max_tokens: body.max_tokens,
+                  stream: false,
+                }),
+              }
+            );
+
+            if (fallbackResponse.ok) {
+              const fallbackData = await fallbackResponse.json();
+              const fallbackText =
+                fallbackData?.choices?.[0]?.message?.content ?? "";
+              const fallbackUsage = fallbackData?.usage ?? null;
+              if (fallbackText.trim()) {
+                usedModel = fallback;
+                assistantText = fallbackText;
+                usage = fallbackUsage;
+                const payload = JSON.stringify({
+                  choices: [{ delta: { content: fallbackText } }],
+                });
+                controller.enqueue(encoder.encode(`data: ${payload}\n\n`));
+                controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+              }
+            }
+          }
+        }
+      } finally {
+        controller.close();
+        void finalizeStream();
+      }
     },
   });
 

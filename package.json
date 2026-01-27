@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --import tsx --test",
+    "test": "vitest",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "bot:dev": "tsx src/bot/index.ts",
@@ -45,12 +45,15 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitest/coverage-v8": "^3.0.4",
     "eslint": "^9",
     "eslint-config-next": "15.5.9",
+    "jsdom": "^26.0.0",
     "prisma": "^5.22.0",
     "tailwindcss": "^4",
     "tsx": "^4.19.2",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^3.0.4"
   },
   "overrides": {
     "@auth/core": "0.41.1"

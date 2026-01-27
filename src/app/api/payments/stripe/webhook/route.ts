@@ -66,6 +66,7 @@ export async function POST(request: Request) {
             amount: credits,
             type: "REFILL",
             description: "Stripe пополнение",
+            externalId: event.id,
           },
         });
       }
