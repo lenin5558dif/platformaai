@@ -6,6 +6,15 @@ import { useSearchParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
+import {
+  estimateTokens,
+  estimateUsdCost,
+  formatPricing,
+  getChatGroups,
+  getModelCostPerMillion,
+  getModelSpeedLabel,
+  type ModelPricing,
+} from "@/lib/chat-ui";
 // import UserMenu from "@/components/layout/UserMenu"; // Replaced with inline specific UI
 
 type Chat = {
@@ -47,11 +56,6 @@ type Attachment = {
   hasText?: boolean;
 };
 
-type ModelPricing = {
-  prompt?: string;
-  completion?: string;
-};
-
 type Model = {
   id: string;
   name: string;
@@ -59,83 +63,7 @@ type Model = {
   contextLength?: number;
 };
 
-type ChatGroup = {
-  label: string;
-  items: Chat[];
-};
-
 const DEFAULT_MODEL = "openai/gpt-4o";
-
-function getChatGroups(chats: Chat[]): ChatGroup[] {
-  const now = new Date();
-  const startOfToday = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
-  );
-  const startOfYesterday = new Date(startOfToday.getTime() - 24 * 60 * 60 * 1000);
-  const weekAgo = new Date(startOfToday.getTime() - 7 * 24 * 60 * 60 * 1000);
-
-  const groups: Record<string, Chat[]> = {
-    "Pinned": [],
-    "Today": [],
-    "Yesterday": [],
-    "Previous 7 Days": [],
-    "Older": [],
-  };
-
-  for (const chat of chats) {
-    if (chat.pinned) {
-      groups["Pinned"].push(chat);
-      continue;
-    }
-    const updatedAt = new Date(chat.updatedAt);
-    if (updatedAt >= startOfToday) {
-      groups["Today"].push(chat);
-    } else if (updatedAt >= startOfYesterday) {
-      groups["Yesterday"].push(chat);
-    } else if (updatedAt >= weekAgo) {
-      groups["Previous 7 Days"].push(chat);
-    } else {
-      groups["Older"].push(chat);
-    }
-  }
-
-  return Object.entries(groups)
-    .filter(([, items]) => items.length > 0)
-    .map(([label, items]) => ({ label, items }));
-}
-
-function estimateTokens(text: string) {
-  return Math.max(1, Math.ceil(text.length / 4));
-}
-
-function getModelCostPerMillion(model: Model) {
-  const prompt = model.pricing?.prompt ? Number(model.pricing.prompt) : NaN;
-  const completion = model.pricing?.completion
-    ? Number(model.pricing.completion)
-    : NaN;
-  const hasPrompt = Number.isFinite(prompt);
-  const hasCompletion = Number.isFinite(completion);
-  if (!hasPrompt && !hasCompletion) return Number.POSITIVE_INFINITY;
-  const total = (hasPrompt ? prompt : 0) + (hasCompletion ? completion : 0);
-  return total * 1_000_000;
-}
-
-function getModelSpeedLabel(modelId: string) {
-  const id = modelId.toLowerCase();
-  if (
-    id.includes("flash") ||
-    id.includes("turbo") ||
-    id.includes("mini") ||
-    id.includes("lite") ||
-    id.includes("fast")
-  ) {
-    return "fast";
-  }
-  if (id.includes("opus") || id.includes("pro") || id.includes("reason")) {
-    return "precise";
-  }
-  return "standard";
-}
 
 export default function ChatApp() {
   const searchParams = useSearchParams();
@@ -146,22 +74,29 @@ export default function ChatApp() {
   const [isSending, setIsSending] = useState(false);
   const [models, setModels] = useState<Model[]>([]);
   const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL);
-  const [, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [sourceFilter, setSourceFilter] = useState<"ALL" | "WEB" | "TELEGRAM">(
     "ALL"
   );
-  const searchQuery = "";
+  const [searchQuery, setSearchQuery] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
-  const [, setIsUploading] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [useWebSearch, setUseWebSearch] = useState(false);
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editingText, setEditingText] = useState("");
+  const [tagInput, setTagInput] = useState("");
   const [isDraft, setIsDraft] = useState(false);
   const [hasLoadedModelPreference, setHasLoadedModelPreference] =
     useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [quickSettingsOpen, setQuickSettingsOpen] = useState(false);
-  const modelFilter: "all" | "cheap" | "fast" | "long" = "all";
-  const modelQuery = "";
+  const [modelFilter, setModelFilter] = useState<
+    "all" | "cheap" | "fast" | "long"
+  >("all");
+  const [modelQuery, setModelQuery] = useState("");
+  const [isOnline, setIsOnline] = useState(true);
   const [currentUser, setCurrentUser] = useState<{
     email?: string | null;
     role?: string | null;
@@ -228,6 +163,72 @@ export default function ChatApp() {
 
     return [...fallback, ...extra];
   }, [models, selectedModel]);
+
+  const estimatedPromptTokens = useMemo(() => {
+    const historyTokens = messages.reduce(
+      (sum, message) => sum + estimateTokens(message.content),
+      0
+    );
+    const inputTokens = input ? estimateTokens(input) : 0;
+    return historyTokens + inputTokens;
+  }, [messages, input]);
+
+  const estimatedCompletionTokens = useMemo(() => {
+    const context = selectedModelInfo?.contextLength ?? 4096;
+    return Math.min(512, Math.floor(context / 8));
+  }, [selectedModelInfo]);
+
+  const estimatedUsd = useMemo(() => {
+    return estimateUsdCost({
+      promptTokens: estimatedPromptTokens,
+      completionTokens: estimatedCompletionTokens,
+      pricing: selectedModelInfo?.pricing,
+    });
+  }, [estimatedPromptTokens, estimatedCompletionTokens, selectedModelInfo]);
+
+  const errorHint = useMemo(() => {
+    if (!error) return null;
+    if (error.toLowerCase().includes("unauthorized")) {
+      return "Check OpenRouter API key.";
+    }
+    if (error.toLowerCase().includes("openrouter")) {
+      return "Try another model or try again later.";
+    }
+    if (error.toLowerCase().includes("balance")) {
+      return "Top up balance or switch to free model.";
+    }
+    return "Check connection and try again.";
+  }, [error]);
+
+  const errorCta = useMemo(() => {
+    if (!error) return null;
+    const lower = error.toLowerCase();
+    if (lower.includes("unauthorized")) {
+      return { href: "/settings#api-keys", label: "Add Key" };
+    }
+    if (lower.includes("balance")) {
+      return { href: "/billing", label: "Top Up" };
+    }
+    return null;
+  }, [error]);
+
+  const composerState = useMemo(() => {
+    if (isUploading) return "uploading";
+    if (isSending) return "sending";
+    return "idle";
+  }, [isUploading, isSending]);
+
+  const composerStatusLabel = useMemo(() => {
+    if (composerState === "uploading") return "Uploading...";
+    if (composerState === "sending") return "Sending...";
+    return isOnline ? "Ready" : "Offline";
+  }, [composerState, isOnline]);
+
+  const estimatedCostLabel = useMemo(() => {
+    if (!selectedModelInfo?.pricing) return "—";
+    if (!Number.isFinite(estimatedUsd)) return "—";
+    return `$${estimatedUsd.toFixed(4)}`;
+  }, [estimatedUsd, selectedModelInfo]);
 
   const modelCostThreshold = useMemo(() => {
     const costs = models
@@ -340,6 +341,29 @@ export default function ChatApp() {
     }
   }, []);
 
+  const handleDeleteChat = useCallback(
+    async (chatId: string) => {
+      const confirmed = window.confirm("Delete chat forever?");
+      if (!confirmed) return;
+
+      const response = await fetch(`/api/chats/${chatId}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) return;
+
+      setChats((prev) => prev.filter((chat) => chat.id !== chatId));
+
+      if (activeChatId === chatId) {
+        setActiveChatId(null);
+        setMessages([]);
+        setAttachments([]);
+        setIsDraft(false);
+      }
+    },
+    [activeChatId]
+  );
+
   const updateChatMeta = useCallback(
     async (chatId: string, patch: Partial<Chat>) => {
       const response = await fetch(`/api/chats/${chatId}`, {
@@ -373,6 +397,27 @@ export default function ChatApp() {
     [activeChatId, updateChatMeta]
   );
 
+  const handleToggleFavorite = useCallback(
+    async (chat: Chat) => {
+      await updateChatMeta(chat.id, { isFavorite: !chat.isFavorite });
+    },
+    [updateChatMeta]
+  );
+
+  const handleTogglePin = useCallback(
+    async (chat: Chat) => {
+      await updateChatMeta(chat.id, { pinned: !chat.pinned });
+    },
+    [updateChatMeta]
+  );
+
+  const handleUpdateTags = useCallback(
+    async (chatId: string, tags: string[]) => {
+      await updateChatMeta(chatId, { tags });
+    },
+    [updateChatMeta]
+  );
+
   const handleShareChat = useCallback(async (chatId: string) => {
     const response = await fetch(`/api/chats/${chatId}/share`, {
       method: "POST",
@@ -387,10 +432,46 @@ export default function ChatApp() {
     }
   }, []);
 
+  const handleAddTag = useCallback(() => {
+    if (!activeChat) return;
+    const nextTag = tagInput.trim();
+    if (!nextTag) return;
+    const nextTags = Array.from(
+      new Set([...(activeChat.tags ?? []), nextTag])
+    );
+    void handleUpdateTags(activeChat.id, nextTags);
+    setTagInput("");
+  }, [activeChat, handleUpdateTags, tagInput]);
+
+  const handleRemoveTag = useCallback(
+    (tag: string) => {
+      if (!activeChat) return;
+      const nextTags = (activeChat.tags ?? []).filter(
+        (entry) => entry !== tag
+      );
+      void handleUpdateTags(activeChat.id, nextTags);
+    },
+    [activeChat, handleUpdateTags]
+  );
+
   useEffect(() => {
     void loadChats();
     void loadModels();
   }, [loadChats, loadModels]);
+
+  useEffect(() => {
+    function handleStatusChange() {
+      setIsOnline(navigator.onLine);
+    }
+    if (typeof window === "undefined") return;
+    setIsOnline(navigator.onLine);
+    window.addEventListener("online", handleStatusChange);
+    window.addEventListener("offline", handleStatusChange);
+    return () => {
+      window.removeEventListener("online", handleStatusChange);
+      window.removeEventListener("offline", handleStatusChange);
+    };
+  }, []);
 
   useEffect(() => {
     if (!activeChat?.modelId) return;
@@ -444,6 +525,7 @@ export default function ChatApp() {
         if (!response.ok) return;
         const data = await response.json();
         const settings = data?.data?.settings ?? null;
+        const onboarded = Boolean(settings?.onboarded);
         const firstName =
           typeof settings?.profileFirstName === "string"
             ? settings.profileFirstName
@@ -455,6 +537,7 @@ export default function ChatApp() {
         const displayName = [firstName, lastName].filter(Boolean).join(" ");
         const planName =
           typeof settings?.planName === "string" ? settings.planName : "Pro Plan";
+        setShowOnboarding(!onboarded);
         setCurrentUser({
           email: data?.data?.email ?? null,
           role: data?.data?.role ?? null,
@@ -569,9 +652,9 @@ export default function ChatApp() {
   }
 
   async function handleUpload(file: File, targetChatId?: string) {
-    const chatId = targetChatId || await ensureChatId(
+    const chatId = targetChatId ?? (await ensureChatId(
       file.name ? file.name.slice(0, 40) : "New Chat"
-    );
+    ));
     if (!chatId) return;
 
     setIsUploading(true);
@@ -594,6 +677,27 @@ export default function ChatApp() {
       }
     } finally {
       setIsUploading(false);
+    }
+  }
+
+  async function handleDescribeAttachment(attachment: Attachment) {
+    if (!activeChatId) return;
+    if (!attachment.mimeType.startsWith("image/")) return;
+    setIsSending(true);
+    try {
+      const response = await fetch("/api/ai/image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ attachmentId: attachment.id, chatId: activeChatId }),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        setError(data?.error ?? "Description failed.");
+        return;
+      }
+      await loadChatDetails(activeChatId);
+    } finally {
+      setIsSending(false);
     }
   }
 
@@ -715,6 +819,75 @@ export default function ChatApp() {
     await runAssistant(chatId, nextMessages);
   }
 
+  async function handleContinue() {
+    await sendQuickPrompt("Continue");
+  }
+
+  async function handleRegenerate() {
+    if (isSending || !messages.length) return;
+    const lastUserIndex = [...messages]
+      .map((message, index) => ({ message, index }))
+      .reverse()
+      .find((item) => item.message.role === "user")?.index;
+
+    if (lastUserIndex === undefined) return;
+    const chatId = activeChatId ?? (await ensureChatId("New Chat"));
+    if (!chatId) return;
+
+    const lastUserMessage = messages[lastUserIndex];
+    if (lastUserMessage?.id) {
+      await fetch(`/api/messages/${lastUserMessage.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          content: lastUserMessage.content,
+          rollback: true,
+        }),
+      });
+    }
+
+    const trimmedMessages = messages.slice(0, lastUserIndex + 1);
+    setMessages(trimmedMessages);
+    await runAssistant(chatId, trimmedMessages);
+  }
+
+  function startEditMessage(message: ChatMessage) {
+    if (!message.id) return;
+    setEditingMessageId(message.id);
+    setEditingText(message.content);
+  }
+
+  function cancelEditMessage() {
+    setEditingMessageId(null);
+    setEditingText("");
+  }
+
+  async function saveEditMessage() {
+    if (!editingMessageId || !editingText.trim()) return;
+    const index = messages.findIndex((message) => message.id === editingMessageId);
+    if (index === -1) return;
+    const chatId = activeChatId ?? (await ensureChatId("New Chat"));
+    if (!chatId) return;
+
+    await fetch(`/api/messages/${editingMessageId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: editingText.trim(), rollback: true }),
+    });
+
+    const updatedMessages = messages
+      .slice(0, index + 1)
+      .map((message) =>
+        message.id === editingMessageId
+          ? { ...message, content: editingText.trim() }
+          : message
+      );
+
+    setMessages(updatedMessages);
+    cancelEditMessage();
+    await runAssistant(chatId, updatedMessages);
+  }
+
   async function handleCopy(text: string) {
     await navigator.clipboard.writeText(text);
   }
@@ -761,6 +934,31 @@ export default function ChatApp() {
             <span className="text-sm font-bold">New Chat</span>
           </button>
 
+          <div className="mb-5">
+            <div className="relative">
+              <span className="material-symbols-outlined text-[16px] text-text-secondary absolute left-3 top-1/2 -translate-y-1/2">
+                search
+              </span>
+              <input
+                className="w-full rounded-lg border border-black/10 bg-white/70 pl-9 pr-9 py-2 text-xs text-text-primary placeholder:text-text-secondary focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                placeholder="Search chats..."
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+              />
+              {searchQuery.trim() && (
+                <button
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text-primary"
+                  type="button"
+                  onClick={() => setSearchQuery("")}
+                >
+                  <span className="material-symbols-outlined text-[16px]">
+                    close
+                  </span>
+                </button>
+              )}
+            </div>
+          </div>
+
           <div className="text-xs font-medium text-text-secondary/70 uppercase tracking-wider mb-3 px-2">Recent Sessions</div>
         </div>
 
@@ -784,7 +982,7 @@ export default function ChatApp() {
                     }`}>
                     {chat.source === "TELEGRAM" ? "send" : "chat_bubble"}
                   </span>
-                  <div className="flex flex-col overflow-hidden">
+                  <div className="flex flex-col overflow-hidden flex-1 min-w-0">
                     <p className={`text-sm font-medium truncate ${chat.id === activeChatId ? "text-text-primary" : "text-text-primary group-hover:text-text-primary"
                       }`}>
                       {chat.title}
@@ -792,6 +990,41 @@ export default function ChatApp() {
                     <p className="text-text-secondary text-[10px] truncate">
                       {new Date(chat.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </p>
+                  </div>
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      className={`size-7 flex items-center justify-center rounded-md ${chat.pinned ? "bg-primary/10 text-primary" : "text-text-secondary hover:text-text-primary hover:bg-black/5"}`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void handleTogglePin(chat);
+                      }}
+                      type="button"
+                      title={chat.pinned ? "Unpin" : "Pin"}
+                    >
+                      <span className="material-symbols-outlined text-[16px]">push_pin</span>
+                    </button>
+                    <button
+                      className={`size-7 flex items-center justify-center rounded-md ${chat.isFavorite ? "bg-amber-100 text-amber-600" : "text-text-secondary hover:text-text-primary hover:bg-black/5"}`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void handleToggleFavorite(chat);
+                      }}
+                      type="button"
+                      title={chat.isFavorite ? "Unfavorite" : "Favorite"}
+                    >
+                      <span className="material-symbols-outlined text-[16px]">star</span>
+                    </button>
+                    <button
+                      className="size-7 flex items-center justify-center rounded-md text-text-secondary hover:text-red-600 hover:bg-red-50"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void handleDeleteChat(chat.id);
+                      }}
+                      type="button"
+                      title="Delete"
+                    >
+                      <span className="material-symbols-outlined text-[16px]">delete</span>
+                    </button>
                   </div>
                 </div>
               ))}
@@ -845,6 +1078,12 @@ export default function ChatApp() {
                     Active
                   </span>
                 )}
+                <span
+                  className={`hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border ${isOnline ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-rose-50 text-rose-700 border-rose-200"}`}
+                >
+                  <span className="size-1.5 rounded-full bg-current" />
+                  {isOnline ? "Online" : "Offline"}
+                </span>
               </h2>
             </div>
 
@@ -863,14 +1102,49 @@ export default function ChatApp() {
 
               {modelMenuOpen && (
                 <div className="absolute right-0 top-full z-20 mt-2 w-72 rounded-xl border border-white/60 bg-white/90 p-2 shadow-glass-lg backdrop-blur-md">
-                  <div className="max-h-60 overflow-y-auto">
+                  <div className="px-1 pb-2">
+                    <div className="relative">
+                      <span className="material-symbols-outlined text-[16px] text-text-secondary absolute left-3 top-1/2 -translate-y-1/2">
+                        search
+                      </span>
+                      <input
+                        className="w-full rounded-lg border border-black/10 bg-white/80 pl-9 pr-3 py-1.5 text-xs text-text-primary placeholder:text-text-secondary focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                        placeholder="Search models"
+                        value={modelQuery}
+                        onChange={(event) => setModelQuery(event.target.value)}
+                      />
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {([
+                        { id: "all", label: "All" },
+                        { id: "fast", label: "Fast" },
+                        { id: "cheap", label: "Cheap" },
+                        { id: "long", label: "Long" },
+                      ] as const).map((filter) => (
+                        <button
+                          key={filter.id}
+                          type="button"
+                          className={`rounded-full px-2 py-0.5 text-[10px] ${modelFilter === filter.id ? "bg-primary/15 text-primary" : "text-text-secondary hover:text-text-primary hover:bg-black/5"}`}
+                          onClick={() => setModelFilter(filter.id)}
+                        >
+                          {filter.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="max-h-60 overflow-y-auto px-1 pb-1">
                     {filteredModels.map(model => (
                       <button
                         key={model.id}
                         className={`w-full text-left px-3 py-2 rounded-lg text-sm mb-1 ${selectedModel === model.id ? 'bg-primary/10 text-primary font-medium' : 'hover:bg-black/5 text-text-main'}`}
                         onClick={() => void handleSelectModel(model.id)}
                       >
-                        {model.name}
+                        <div className="flex flex-col gap-0.5">
+                          <span>{model.name}</span>
+                          <span className="text-[10px] text-text-secondary">
+                            {formatPricing(model.pricing)}
+                          </span>
+                        </div>
                       </button>
                     ))}
                   </div>
@@ -934,6 +1208,54 @@ export default function ChatApp() {
                       </div>
                     </div>
 
+                    {activeChat && (
+                      <div>
+                        <div className="text-xs uppercase tracking-wide text-text-secondary/70 mb-2">
+                          Tags
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {(activeChat.tags ?? []).length === 0 && (
+                            <span className="text-[11px] text-text-secondary/80">
+                              No tags yet.
+                            </span>
+                          )}
+                          {(activeChat.tags ?? []).map((tag) => (
+                            <button
+                              key={tag}
+                              className="flex items-center gap-1 rounded-full bg-black/5 px-2 py-0.5 text-[10px] text-text-secondary hover:bg-black/10"
+                              type="button"
+                              onClick={() => handleRemoveTag(tag)}
+                              title="Remove tag"
+                            >
+                              {tag}
+                              <span className="material-symbols-outlined text-[12px]">close</span>
+                            </button>
+                          ))}
+                        </div>
+                        <div className="mt-2 flex gap-2">
+                          <input
+                            className="flex-1 rounded-md border border-black/10 bg-white/80 px-2 py-1 text-xs text-text-primary placeholder:text-text-secondary focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                            placeholder="Add tag"
+                            value={tagInput}
+                            onChange={(event) => setTagInput(event.target.value)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") {
+                                event.preventDefault();
+                                handleAddTag();
+                              }
+                            }}
+                          />
+                          <button
+                            className="rounded-md bg-primary/15 px-2 text-[10px] font-semibold text-primary hover:bg-primary/25"
+                            type="button"
+                            onClick={handleAddTag}
+                          >
+                            Add
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="flex items-center justify-between rounded-lg border border-black/10 bg-black/5 px-3 py-2">
                       <div>
                         <p className="text-sm font-medium text-text-primary">Профиль и лимиты</p>
@@ -952,6 +1274,68 @@ export default function ChatApp() {
 
         <div className="flex-1 overflow-y-auto pt-24 pb-40 px-6 md:px-0">
           <div className="max-w-4xl mx-auto flex flex-col gap-6">
+            {error && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-900">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="space-y-1">
+                    <p className="font-semibold">Something went wrong</p>
+                    <p className="text-xs text-amber-800">{error}</p>
+                    {errorHint && (
+                      <p className="text-xs text-amber-700">{errorHint}</p>
+                    )}
+                  </div>
+                  <button
+                    className="text-amber-700 hover:text-amber-900"
+                    type="button"
+                    onClick={() => setError(null)}
+                    aria-label="Dismiss"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">close</span>
+                  </button>
+                </div>
+                {errorCta && (
+                  <div className="mt-2">
+                    <Link
+                      href={errorCta.href}
+                      className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700 hover:text-amber-900"
+                    >
+                      {errorCta.label}
+                      <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
+                    </Link>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {showOnboarding && (
+              <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-text-primary">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-semibold">Complete your onboarding</p>
+                    <p className="text-xs text-text-secondary">
+                      Add profile details, keys, and limits to personalize the workspace.
+                    </p>
+                  </div>
+                  <button
+                    className="text-text-secondary hover:text-text-primary"
+                    type="button"
+                    onClick={() => setShowOnboarding(false)}
+                    aria-label="Dismiss"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">close</span>
+                  </button>
+                </div>
+                <div className="mt-2">
+                  <Link
+                    href="/settings"
+                    className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:text-primary-hover"
+                  >
+                    Finish onboarding
+                    <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
+                  </Link>
+                </div>
+              </div>
+            )}
             {messages.length === 0 ? (
               <div className="flex flex-col items-center justify-center min-h-[400px]">
                 <div className="size-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg ring-1 ring-black/10 mb-6">
@@ -985,6 +1369,8 @@ export default function ChatApp() {
               <>
                 {messages.map((message, index) => {
                   const isAI = message.role === "assistant";
+                  const isEditing =
+                    !isAI && Boolean(message.id) && editingMessageId === message.id;
                   const tokenCount =
                     typeof message.tokenCount === "number"
                       ? message.tokenCount
@@ -1000,7 +1386,9 @@ export default function ChatApp() {
                     <div className={`flex flex-col gap-2 max-w-[85%] md:max-w-[75%] ${!isAI && 'items-end'}`}>
                       <div className="flex items-baseline gap-2">
                         <span className="text-sm font-bold text-text-primary">{isAI ? "PlatformaAI" : "You"}</span>
-                        <span className="text-xs text-text-secondary" suppressHydrationWarning>{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        <span className="text-xs text-text-secondary" suppressHydrationWarning>
+                          {new Date(message.createdAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
                       </div>
 
                       <div className={`p-5 text-sm md:text-base leading-relaxed text-text-primary shadow-sm
@@ -1021,7 +1409,37 @@ export default function ChatApp() {
                               {message.content || ""}
                             </ReactMarkdown>
                           ) : (
-                            <p className="whitespace-pre-wrap">{message.content}</p>
+                            <>
+                              {isEditing ? (
+                                <div className="space-y-3">
+                                  <textarea
+                                    className="w-full rounded-xl border border-primary/30 bg-white/90 p-3 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                                    rows={3}
+                                    value={editingText}
+                                    onChange={(event) => setEditingText(event.target.value)}
+                                  />
+                                  <div className="flex justify-end gap-2 text-xs">
+                                    <button
+                                      className="rounded-full border border-black/10 px-3 py-1 text-text-secondary hover:text-text-primary"
+                                      type="button"
+                                      onClick={cancelEditMessage}
+                                    >
+                                      Cancel
+                                    </button>
+                                    <button
+                                      className="rounded-full bg-primary px-3 py-1 text-white disabled:opacity-50"
+                                      type="button"
+                                      onClick={saveEditMessage}
+                                      disabled={!editingText.trim()}
+                                    >
+                                      Save
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <p className="whitespace-pre-wrap">{message.content}</p>
+                              )}
+                            </>
                           )}
                           {isAI && isSending && index === messages.length - 1 && !message.content && (
                             <span className="animate-pulse">Thinking...</span>
@@ -1038,6 +1456,26 @@ export default function ChatApp() {
                             </div>
                             <button className="ml-auto flex items-center gap-1 text-xs text-primary hover:text-text-primary transition-colors" onClick={() => handleCopy(message.content)}>
                               <span className="material-symbols-outlined text-[16px]">content_copy</span>
+                              Copy
+                            </button>
+                          </div>
+                        )}
+                        {!isAI && !isEditing && (
+                          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-text-secondary">
+                            <button
+                              className="flex items-center gap-1 hover:text-text-primary"
+                              type="button"
+                              onClick={() => startEditMessage(message)}
+                            >
+                              <span className="material-symbols-outlined text-[14px]">edit</span>
+                              Edit
+                            </button>
+                            <button
+                              className="flex items-center gap-1 hover:text-text-primary"
+                              type="button"
+                              onClick={() => handleCopy(message.content)}
+                            >
+                              <span className="material-symbols-outlined text-[14px]">content_copy</span>
                               Copy
                             </button>
                           </div>
@@ -1059,6 +1497,29 @@ export default function ChatApp() {
           </div>
         </div>
 
+        {messages.length > 0 && (
+          <div className="px-4 pb-3 flex justify-center">
+            <div className="w-full max-w-[720px] flex justify-end gap-2">
+              <button
+                className="rounded-full border border-black/10 px-4 py-1.5 text-xs text-text-secondary hover:text-text-primary hover:border-black/20 disabled:opacity-50"
+                type="button"
+                onClick={handleContinue}
+                disabled={isSending}
+              >
+                Continue
+              </button>
+              <button
+                className="rounded-full bg-primary/15 px-4 py-1.5 text-xs font-semibold text-primary hover:bg-primary/25 disabled:opacity-50"
+                type="button"
+                onClick={handleRegenerate}
+                disabled={isSending}
+              >
+                Regenerate
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Input Area */}
         <div className="sticky bottom-6 left-0 right-0 px-4 flex justify-center z-40">
           <div className="w-full max-w-[720px] glass-input rounded-3xl p-2 flex flex-col gap-2 transition-all focus-within:ring-0 focus-within:shadow-[0_0_0_6px_rgba(212,122,106,0.14)]">
@@ -1068,6 +1529,16 @@ export default function ChatApp() {
                   <div key={att.id} className="text-xs bg-white/50 px-2 py-1 rounded-md flex items-center gap-1">
                     <span className="material-symbols-outlined text-[14px]">attach_file</span>
                     <span className="truncate max-w-[100px]">{att.filename}</span>
+                    {att.mimeType.startsWith("image/") && (
+                      <button
+                        className="ml-1 rounded-full p-0.5 text-text-secondary hover:text-text-primary"
+                        type="button"
+                        title="Describe image"
+                        onClick={() => handleDescribeAttachment(att)}
+                      >
+                        <span className="material-symbols-outlined text-[14px]">auto_awesome</span>
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
@@ -1085,20 +1556,18 @@ export default function ChatApp() {
                 className="hidden"
                 ref={fileInputRef}
                 onChange={async (e) => {
-                  if (e.target.files && e.target.files.length > 0) {
-                    let chatId = activeChatId;
-                    if (!chatId) {
-                      const fileTitle =
-                        e.target.files[0]?.name?.slice(0, 40) || "New Chat";
-                      chatId = await createChat(fileTitle);
-                    }
-
-                    if (chatId) {
-                      for (const file of Array.from(e.target.files)) {
-                        await handleUpload(file, chatId);
-                      }
-                    }
+                  const files = e.target.files;
+                  if (!files || files.length === 0) return;
+                  let chatId = activeChatId;
+                  if (!chatId) {
+                    const fileTitle = files[0]?.name?.slice(0, 40) || "New Chat";
+                    chatId = await createChat(fileTitle);
                   }
+                  if (!chatId) return;
+                  for (const file of Array.from(files)) {
+                    await handleUpload(file, chatId);
+                  }
+                  e.target.value = "";
                 }}
               />
 
@@ -1133,8 +1602,17 @@ export default function ChatApp() {
                   <span className="material-symbols-outlined text-[18px]">image</span>
                 </button>
               </div>
-              <div className="text-[10px] text-text-secondary/70 font-mono hidden sm:block">
-                Press Enter to send, Shift + Enter for new line
+              <div className="flex items-center gap-3 text-[10px] text-text-secondary/70 font-mono">
+                <span className={`font-semibold ${composerState === "idle" ? "text-text-secondary/70" : "text-primary"}`}>
+                  {composerStatusLabel}
+                </span>
+                <span className="hidden sm:inline">Est. {estimatedCostLabel}</span>
+                <span className="hidden md:inline">
+                  {estimatedPromptTokens.toLocaleString()} tok
+                </span>
+                <span className="hidden sm:inline">
+                  Press Enter to send, Shift + Enter for new line
+                </span>
               </div>
             </div>
           </div>
