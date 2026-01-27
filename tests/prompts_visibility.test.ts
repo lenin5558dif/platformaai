@@ -1,7 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { resolvePromptVisibility } from "../src/lib/prompts";
-import { UserRole } from "@prisma/client";
 
 test("resolvePromptVisibility: allows GLOBAL for ADMIN", () => {
   const result = resolvePromptVisibility("GLOBAL", {
