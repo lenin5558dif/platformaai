@@ -36,6 +36,15 @@ export async function POST(request: Request) {
 
     if (credits > 0 && userId) {
       await prisma.$transaction(async (tx) => {
+        const existing = await tx.transaction.findUnique({
+          where: { externalId: event.id },
+          select: { id: true },
+        });
+
+        if (existing) {
+          return;
+        }
+
         const user = await tx.user.findUnique({
           where: { id: userId },
           select: { costCenterId: true },
@@ -53,6 +62,7 @@ export async function POST(request: Request) {
             amount: credits,
             type: "REFILL",
             description: "Stripe пополнение",
+            externalId: event.id,
           },
         });
       });
