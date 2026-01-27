@@ -10,6 +10,7 @@ Allows administrators to manually increase a user's balance.
 
 - **Required Role**: `ADMIN`
 - **Authentication**: Session required
+- **Header**: `x-billing-refill-token` must match `BILLING_REFILL_TOKEN`
 
 ### Request Body
 
@@ -38,6 +39,7 @@ Allows administrators to manually increase a user's balance.
   ```
 - **401 Unauthorized**: User is not logged in.
 - **403 Forbidden**: User is logged in but is not an ADMIN.
+- **503 Service Unavailable**: Manual refill is not configured.
 
 ### Audit Logging
 

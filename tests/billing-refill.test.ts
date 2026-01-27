@@ -40,6 +40,7 @@ describe("POST /api/billing/refill", () => {
   });
 
   it("should return 201 and update balance if user is ADMIN", async () => {
+    process.env.BILLING_REFILL_TOKEN = "test-token";
     const mockAuth = mock.fn(async () => ({
       user: { id: "admin-1", role: "ADMIN" },
     }));
@@ -64,6 +65,7 @@ describe("POST /api/billing/refill", () => {
 
     const req = new Request("http://localhost/api/billing/refill", {
       method: "POST",
+      headers: { "x-billing-refill-token": "test-token" },
       body: JSON.stringify({ amount: 100 }),
     });
 

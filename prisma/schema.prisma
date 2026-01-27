@@ -178,6 +178,7 @@ model Transaction {
   amount      Decimal          @db.Decimal(12, 2)
   type        TransactionType
   description String
+  externalId  String?          @unique
   createdAt   DateTime         @default(now())
   user        User             @relation(fields: [userId], references: [id])
   costCenter  CostCenter?      @relation(fields: [costCenterId], references: [id])

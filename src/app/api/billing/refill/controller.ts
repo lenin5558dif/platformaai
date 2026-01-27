@@ -38,6 +38,37 @@ export async function refillController(
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
+  const refillToken = process.env.BILLING_REFILL_TOKEN;
+  if (!refillToken) {
+    await logAudit({
+      action: "BILLING_REFILL" as AuditAction,
+      actorId: session.user.id,
+      metadata: {
+        amount: payload.amount,
+        status: "rejected",
+        reason: "refill_disabled",
+      },
+    });
+    return NextResponse.json(
+      { error: "Refill not configured" },
+      { status: 503 }
+    );
+  }
+
+  const providedToken = request.headers.get("x-billing-refill-token");
+  if (providedToken !== refillToken) {
+    await logAudit({
+      action: "BILLING_REFILL" as AuditAction,
+      actorId: session.user.id,
+      metadata: {
+        amount: payload.amount,
+        status: "rejected",
+        reason: "invalid_token",
+      },
+    });
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   const result = await prisma.$transaction(async (tx: any) => {
     const user = await tx.user.findUnique({
       where: { id: session.user.id },
