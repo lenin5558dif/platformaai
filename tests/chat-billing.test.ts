@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { requestSchema } from "../src/app/api/ai/chat/route";
+import { requestSchema } from "../src/lib/chat-request-schema";
 import { mapBillingError } from "../src/lib/billing-errors";
 
 test("requestSchema требует chatId", () => {
