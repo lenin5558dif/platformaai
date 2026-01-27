@@ -287,6 +287,7 @@ export async function POST(request: Request) {
   const useCache = body.cache !== false;
   const cacheKey = useCache
     ? buildCacheKey({
+        userId: session.user.id,
         model: body.model,
         messages: trimmedMessages,
         temperature: body.temperature,
@@ -508,6 +509,7 @@ export async function POST(request: Request) {
 
     if (useCache) {
       const finalCacheKey = buildCacheKey({
+        userId: session.user.id,
         model: usedModel,
         messages: trimmedMessages,
         temperature: body.temperature,
@@ -673,6 +675,7 @@ export async function POST(request: Request) {
 
       if (useCache && assistantText.trim()) {
         const finalCacheKey = buildCacheKey({
+          userId: session.user.id,
           model: usedModel,
           messages: trimmedMessages,
           temperature: body.temperature,
