@@ -1,19 +1,37 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { UserRole, AuditAction } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
 
 const schema = z.object({
   amount: z.number().positive(),
   description: z.string().optional(),
 });
 
+type RefillControllerDeps = {
+  auth: () => Promise<{
+    user?: { id?: string | null; role?: UserRole | null } | null;
+  } | null>;
+  prisma: {
+    $transaction: <T>(
+      callback: (tx: Prisma.TransactionClient) => Promise<T>
+    ) => Promise<T>;
+  };
+  logAudit: (params: {
+    action: AuditAction;
+    orgId?: string | null;
+    actorId?: string | null;
+    targetType?: string | null;
+    targetId?: string | null;
+    ip?: string | null;
+    userAgent?: string | null;
+    metadata?: Prisma.InputJsonValue;
+  }) => Promise<void> | void;
+};
+
 export async function refillController(
   request: Request,
-  deps: {
-    auth: () => Promise<any>;
-    prisma: any;
-    logAudit: any;
-  }
+  deps: RefillControllerDeps
 ) {
   const { auth, prisma, logAudit } = deps;
   const session = await auth();
@@ -22,13 +40,15 @@ export async function refillController(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const userId = session.user.id;
+
   const body = await request.json();
   const payload = schema.parse(body);
 
   if (session.user.role !== UserRole.ADMIN) {
     await logAudit({
       action: "BILLING_REFILL" as AuditAction,
-      actorId: session.user.id,
+      actorId: userId,
       metadata: {
         amount: payload.amount,
         status: "rejected",
@@ -42,7 +62,7 @@ export async function refillController(
   if (!refillToken) {
     await logAudit({
       action: "BILLING_REFILL" as AuditAction,
-      actorId: session.user.id,
+      actorId: userId,
       metadata: {
         amount: payload.amount,
         status: "rejected",
@@ -59,7 +79,7 @@ export async function refillController(
   if (providedToken !== refillToken) {
     await logAudit({
       action: "BILLING_REFILL" as AuditAction,
-      actorId: session.user.id,
+      actorId: userId,
       metadata: {
         amount: payload.amount,
         status: "rejected",
@@ -69,15 +89,15 @@ export async function refillController(
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const result = await prisma.$transaction(async (tx: any) => {
+  const result = await prisma.$transaction(async (tx) => {
     const user = await tx.user.findUnique({
-      where: { id: session.user.id },
+      where: { id: userId },
       select: { costCenterId: true },
     });
 
     const transaction = await tx.transaction.create({
       data: {
-        userId: session.user.id,
+        userId,
         costCenterId: user?.costCenterId ?? undefined,
         amount: payload.amount,
         type: "REFILL",
@@ -86,7 +106,7 @@ export async function refillController(
     });
 
     const updated = await tx.user.update({
-      where: { id: session.user.id },
+      where: { id: userId },
       data: {
         balance: { increment: payload.amount },
       },
@@ -98,7 +118,7 @@ export async function refillController(
 
   await logAudit({
     action: "BILLING_REFILL" as AuditAction,
-    actorId: session.user.id,
+    actorId: userId,
     targetId: result.transaction.id,
     targetType: "Transaction",
     metadata: {
