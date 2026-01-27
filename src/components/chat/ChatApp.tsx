@@ -638,6 +638,13 @@ export default function ChatApp() {
   }
 
   async function persistUserMessage(chatId: string, content: string) {
+    const tokenCount = estimateTokens(content);
+    const cost = estimateUsdCost({
+      promptTokens: tokenCount,
+      completionTokens: 0,
+      pricing: selectedModelInfo?.pricing,
+    });
+
     await fetch("/api/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -645,8 +652,8 @@ export default function ChatApp() {
         chatId,
         role: "USER",
         content,
-        tokenCount: 0,
-        cost: 0,
+        tokenCount,
+        cost,
       }),
     });
   }
