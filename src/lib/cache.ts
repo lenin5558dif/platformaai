@@ -12,6 +12,12 @@ type CacheEntry = {
 };
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
+
+/**
+ * In-memory cache store using globalThis.
+ * Automatically invalidated on serverless cold starts / deploys.
+ * Cache keys include userId to ensure user isolation.
+ */
 const globalCache = globalThis as unknown as {
   aiResponseCache?: Map<string, CacheEntry>;
 };
@@ -23,7 +29,15 @@ function getCacheStore() {
   return globalCache.aiResponseCache;
 }
 
-export function buildCacheKey(payload: unknown) {
+export type CacheKeyPayload = {
+  userId: string;
+  model: string;
+  messages: unknown;
+  temperature?: number;
+  max_tokens?: number;
+};
+
+export function buildCacheKey(payload: CacheKeyPayload) {
   return createHash("sha256").update(JSON.stringify(payload)).digest("hex");
 }
 

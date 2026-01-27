@@ -97,6 +97,7 @@ export default function ChatApp() {
   >("all");
   const [modelQuery, setModelQuery] = useState("");
   const [isOnline, setIsOnline] = useState(true);
+  const [streamingChatId, setStreamingChatId] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<{
     email?: string | null;
     role?: string | null;
@@ -586,6 +587,11 @@ export default function ChatApp() {
   }, [filteredChats, activeChatId, isDraft]);
 
   useEffect(() => {
+    if (isSending && streamingChatId && activeChatId !== streamingChatId) {
+      setIsSending(false);
+      setStreamingChatId(null);
+    }
+
     if (!activeChatId) {
       setMessages([]);
       setAttachments([]);
@@ -598,7 +604,7 @@ export default function ChatApp() {
     }
 
     void loadChatDetails(activeChatId);
-  }, [activeChatId, loadChatDetails]);
+  }, [activeChatId, loadChatDetails, isSending, streamingChatId]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -638,17 +644,29 @@ export default function ChatApp() {
   }
 
   async function persistUserMessage(chatId: string, content: string) {
-    await fetch("/api/messages", {
+    const tokenCount = estimateTokens(content);
+    const cost = estimateUsdCost({
+      promptTokens: tokenCount,
+      completionTokens: 0,
+      pricing: selectedModelInfo?.pricing,
+    });
+
+    const response = await fetch("/api/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         chatId,
         role: "USER",
         content,
-        tokenCount: 0,
-        cost: 0,
+        tokenCount,
+        cost,
       }),
     });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data?.error ?? "Failed to save message.");
+    }
   }
 
   async function handleUpload(file: File, targetChatId?: string) {
@@ -705,6 +723,7 @@ export default function ChatApp() {
     const assistantIndex = messageList.length;
     setMessages([...messageList, { role: "assistant", content: "" }]);
     setIsSending(true);
+    setStreamingChatId(chatId);
 
     if (!activeChatId) {
       skipNextLoadRef.current = chatId;
@@ -758,6 +777,7 @@ export default function ChatApp() {
             const delta = parsed?.choices?.[0]?.delta?.content;
             if (delta) {
               setMessages((prev) => {
+                if (activeChatId !== chatId) return prev;
                 const updated = [...prev];
                 const current = updated[assistantIndex];
                 if (current) {
@@ -776,11 +796,19 @@ export default function ChatApp() {
       }
     } finally {
       setIsSending(false);
+      setStreamingChatId(null);
       await loadChats();
       if (activeChatId === chatId) {
         await loadChatDetails(chatId);
       }
     }
+  }
+
+  function getErrorMessage(error: unknown, fallback: string) {
+    if (error instanceof Error && error.message) {
+      return error.message;
+    }
+    return fallback;
   }
 
   async function handleSend() {
@@ -801,8 +829,20 @@ export default function ChatApp() {
       { role: "user", content: text },
     ];
     setMessages(nextMessages);
-    await persistUserMessage(chatId, text);
-    await runAssistant(chatId, nextMessages);
+
+    try {
+      await persistUserMessage(chatId, text);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Failed to send message."));
+      setMessages(messages);
+      return;
+    }
+
+    try {
+      await runAssistant(chatId, nextMessages);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Failed to send message."));
+    }
   }
 
   async function sendQuickPrompt(text: string) {
@@ -815,8 +855,20 @@ export default function ChatApp() {
       { role: "user", content: text },
     ];
     setMessages(nextMessages);
-    await persistUserMessage(chatId, text);
-    await runAssistant(chatId, nextMessages);
+
+    try {
+      await persistUserMessage(chatId, text);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Failed to send message."));
+      setMessages(messages);
+      return;
+    }
+
+    try {
+      await runAssistant(chatId, nextMessages);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Failed to send message."));
+    }
   }
 
   async function handleContinue() {
@@ -1073,7 +1125,7 @@ export default function ChatApp() {
               </button>
               <h2 className="text-text-primary text-base md:text-lg font-bold leading-tight flex items-center gap-2">
                 {activeChat ? activeChat.title : "New Session"}
-                {(!activeChat || activeChat) && (
+                {activeChat && (
                   <span className="hidden sm:inline-block px-2 py-0.5 rounded text-[10px] bg-primary/10 text-primary border border-primary/20">
                     Active
                   </span>
@@ -1386,7 +1438,9 @@ export default function ChatApp() {
                     <div className={`flex flex-col gap-2 max-w-[85%] md:max-w-[75%] ${!isAI && 'items-end'}`}>
                       <div className="flex items-baseline gap-2">
                         <span className="text-sm font-bold text-text-primary">{isAI ? "PlatformaAI" : "You"}</span>
-                        <span className="text-xs text-text-secondary" suppressHydrationWarning>{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        <span className="text-xs text-text-secondary" suppressHydrationWarning>
+                          {new Date(message.createdAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
                       </div>
 
                       <div className={`p-5 text-sm md:text-base leading-relaxed text-text-primary shadow-sm
