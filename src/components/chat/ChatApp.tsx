@@ -862,6 +862,13 @@ export default function ChatApp() {
     }
   }
 
+  function getErrorMessage(error: unknown, fallback: string) {
+    if (error instanceof Error && error.message) {
+      return error.message;
+    }
+    return fallback;
+  }
+
   async function handleSend() {
     const text = input.trim();
     if (!text || isSending) return;
@@ -883,10 +890,16 @@ export default function ChatApp() {
 
     try {
       await persistUserMessage(chatId, text);
-      await runAssistant(chatId, nextMessages);
-    } catch (err: any) {
-      setError(err.message ?? "Failed to send message.");
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Failed to send message."));
       setMessages(messages);
+      return;
+    }
+
+    try {
+      await runAssistant(chatId, nextMessages);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Failed to send message."));
     }
   }
 
@@ -903,10 +916,16 @@ export default function ChatApp() {
 
     try {
       await persistUserMessage(chatId, text);
-      await runAssistant(chatId, nextMessages);
-    } catch (err: any) {
-      setError(err.message ?? "Failed to send message.");
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Failed to send message."));
       setMessages(messages);
+      return;
+    }
+
+    try {
+      await runAssistant(chatId, nextMessages);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Failed to send message."));
     }
   }
 
