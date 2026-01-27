@@ -568,8 +568,8 @@ export default function ChatApp() {
     });
   }
 
-  async function handleUpload(file: File) {
-    const chatId = await ensureChatId(
+  async function handleUpload(file: File, targetChatId?: string) {
+    const chatId = targetChatId || await ensureChatId(
       file.name ? file.name.slice(0, 40) : "New Chat"
     );
     if (!chatId) return;
@@ -1084,8 +1084,21 @@ export default function ChatApp() {
                 multiple
                 className="hidden"
                 ref={fileInputRef}
-                onChange={(e) => {
-                  if (e.target.files?.[0]) handleUpload(e.target.files[0]);
+                onChange={async (e) => {
+                  if (e.target.files && e.target.files.length > 0) {
+                    let chatId = activeChatId;
+                    if (!chatId) {
+                      const fileTitle =
+                        e.target.files[0]?.name?.slice(0, 40) || "New Chat";
+                      chatId = await createChat(fileTitle);
+                    }
+
+                    if (chatId) {
+                      for (const file of Array.from(e.target.files)) {
+                        await handleUpload(file, chatId);
+                      }
+                    }
+                  }
                 }}
               />
 
