@@ -48,6 +48,7 @@ export async function POST(request: Request) {
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const userId = session.user.id;
 
   const rate = checkRateLimit({
     key: `ai:${session.user.id}`,
@@ -565,162 +566,163 @@ export async function POST(request: Request) {
   let buffer = "";
   let assistantText = "";
   let usage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | null = null;
-  const rawChunks: Uint8Array[] = [];
+  let sentAny = false;
   const reader = response.body?.getReader();
 
   if (!reader) {
     return NextResponse.json({ error: "OpenRouter error" }, { status: 502 });
   }
 
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    if (!value) continue;
+  async function finalizeStream() {
+    let creditsResult = { credits: 0 };
+    const tokenCount = usage?.total_tokens ?? 0;
 
-    rawChunks.push(value);
-    const chunk = decoder.decode(value, { stream: true });
-    buffer += chunk;
-
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
-
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed.startsWith("data:")) continue;
-
-      const payload = trimmed.replace(/^data:\s*/, "");
-      if (!payload || payload === "[DONE]") continue;
-
+    if (usage) {
       try {
-        const parsed = JSON.parse(payload);
-        const delta = parsed?.choices?.[0]?.delta?.content;
-        if (delta) {
-          assistantText += delta;
-        }
+        creditsResult = await calculateCreditsFromUsage({
+          modelId: usedModel,
+          promptTokens: usage.prompt_tokens ?? 0,
+          completionTokens: usage.completion_tokens ?? 0,
+          apiKey: userKey,
+        });
 
-        if (parsed?.usage) {
-          usage = parsed.usage;
-        }
-      } catch {
-        // Ignore malformed chunks
-      }
-    }
-  }
-
-  if (!assistantText.trim() && modelsToTry.length > 1) {
-    const fallback = modelsToTry.find((modelId) => modelId !== usedModel);
-    if (fallback) {
-      const fallbackResponse = await fetch(
-        `${baseUrl}/chat/completions`,
-        {
-          method: "POST",
-          headers: requestHeaders,
-          body: JSON.stringify({
-            model: fallback,
-            messages: trimmedMessages,
-            temperature: body.temperature,
-            max_tokens: body.max_tokens,
-            stream: false,
-          }),
-        }
-      );
-
-      if (fallbackResponse.ok) {
-        const fallbackData = await fallbackResponse.json();
-        const fallbackText =
-          fallbackData?.choices?.[0]?.message?.content ?? "";
-        const fallbackUsage = fallbackData?.usage ?? null;
-        if (fallbackText.trim()) {
-          usedModel = fallback;
-          assistantText = fallbackText;
-          usage = fallbackUsage;
-          rawChunks.length = 0;
-          const payload = JSON.stringify({
-            choices: [{ delta: { content: fallbackText } }],
+        if (creditsResult.credits > 0) {
+          await spendCredits({
+            userId,
+            amount: creditsResult.credits,
+            description: `OpenRouter ${usedModel}`,
           });
-          rawChunks.push(encoder.encode(`data: ${payload}\n\n`));
-          rawChunks.push(encoder.encode("data: [DONE]\n\n"));
         }
-      }
-    }
-  }
-
-  let creditsResult = { credits: 0 };
-  const tokenCount = usage?.total_tokens ?? 0;
-
-  if (usage) {
-    try {
-      creditsResult = await calculateCreditsFromUsage({
-        modelId: usedModel,
-        promptTokens: usage.prompt_tokens ?? 0,
-        completionTokens: usage.completion_tokens ?? 0,
-        apiKey: userKey,
-      });
-
-      if (creditsResult.credits > 0) {
-        await spendCredits({
-          userId: session.user.id,
-          amount: creditsResult.credits,
-          description: `OpenRouter ${usedModel}`,
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Billing error";
+        await logEvent({
+          type: "BILLING_ERROR",
+          userId,
+          chatId,
+          modelId: usedModel,
+          message,
         });
       }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Billing error";
-      await logEvent({
-        type: "BILLING_ERROR",
-        userId: session.user.id,
+    }
+
+    await prisma.message.create({
+      data: {
         chatId,
+        userId,
+        costCenterId: user?.costCenterId ?? undefined,
+        role: "ASSISTANT",
+        content: assistantText,
+        tokenCount,
+        cost: creditsResult.credits,
         modelId: usedModel,
-        message,
+      },
+    });
+
+    await prisma.chat.update({
+      where: { id: chatId },
+      data: { updatedAt: new Date() },
+    });
+    void updateChatSummary({
+      chatId,
+      userId,
+      apiKey: userKey,
+    });
+
+    if (useCache && assistantText.trim()) {
+      const finalCacheKey = buildCacheKey({
+        model: usedModel,
+        messages: trimmedMessages,
+        temperature: body.temperature,
+        max_tokens: body.max_tokens,
       });
-      return buildBillingErrorResponse(message);
+      setCachedResponse(finalCacheKey, {
+        content: assistantText,
+        usage: usage ?? undefined,
+        modelId: usedModel,
+        createdAt: Date.now(),
+      });
     }
   }
 
-  await prisma.message.create({
-    data: {
-      chatId,
-      userId: session.user.id,
-      costCenterId: user?.costCenterId ?? undefined,
-      role: "ASSISTANT",
-      content: assistantText,
-      tokenCount,
-      cost: creditsResult.credits,
-      modelId: usedModel,
-    },
-  });
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          if (!value) continue;
+          sentAny = true;
+          controller.enqueue(value);
 
-  await prisma.chat.update({
-    where: { id: chatId },
-    data: { updatedAt: new Date() },
-  });
-  void updateChatSummary({
-    chatId,
-    userId: session.user.id,
-    apiKey: userKey,
-  });
+          const chunk = decoder.decode(value, { stream: true });
+          buffer += chunk;
 
-  if (useCache && assistantText.trim()) {
-    const finalCacheKey = buildCacheKey({
-      model: usedModel,
-      messages: trimmedMessages,
-      temperature: body.temperature,
-      max_tokens: body.max_tokens,
-    });
-    setCachedResponse(finalCacheKey, {
-      content: assistantText,
-      usage: usage ?? undefined,
-      modelId: usedModel,
-      createdAt: Date.now(),
-    });
-  }
+          const lines = buffer.split("\n");
+          buffer = lines.pop() ?? "";
 
-  const stream = new ReadableStream({
-    start(controller) {
-      for (const chunk of rawChunks) {
-        controller.enqueue(chunk);
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed.startsWith("data:")) continue;
+
+            const payload = trimmed.replace(/^data:\s*/, "");
+            if (!payload || payload === "[DONE]") continue;
+
+            try {
+              const parsed = JSON.parse(payload);
+              const delta = parsed?.choices?.[0]?.delta?.content;
+              if (delta) {
+                assistantText += delta;
+              }
+
+              if (parsed?.usage) {
+                usage = parsed.usage;
+              }
+            } catch {
+              // Ignore malformed chunks
+            }
+          }
+        }
+
+        if (!assistantText.trim() && !sentAny && modelsToTry.length > 1) {
+          const fallback = modelsToTry.find((modelId) => modelId !== usedModel);
+          if (fallback) {
+            const fallbackResponse = await fetch(
+              `${baseUrl}/chat/completions`,
+              {
+                method: "POST",
+                headers: requestHeaders,
+                body: JSON.stringify({
+                  model: fallback,
+                  messages: trimmedMessages,
+                  temperature: body.temperature,
+                  max_tokens: body.max_tokens,
+                  stream: false,
+                }),
+              }
+            );
+
+            if (fallbackResponse.ok) {
+              const fallbackData = await fallbackResponse.json();
+              const fallbackText =
+                fallbackData?.choices?.[0]?.message?.content ?? "";
+              const fallbackUsage = fallbackData?.usage ?? null;
+              if (fallbackText.trim()) {
+                usedModel = fallback;
+                assistantText = fallbackText;
+                usage = fallbackUsage;
+                const payload = JSON.stringify({
+                  choices: [{ delta: { content: fallbackText } }],
+                });
+                controller.enqueue(encoder.encode(`data: ${payload}\n\n`));
+                controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+              }
+            }
+          }
+        }
+      } finally {
+        controller.close();
+        void finalizeStream();
       }
-      controller.close();
     },
   });
 
