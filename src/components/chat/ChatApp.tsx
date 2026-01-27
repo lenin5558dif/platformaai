@@ -645,7 +645,7 @@ export default function ChatApp() {
       pricing: selectedModelInfo?.pricing,
     });
 
-    await fetch("/api/messages", {
+    const response = await fetch("/api/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -656,6 +656,11 @@ export default function ChatApp() {
         cost,
       }),
     });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data?.error ?? "Failed to save message.");
+    }
   }
 
   async function handleUpload(file: File, targetChatId?: string) {
@@ -790,6 +795,13 @@ export default function ChatApp() {
     }
   }
 
+  function getErrorMessage(error: unknown, fallback: string) {
+    if (error instanceof Error && error.message) {
+      return error.message;
+    }
+    return fallback;
+  }
+
   async function handleSend() {
     const text = input.trim();
     if (!text || isSending) return;
@@ -808,8 +820,20 @@ export default function ChatApp() {
       { role: "user", content: text },
     ];
     setMessages(nextMessages);
-    await persistUserMessage(chatId, text);
-    await runAssistant(chatId, nextMessages);
+
+    try {
+      await persistUserMessage(chatId, text);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Failed to send message."));
+      setMessages(messages);
+      return;
+    }
+
+    try {
+      await runAssistant(chatId, nextMessages);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Failed to send message."));
+    }
   }
 
   async function sendQuickPrompt(text: string) {
@@ -822,8 +846,20 @@ export default function ChatApp() {
       { role: "user", content: text },
     ];
     setMessages(nextMessages);
-    await persistUserMessage(chatId, text);
-    await runAssistant(chatId, nextMessages);
+
+    try {
+      await persistUserMessage(chatId, text);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Failed to send message."));
+      setMessages(messages);
+      return;
+    }
+
+    try {
+      await runAssistant(chatId, nextMessages);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Failed to send message."));
+    }
   }
 
   async function handleContinue() {
@@ -1080,7 +1116,7 @@ export default function ChatApp() {
               </button>
               <h2 className="text-text-primary text-base md:text-lg font-bold leading-tight flex items-center gap-2">
                 {activeChat ? activeChat.title : "New Session"}
-                {(!activeChat || activeChat) && (
+                {activeChat && (
                   <span className="hidden sm:inline-block px-2 py-0.5 rounded text-[10px] bg-primary/10 text-primary border border-primary/20">
                     Active
                   </span>
