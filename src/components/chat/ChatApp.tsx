@@ -104,44 +104,8 @@ function getChatGroups(chats: Chat[]): ChatGroup[] {
     .map(([label, items]) => ({ label, items }));
 }
 
-function formatPricing(pricing?: ModelPricing) {
-  if (!pricing?.prompt && !pricing?.completion) return "—";
-  const formatPerMillion = (value?: string) => {
-    if (!value) return "—";
-    const perToken = Number(value);
-    if (!Number.isFinite(perToken)) return "—";
-    const perMillion = perToken * 1_000_000;
-    const decimals = perMillion < 1 ? 4 : perMillion < 10 ? 3 : 2;
-    return `$${perMillion.toFixed(decimals)}/1M`;
-  };
-
-  return `Prompt ${formatPerMillion(pricing.prompt)} · Completion ${formatPerMillion(
-    pricing.completion
-  )}`;
-}
-
 function estimateTokens(text: string) {
   return Math.max(1, Math.ceil(text.length / 4));
-}
-
-function estimateUsdCost(params: {
-  promptTokens: number;
-  completionTokens: number;
-  pricing?: ModelPricing;
-}) {
-  const promptPrice = params.pricing?.prompt
-    ? Number(params.pricing.prompt)
-    : 0;
-  const completionPrice = params.pricing?.completion
-    ? Number(params.pricing.completion)
-    : 0;
-  if (!Number.isFinite(promptPrice) || !Number.isFinite(completionPrice)) {
-    return 0;
-  }
-  return (
-    params.promptTokens * promptPrice +
-    params.completionTokens * completionPrice
-  );
 }
 
 function getModelCostPerMillion(model: Model) {
@@ -182,29 +146,22 @@ export default function ChatApp() {
   const [isSending, setIsSending] = useState(false);
   const [models, setModels] = useState<Model[]>([]);
   const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL);
-  const [error, setError] = useState<string | null>(null);
+  const [, setError] = useState<string | null>(null);
   const [sourceFilter, setSourceFilter] = useState<"ALL" | "WEB" | "TELEGRAM">(
     "ALL"
   );
-  const [searchQuery, setSearchQuery] = useState("");
+  const searchQuery = "";
   const [attachments, setAttachments] = useState<Attachment[]>([]);
-  const [isUploading, setIsUploading] = useState(false);
+  const [, setIsUploading] = useState(false);
   const [useWebSearch, setUseWebSearch] = useState(false);
-  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
-  const [editingText, setEditingText] = useState("");
-  const [tagInput, setTagInput] = useState("");
   const [isDraft, setIsDraft] = useState(false);
   const [hasLoadedModelPreference, setHasLoadedModelPreference] =
     useState(false);
-  const [showOnboarding, setShowOnboarding] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [quickSettingsOpen, setQuickSettingsOpen] = useState(false);
-  const [modelFilter, setModelFilter] = useState<
-    "all" | "cheap" | "fast" | "long"
-  >("all");
-  const [modelQuery, setModelQuery] = useState("");
-  const [isOnline, setIsOnline] = useState(true);
+  const modelFilter: "all" | "cheap" | "fast" | "long" = "all";
+  const modelQuery = "";
   const [currentUser, setCurrentUser] = useState<{
     email?: string | null;
     role?: string | null;
@@ -271,60 +228,6 @@ export default function ChatApp() {
 
     return [...fallback, ...extra];
   }, [models, selectedModel]);
-
-  const estimatedPromptTokens = useMemo(() => {
-    const historyTokens = messages.reduce(
-      (sum, message) => sum + estimateTokens(message.content),
-      0
-    );
-    const inputTokens = input ? estimateTokens(input) : 0;
-    return historyTokens + inputTokens;
-  }, [messages, input]);
-
-  const estimatedCompletionTokens = useMemo(() => {
-    const context = selectedModelInfo?.contextLength ?? 4096;
-    return Math.min(512, Math.floor(context / 8));
-  }, [selectedModelInfo]);
-
-  const estimatedUsd = useMemo(() => {
-    return estimateUsdCost({
-      promptTokens: estimatedPromptTokens,
-      completionTokens: estimatedCompletionTokens,
-      pricing: selectedModelInfo?.pricing,
-    });
-  }, [estimatedPromptTokens, estimatedCompletionTokens, selectedModelInfo]);
-
-  const errorHint = useMemo(() => {
-    if (!error) return null;
-    if (error.toLowerCase().includes("unauthorized")) {
-      return "Check OpenRouter API key.";
-    }
-    if (error.toLowerCase().includes("openrouter")) {
-      return "Try another model or try again later.";
-    }
-    if (error.toLowerCase().includes("balance")) {
-      return "Top up balance or switch to free model.";
-    }
-    return "Check connection and try again.";
-  }, [error]);
-
-  const errorCta = useMemo(() => {
-    if (!error) return null;
-    const lower = error.toLowerCase();
-    if (lower.includes("unauthorized")) {
-      return { href: "/settings#api-keys", label: "Add Key" };
-    }
-    if (lower.includes("balance")) {
-      return { href: "/billing", label: "Top Up" };
-    }
-    return null;
-  }, [error]);
-
-  const composerState = useMemo(() => {
-    if (isUploading) return "uploading";
-    if (isSending) return "sending";
-    return "idle";
-  }, [isUploading, isSending]);
 
   const modelCostThreshold = useMemo(() => {
     const costs = models
@@ -437,29 +340,6 @@ export default function ChatApp() {
     }
   }, []);
 
-  const handleDeleteChat = useCallback(
-    async (chatId: string) => {
-      const confirmed = window.confirm("Delete chat forever?");
-      if (!confirmed) return;
-
-      const response = await fetch(`/api/chats/${chatId}`, {
-        method: "DELETE",
-      });
-
-      if (!response.ok) return;
-
-      setChats((prev) => prev.filter((chat) => chat.id !== chatId));
-
-      if (activeChatId === chatId) {
-        setActiveChatId(null);
-        setMessages([]);
-        setAttachments([]);
-        setIsDraft(false);
-      }
-    },
-    [activeChatId]
-  );
-
   const updateChatMeta = useCallback(
     async (chatId: string, patch: Partial<Chat>) => {
       const response = await fetch(`/api/chats/${chatId}`, {
@@ -493,27 +373,6 @@ export default function ChatApp() {
     [activeChatId, updateChatMeta]
   );
 
-  const handleToggleFavorite = useCallback(
-    async (chat: Chat) => {
-      await updateChatMeta(chat.id, { isFavorite: !chat.isFavorite });
-    },
-    [updateChatMeta]
-  );
-
-  const handleTogglePin = useCallback(
-    async (chat: Chat) => {
-      await updateChatMeta(chat.id, { pinned: !chat.pinned });
-    },
-    [updateChatMeta]
-  );
-
-  const handleUpdateTags = useCallback(
-    async (chatId: string, tags: string[]) => {
-      await updateChatMeta(chatId, { tags });
-    },
-    [updateChatMeta]
-  );
-
   const handleShareChat = useCallback(async (chatId: string) => {
     const response = await fetch(`/api/chats/${chatId}/share`, {
       method: "POST",
@@ -532,20 +391,6 @@ export default function ChatApp() {
     void loadChats();
     void loadModels();
   }, [loadChats, loadModels]);
-
-  useEffect(() => {
-    function handleStatusChange() {
-      setIsOnline(navigator.onLine);
-    }
-    if (typeof window === "undefined") return;
-    setIsOnline(navigator.onLine);
-    window.addEventListener("online", handleStatusChange);
-    window.addEventListener("offline", handleStatusChange);
-    return () => {
-      window.removeEventListener("online", handleStatusChange);
-      window.removeEventListener("offline", handleStatusChange);
-    };
-  }, []);
 
   useEffect(() => {
     if (!activeChat?.modelId) return;
@@ -599,7 +444,6 @@ export default function ChatApp() {
         if (!response.ok) return;
         const data = await response.json();
         const settings = data?.data?.settings ?? null;
-        const onboarded = Boolean(settings?.onboarded);
         const firstName =
           typeof settings?.profileFirstName === "string"
             ? settings.profileFirstName
@@ -611,7 +455,6 @@ export default function ChatApp() {
         const displayName = [firstName, lastName].filter(Boolean).join(" ");
         const planName =
           typeof settings?.planName === "string" ? settings.planName : "Pro Plan";
-        setShowOnboarding(!onboarded);
         setCurrentUser({
           email: data?.data?.email ?? null,
           role: data?.data?.role ?? null,
@@ -754,27 +597,6 @@ export default function ChatApp() {
     }
   }
 
-  async function handleDescribeAttachment(attachment: Attachment) {
-    if (!activeChatId) return;
-    if (!attachment.mimeType.startsWith("image/")) return;
-    setIsSending(true);
-    try {
-      const response = await fetch("/api/ai/image", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ attachmentId: attachment.id, chatId: activeChatId }),
-      });
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        setError(data?.error ?? "Description failed.");
-        return;
-      }
-      await loadChatDetails(activeChatId);
-    } finally {
-      setIsSending(false);
-    }
-  }
-
   async function runAssistant(chatId: string, messageList: ChatMessage[]) {
     const assistantIndex = messageList.length;
     setMessages([...messageList, { role: "assistant", content: "" }]);
@@ -891,75 +713,6 @@ export default function ChatApp() {
     setMessages(nextMessages);
     await persistUserMessage(chatId, text);
     await runAssistant(chatId, nextMessages);
-  }
-
-  async function handleContinue() {
-    await sendQuickPrompt("Continue");
-  }
-
-  async function handleRegenerate() {
-    if (isSending || !messages.length) return;
-    const lastUserIndex = [...messages]
-      .map((message, index) => ({ message, index }))
-      .reverse()
-      .find((item) => item.message.role === "user")?.index;
-
-    if (lastUserIndex === undefined) return;
-    const chatId = activeChatId ?? (await ensureChatId("New Chat"));
-    if (!chatId) return;
-
-    const lastUserMessage = messages[lastUserIndex];
-    if (lastUserMessage?.id) {
-      await fetch(`/api/messages/${lastUserMessage.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          content: lastUserMessage.content,
-          rollback: true,
-        }),
-      });
-    }
-
-    const trimmedMessages = messages.slice(0, lastUserIndex + 1);
-    setMessages(trimmedMessages);
-    await runAssistant(chatId, trimmedMessages);
-  }
-
-  function startEditMessage(message: ChatMessage) {
-    if (!message.id) return;
-    setEditingMessageId(message.id);
-    setEditingText(message.content);
-  }
-
-  function cancelEditMessage() {
-    setEditingMessageId(null);
-    setEditingText("");
-  }
-
-  async function saveEditMessage() {
-    if (!editingMessageId || !editingText.trim()) return;
-    const index = messages.findIndex((message) => message.id === editingMessageId);
-    if (index === -1) return;
-    const chatId = activeChatId ?? (await ensureChatId("New Chat"));
-    if (!chatId) return;
-
-    await fetch(`/api/messages/${editingMessageId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content: editingText.trim(), rollback: true }),
-    });
-
-    const updatedMessages = messages
-      .slice(0, index + 1)
-      .map((message) =>
-        message.id === editingMessageId
-          ? { ...message, content: editingText.trim() }
-          : message
-      );
-
-    setMessages(updatedMessages);
-    cancelEditMessage();
-    await runAssistant(chatId, updatedMessages);
   }
 
   async function handleCopy(text: string) {
@@ -1204,7 +957,7 @@ export default function ChatApp() {
                 <div className="size-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg ring-1 ring-black/10 mb-6">
                   <span className="material-symbols-outlined text-white text-[32px]">smart_toy</span>
                 </div>
-                <h1 className="text-2xl font-bold text-text-main font-display mb-2">Hello! I'm ready to assist.</h1>
+                <h1 className="text-2xl font-bold text-text-main font-display mb-2">Hello! I&apos;m ready to assist.</h1>
                 <p className="text-text-secondary text-sm mb-8">Choose a prompt or type your own.</p>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 w-full max-w-2xl px-4">
