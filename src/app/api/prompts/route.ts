@@ -3,6 +3,7 @@ import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { resolvePromptVisibility } from "@/lib/prompts";
 
 const createSchema = z.object({
   title: z.string().min(2),
@@ -51,17 +52,13 @@ export async function POST(request: Request) {
   const payload = createSchema.parse(await request.json());
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
-    select: { orgId: true },
+    select: { orgId: true, role: true },
   });
 
   const requestedVisibility =
-    payload.visibility ??
-    (payload.scope === "GLOBAL" ? "GLOBAL" : "ORG");
+    payload.visibility ?? (payload.scope === "GLOBAL" ? "GLOBAL" : "ORG");
 
-  const visibility =
-    requestedVisibility === "ORG" && !user?.orgId
-      ? "PRIVATE"
-      : requestedVisibility;
+  const visibility = resolvePromptVisibility(requestedVisibility, user);
 
   const tags =
     payload.tags
