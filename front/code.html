@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>PlatformaAI - Chat Interface</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script>
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#D47A6A", // Muted terracotta
+                        "background-light": "#fdf8f5", // Light cream background
+                        "background-dark": "#101d22", // Unchanged, as dark mode is not in scope
+                        "text-primary": "#4A3D36", // Dark warm brown
+                        "text-secondary": "#857A73", // Medium warm grey-brown
+                    },
+                    fontFamily: {
+                        "display": ["Space Grotesk", "sans-serif"],
+                        "body": ["Space Grotesk", "sans-serif"],
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px",
+                        "3xl": "1.5rem" // Added for rounded-3xl
+                    },
+                },
+            },
+        }
+    </script>
+<style>
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(180, 160, 140, 0.2);border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(180, 160, 140, 0.3);
+        }
+        .glass-panel {
+            background: rgba(255, 250, 240, 0.7);backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(180, 160, 140, 0.1);}
+        .glass-message-ai {
+            background: rgba(255, 250, 240, 0.7);backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(180, 160, 140, 0.1);box-shadow: 0 4px 30px rgba(0, 0, 0, 0.03);}
+        .glass-input {
+            background: rgba(255, 250, 240, 0.7);backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(180, 160, 140, 0.1);box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.05);}
+        @keyframes float {
+            0% { transform: translate(0px, 0px) scale(1); }
+            33% { transform: translate(30px, -50px) scale(1.1); }
+            66% { transform: translate(-20px, 20px) scale(0.9); }
+            100% { transform: translate(0px, 0px) scale(1); }
+        }
+        .blob {
+            animation: float 10s infinite ease-in-out;
+        }
+    </style>
+</head>
+<body class="bg-background-light text-text-primary font-display overflow-hidden selection:bg-primary/20">
+<div class="fixed inset-0 z-0 pointer-events-none overflow-hidden">
+<div class="blob absolute -top-[10%] -left-[10%] w-[50vw] h-[50vw] bg-[#FFDAB9]/20 rounded-full blur-[100px]"></div>
+<div class="blob absolute top-[20%] right-[0%] w-[40vw] h-[40vw] bg-[#B76E79]/15 rounded-full blur-[100px]" style="animation-delay: -5s;"></div>
+<div class="blob absolute -bottom-[10%] left-[20%] w-[35vw] h-[35vw] bg-[#F5DEB3]/15 rounded-full blur-[80px]" style="animation-delay: -2s;"></div>
+</div>
+<div class="relative z-10 flex h-screen w-full">
+<aside class="hidden md:flex flex-col w-72 glass-panel border-r-0 border-r-black/5 h-full z-20 transition-all duration-300">
+<div class="p-6 pb-2">
+<div class="flex flex-col gap-1 mb-8">
+<h1 class="text-text-primary text-xl font-bold tracking-tight">Platforma<span class="text-primary">AI</span></h1>
+<p class="text-text-secondary text-xs font-normal">Unified LLM Aggregator</p>
+</div>
+<button class="w-full flex items-center justify-center gap-2 bg-primary hover:bg-primary/90 text-white p-3 rounded-lg transition-colors shadow-[0_0_15px_rgba(212,122,106,0.2)] group mb-6">
+<span class="material-symbols-outlined text-[20px] group-hover:scale-110 transition-transform">add</span>
+<span class="text-sm font-bold">New Chat</span>
+</button>
+<div class="text-xs font-medium text-text-secondary/70 uppercase tracking-wider mb-3 px-2">Recent Sessions</div>
+</div>
+<div class="flex-1 overflow-y-auto px-4 pb-4 space-y-2">
+<div class="flex items-center gap-3 px-3 py-3 rounded-lg bg-primary/10 border border-primary/20 cursor-pointer">
+<span class="material-symbols-outlined text-primary text-[20px]">chat_bubble</span>
+<div class="flex flex-col overflow-hidden">
+<p class="text-text-primary text-sm font-medium truncate">Marketing Copy</p>
+<p class="text-text-secondary text-[10px] truncate">Just now</p>
+</div>
+</div>
+<div class="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-black/5 hover:bg-black/5 cursor-pointer transition-colors group">
+<span class="material-symbols-outlined text-text-secondary group-hover:text-primary text-[20px]">code</span>
+<div class="flex flex-col overflow-hidden">
+<p class="text-text-primary group-hover:text-text-primary text-sm font-medium truncate">Python Script Help</p>
+<p class="text-text-secondary text-[10px] truncate">2 hours ago</p>
+</div>
+</div>
+<div class="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-black/5 cursor-pointer transition-colors group">
+<span class="material-symbols-outlined text-text-secondary group-hover:text-primary text-[20px]">mail</span>
+<div class="flex flex-col overflow-hidden">
+<p class="text-text-primary group-hover:text-text-primary text-sm font-medium truncate">Email Drafts</p>
+<p class="text-text-secondary text-[10px] truncate">Yesterday</p>
+</div>
+</div>
+<div class="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-black/5 cursor-pointer transition-colors group">
+<span class="material-symbols-outlined text-text-secondary group-hover:text-primary text-[20px]">analytics</span>
+<div class="flex flex-col overflow-hidden">
+<p class="text-text-primary group-hover:text-text-primary text-sm font-medium truncate">SEO Analysis</p>
+<p class="text-text-secondary text-[10px] truncate">3 days ago</p>
+</div>
+</div>
+</div>
+<div class="p-4 mt-auto border-t border-black/10 bg-black/5 bg-background-light/50">
+<div class="flex flex-col gap-3">
+<div class="flex justify-between items-center text-xs">
+<span class="text-text-secondary">Tokens (This Month)</span>
+<span class="text-primary font-bold">84%</span>
+</div>
+<div class="w-full bg-black/10 rounded-full h-1.5">
+<div class="bg-primary h-1.5 rounded-full shadow-[0_0_10px_rgba(212,122,106,0.2)]" style="width: 84%"></div>
+</div>
+<div class="flex items-center gap-3 pt-2">
+<div class="size-8 rounded-full bg-cover bg-center ring-2 ring-black/10" data-alt="User Avatar" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuDKpGqSs5NCTbH7M_c4CH3K-M1w5vA7clpC4Gpy_tw1QOxj9BS3y-v3GDBkDizJ0qLphiMnjpHo5ZyzP0a0PIwLKBz8TmqMi-k7bWW2KNg0HZmpvcbCtnTUI9jA7nnz1_pmTGqbEBzr2Zi6VltqifqhHKzSj2PnqgNWFovCA9HTgHy6ci1SZ_6cyxe1A9qrFA9ZWAfXn_-7U0MliX_2AcaYC3ta3UocqulhDoNgic-_KW5JjwqpjJNDxkxvKaOXAfVuXmGCFaAZ8zY');"></div>
+<div class="flex flex-col">
+<span class="text-sm font-medium text-text-primary">Jane Doe</span>
+<span class="text-xs text-text-secondary">Pro Plan</span>
+</div>
+<button class="ml-auto text-text-secondary hover:text-text-primary">
+<span class="material-symbols-outlined text-[20px]">settings</span>
+</button>
+</div>
+</div>
+</div>
+</aside>
+<main class="flex-1 flex flex-col relative h-full">
+<header class="absolute top-0 left-0 right-0 z-30 px-6 py-4">
+<div class="glass-panel rounded-xl px-4 py-3 flex items-center justify-between shadow-lg">
+<div class="flex items-center gap-4">
+<button class="md:hidden text-text-secondary hover:text-text-primary">
+<span class="material-symbols-outlined">menu</span>
+</button>
+<h2 class="text-text-primary text-base md:text-lg font-bold leading-tight flex items-center gap-2">
+                            Marketing Copy Session
+                            <span class="hidden sm:inline-block px-2 py-0.5 rounded text-[10px] bg-primary/10 text-primary border border-primary/20">Active</span>
+</h2>
+</div>
+<div class="flex items-center gap-2">
+<div class="hidden md:flex h-8 items-center justify-center gap-x-2 rounded-lg bg-primary/10 border border-primary/20 pl-2 pr-3 cursor-pointer hover:bg-primary/20 transition-colors">
+<span class="material-symbols-outlined text-primary text-[18px]">smart_toy</span>
+<p class="text-primary text-xs font-bold">GPT-4</p>
+</div>
+<div class="hidden sm:flex h-8 items-center justify-center gap-x-2 rounded-lg bg-black/5 hover:bg-black/10 border border-black/5 pl-2 pr-3 cursor-pointer transition-colors">
+<span class="material-symbols-outlined text-text-secondary text-[18px]">bolt</span>
+<p class="text-text-secondary text-xs font-medium">Claude 3 Opus</p>
+</div>
+<div class="h-8 w-[1px] bg-black/10 mx-1"></div>
+<button class="size-8 flex items-center justify-center rounded-lg hover:bg-black/10 text-text-secondary hover:text-text-primary transition-colors">
+<span class="material-symbols-outlined text-[20px]">share</span>
+</button>
+<button class="size-8 flex items-center justify-center rounded-lg hover:bg-black/10 text-text-secondary hover:text-text-primary transition-colors">
+<span class="material-symbols-outlined text-[20px]">tune</span>
+</button>
+</div>
+</div>
+</header>
+<div class="flex-1 overflow-y-auto pt-24 pb-32 px-6 md:px-0">
+<div class="max-w-4xl mx-auto flex flex-col gap-6">
+<div class="flex justify-center">
+<span class="px-3 py-1 rounded-full bg-black/5 border border-black/5 text-[10px] text-text-secondary font-medium backdrop-blur-sm">Today, 10:23 AM</span>
+</div>
+<div class="flex items-start gap-4 pr-4 group">
+<div class="size-10 shrink-0 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg ring-1 ring-black/10">
+<span class="material-symbols-outlined text-white text-[20px]">smart_toy</span>
+</div>
+<div class="flex flex-col gap-2 max-w-[85%] md:max-w-[75%]">
+<div class="flex items-baseline gap-2">
+<span class="text-sm font-bold text-text-primary">PlatformaAI</span>
+<span class="text-xs text-text-secondary">GPT-4 • 10:23 AM</span>
+</div>
+<div class="glass-message-ai rounded-3xl rounded-tl-sm p-5 text-sm md:text-base leading-relaxed text-text-primary">
+<p>Hello! I am ready to assist you using GPT-4. I can help with marketing copy, SEO analysis, or code generation. Please provide the text or data you would like me to analyze.</p>
+</div>
+</div>
+</div>
+<div class="flex items-end justify-end gap-3 pl-4">
+<div class="flex flex-col gap-2 items-end max-w-[85%] md:max-w-[65%]">
+<div class="glass-panel bg-primary text-white border-primary/50 rounded-3xl rounded-tr-sm p-4 text-sm md:text-base leading-relaxed shadow-[0_4px_20px_rgba(212,122,106,0.15)] relative overflow-hidden">
+<div class="absolute inset-0 bg-gradient-to-br from-white/20 to-transparent pointer-events-none"></div>
+<p class="relative font-medium z-10">Can you analyze the current trends in SaaS B2B marketing for Q3 2024? I need a summary for a blog post.</p>
+</div>
+<span class="text-xs text-text-secondary mr-1">Read 10:25 AM</span>
+</div>
+<div class="size-10 shrink-0 rounded-full bg-cover bg-center shadow-lg ring-2 ring-primary/20" data-alt="User Avatar" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuDf0fiKfJI2WhUF4lo_MskOcGAdwdJYF7D5Vlwceatw_SVfgjxoxajGsPsjk4tV82vvKn35ryDNkRMbPbzmuDwRdS9do4GekVCpgYbWMZ810mAXzNxhGCDyQlNOirzTDtM5RptvaYovT_bSSNzhDkBKF-aNqulz6HFqSvHVCJoypiPa1Ln9O8JmzQIFXcM-VnGmED3QOYAvSYmlOCeCzDaMPWEL9C4YNkiG7MHKxSp38k2fB5rFpFyoQNxS7tL_bFpO1W0RAiSSIFY');"></div>
+</div>
+<div class="flex items-start gap-4 pr-4 group">
+<div class="size-10 shrink-0 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg ring-1 ring-black/10">
+<span class="material-symbols-outlined text-white text-[20px]">smart_toy</span>
+</div>
+<div class="flex flex-col gap-2 max-w-[90%] md:max-w-[80%]">
+<div class="flex items-baseline gap-2">
+<span class="text-sm font-bold text-text-primary">PlatformaAI</span>
+<span class="text-xs text-text-secondary">GPT-4 • 10:26 AM</span>
+</div>
+<div class="glass-message-ai rounded-3xl rounded-tl-sm p-6 text-sm md:text-base leading-relaxed text-text-primary space-y-4">
+<p>Here is a summary of the key B2B SaaS marketing trends for Q3 2024 based on recent data:</p>
+<ul class="list-disc pl-5 space-y-2 text-text-primary marker:text-primary">
+<li><strong>Hyper-Personalization:</strong> Moving beyond just "Hi [Name]" to dynamic website experiences tailored to the visitor's industry and company size.</li>
+<li><strong>Interactive Content:</strong> Calculators, quizzes, and interactive whitepapers are outperforming static PDFs.</li>
+<li><strong>Community-Led Growth:</strong> Brands are investing heavily in owned communities (Slack, Discord) to drive retention.</li>
+</ul>
+<p>Would you like me to draft the blog post intro based on these points?</p>
+<div class="mt-4 pt-4 border-t border-black/5 flex flex-wrap gap-2">
+<div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/5 border border-black/10">
+<span class="material-symbols-outlined text-primary text-[14px]">token</span>
+<span class="text-xs text-text-secondary">Tokens used: <strong>420</strong></span>
+</div>
+<div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/5 border border-black/10">
+<span class="material-symbols-outlined text-green-600 text-[14px]">attach_money</span>
+<span class="text-xs text-text-secondary">Cost: <strong>$0.012</strong></span>
+</div>
+<button class="ml-auto flex items-center gap-1 text-xs text-primary hover:text-text-primary transition-colors">
+<span class="material-symbols-outlined text-[16px]">content_copy</span>
+                                        Copy
+                                    </button>
+<button class="flex items-center gap-1 text-xs text-primary hover:text-text-primary transition-colors">
+<span class="material-symbols-outlined text-[16px]">thumb_up</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+<div class="flex items-start gap-4 pr-4 opacity-0 group-has-[.loading]:opacity-100 transition-opacity">
+</div>
+</div>
+</div>
+<div class="absolute bottom-6 left-0 right-0 px-4 flex justify-center z-40">
+<div class="w-full max-w-[720px] glass-input rounded-3xl p-2 flex flex-col gap-2 transition-all focus-within:ring-2 focus-within:ring-primary/30">
+<div class="flex items-end gap-2 p-2">
+<button class="p-2 text-text-secondary hover:text-primary transition-colors rounded-full hover:bg-black/5 shrink-0">
+<span class="material-symbols-outlined text-[24px]">add_circle</span>
+</button>
+<textarea class="w-full bg-transparent border-none text-text-primary placeholder-text-secondary focus:ring-0 resize-none max-h-32 py-2.5 text-sm md:text-base leading-normal" placeholder="Ask anything or paste text to analyze..." rows="1"></textarea>
+<button class="p-2 bg-primary text-white hover:bg-primary/90 transition-colors rounded-full shrink-0 shadow-[0_0_15px_rgba(212,122,106,0.4)]">
+<span class="material-symbols-outlined text-[20px] translate-x-0.5">arrow_upward</span>
+</button>
+</div>
+<div class="flex items-center justify-between px-3 pb-1">
+<div class="flex items-center gap-1">
+<button class="p-1.5 rounded-md hover:bg-black/5 text-text-secondary hover:text-text-primary transition-colors">
+<span class="material-symbols-outlined text-[18px]">mic</span>
+</button>
+<button class="p-1.5 rounded-md hover:bg-black/5 text-text-secondary hover:text-text-primary transition-colors">
+<span class="material-symbols-outlined text-[18px]">image</span>
+</button>
+</div>
+<div class="text-[10px] text-text-secondary/70 font-mono hidden sm:block">
+                            Press Enter to send, Shift + Enter for new line
+                        </div>
+</div>
+</div>
+</div>
+</main>
+</div>
+
+</body></html>

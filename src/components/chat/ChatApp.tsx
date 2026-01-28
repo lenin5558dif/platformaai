@@ -91,12 +91,13 @@ export default function ChatApp() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
-  const [quickSettingsOpen, setQuickSettingsOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [modelFilter, setModelFilter] = useState<
     "all" | "cheap" | "fast" | "long"
   >("all");
   const [modelQuery, setModelQuery] = useState("");
   const [isOnline, setIsOnline] = useState(true);
+  const [streamingChatId, setStreamingChatId] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<{
     email?: string | null;
     role?: string | null;
@@ -109,7 +110,6 @@ export default function ChatApp() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const modelMenuRef = useRef<HTMLDivElement>(null);
   const appliedPromptRef = useRef<string | null>(null);
-  const quickSettingsRef = useRef<HTMLDivElement>(null);
 
   const activeChat = useMemo(
     () => chats.find((chat) => chat.id === activeChatId) ?? null,
@@ -499,24 +499,17 @@ export default function ChatApp() {
   }, [modelMenuOpen]);
 
   useEffect(() => {
-    if (!quickSettingsOpen) return;
-    function handleClick(event: MouseEvent) {
-      if (!quickSettingsRef.current) return;
-      if (quickSettingsRef.current.contains(event.target as Node)) return;
-      setQuickSettingsOpen(false);
-    }
+    if (!detailsOpen) return;
     function handleKey(event: KeyboardEvent) {
       if (event.key === "Escape") {
-        setQuickSettingsOpen(false);
+        setDetailsOpen(false);
       }
     }
-    document.addEventListener("mousedown", handleClick);
     document.addEventListener("keydown", handleKey);
     return () => {
-      document.removeEventListener("mousedown", handleClick);
       document.removeEventListener("keydown", handleKey);
     };
-  }, [quickSettingsOpen]);
+  }, [detailsOpen]);
 
   useEffect(() => {
     async function loadProfile() {
@@ -586,6 +579,11 @@ export default function ChatApp() {
   }, [filteredChats, activeChatId, isDraft]);
 
   useEffect(() => {
+    if (isSending && streamingChatId && activeChatId !== streamingChatId) {
+      setIsSending(false);
+      setStreamingChatId(null);
+    }
+
     if (!activeChatId) {
       setMessages([]);
       setAttachments([]);
@@ -598,7 +596,7 @@ export default function ChatApp() {
     }
 
     void loadChatDetails(activeChatId);
-  }, [activeChatId, loadChatDetails]);
+  }, [activeChatId, loadChatDetails, isSending, streamingChatId]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -638,17 +636,29 @@ export default function ChatApp() {
   }
 
   async function persistUserMessage(chatId: string, content: string) {
-    await fetch("/api/messages", {
+    const tokenCount = estimateTokens(content);
+    const cost = estimateUsdCost({
+      promptTokens: tokenCount,
+      completionTokens: 0,
+      pricing: selectedModelInfo?.pricing,
+    });
+
+    const response = await fetch("/api/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         chatId,
         role: "USER",
         content,
-        tokenCount: 0,
-        cost: 0,
+        tokenCount,
+        cost,
       }),
     });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data?.error ?? "Failed to save message.");
+    }
   }
 
   async function handleUpload(file: File, targetChatId?: string) {
@@ -705,6 +715,7 @@ export default function ChatApp() {
     const assistantIndex = messageList.length;
     setMessages([...messageList, { role: "assistant", content: "" }]);
     setIsSending(true);
+    setStreamingChatId(chatId);
 
     if (!activeChatId) {
       skipNextLoadRef.current = chatId;
@@ -758,6 +769,7 @@ export default function ChatApp() {
             const delta = parsed?.choices?.[0]?.delta?.content;
             if (delta) {
               setMessages((prev) => {
+                if (activeChatId !== chatId) return prev;
                 const updated = [...prev];
                 const current = updated[assistantIndex];
                 if (current) {
@@ -776,11 +788,19 @@ export default function ChatApp() {
       }
     } finally {
       setIsSending(false);
+      setStreamingChatId(null);
       await loadChats();
       if (activeChatId === chatId) {
         await loadChatDetails(chatId);
       }
     }
+  }
+
+  function getErrorMessage(error: unknown, fallback: string) {
+    if (error instanceof Error && error.message) {
+      return error.message;
+    }
+    return fallback;
   }
 
   async function handleSend() {
@@ -801,8 +821,20 @@ export default function ChatApp() {
       { role: "user", content: text },
     ];
     setMessages(nextMessages);
-    await persistUserMessage(chatId, text);
-    await runAssistant(chatId, nextMessages);
+
+    try {
+      await persistUserMessage(chatId, text);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Failed to send message."));
+      setMessages(messages);
+      return;
+    }
+
+    try {
+      await runAssistant(chatId, nextMessages);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Failed to send message."));
+    }
   }
 
   async function sendQuickPrompt(text: string) {
@@ -815,8 +847,20 @@ export default function ChatApp() {
       { role: "user", content: text },
     ];
     setMessages(nextMessages);
-    await persistUserMessage(chatId, text);
-    await runAssistant(chatId, nextMessages);
+
+    try {
+      await persistUserMessage(chatId, text);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Failed to send message."));
+      setMessages(messages);
+      return;
+    }
+
+    try {
+      await runAssistant(chatId, nextMessages);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Failed to send message."));
+    }
   }
 
   async function handleContinue() {
@@ -894,6 +938,9 @@ export default function ChatApp() {
 
   const closeSidebar = () => {
     setIsSidebarOpen(false);
+  };
+  const closeDetails = () => {
+    setDetailsOpen(false);
   };
 
   return (
@@ -1035,27 +1082,178 @@ export default function ChatApp() {
           )}
         </div>
 
-        <div className="p-4 mt-auto border-t border-black/10 bg-black/5 bg-background-light/50">
-          <div className="flex flex-col gap-3">
+      </aside>
+
+      {detailsOpen && (
+        <button
+          className="fixed inset-0 z-30 bg-black/30"
+          aria-label="Close details"
+          onClick={closeDetails}
+          type="button"
+        />
+      )}
+      <aside
+        className={`fixed inset-y-0 right-0 z-40 flex w-80 max-w-[85vw] flex-col glass-panel border-l border-black/5 h-full transition-all duration-300 transform ${detailsOpen ? "translate-x-0" : "translate-x-full"
+          }`}
+      >
+        <div className="p-5 border-b border-black/10 flex items-center justify-between">
+          <h3 className="text-text-primary text-base font-bold">Details</h3>
+          <button
+            className="size-8 flex items-center justify-center rounded-lg text-text-secondary hover:text-text-primary hover:bg-black/5"
+            onClick={closeDetails}
+            type="button"
+            aria-label="Close details"
+          >
+            <span className="material-symbols-outlined text-[20px]">close</span>
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-5 space-y-6">
+          <div>
+            <div className="text-xs uppercase tracking-wide text-text-secondary/70 mb-2">
+              Actions
+            </div>
+            <div className="flex gap-2">
+              <button
+                className="flex-1 rounded-lg border border-black/10 px-3 py-2 text-xs font-semibold text-text-primary hover:bg-black/5 disabled:opacity-50"
+                onClick={() => activeChatId && handleShareChat(activeChatId)}
+                disabled={!activeChatId}
+                type="button"
+              >
+                Share
+              </button>
+              <Link
+                href="/settings"
+                className="flex-1 rounded-lg border border-black/10 px-3 py-2 text-center text-xs font-semibold text-text-primary hover:bg-black/5"
+              >
+                Settings
+              </Link>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium text-text-primary">Web search</p>
+              <p className="text-xs text-text-secondary">
+                Добавлять результаты в подсказку
+              </p>
+            </div>
+            <button
+              className={`material-symbols-outlined text-[26px] ${useWebSearch ? "text-primary" : "text-text-secondary"}`}
+              onClick={() => setUseWebSearch((prev) => !prev)}
+              aria-pressed={useWebSearch}
+              type="button"
+            >
+              {useWebSearch ? "toggle_on" : "toggle_off"}
+            </button>
+          </div>
+
+          <div>
+            <div className="text-xs uppercase tracking-wide text-text-secondary/70 mb-2">
+              Источники чатов
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {(["ALL", "WEB", "TELEGRAM"] as const).map((option) => (
+                <button
+                  key={option}
+                  className={`w-full px-3 py-2 text-xs rounded-lg border transition-colors ${sourceFilter === option
+                    ? "bg-primary/10 text-primary border-primary/30"
+                    : "bg-black/5 text-text-secondary border-black/5 hover:text-text-primary"
+                    }`}
+                  onClick={() => setSourceFilter(option)}
+                  type="button"
+                >
+                  {option === "ALL" ? "Все" : option === "WEB" ? "Web" : "Telegram"}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {activeChat && (
+            <div>
+              <div className="text-xs uppercase tracking-wide text-text-secondary/70 mb-2">
+                Tags
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {(activeChat.tags ?? []).length === 0 && (
+                  <span className="text-[11px] text-text-secondary/80">
+                    No tags yet.
+                  </span>
+                )}
+                {(activeChat.tags ?? []).map((tag) => (
+                  <button
+                    key={tag}
+                    className="flex items-center gap-1 rounded-full bg-black/5 px-2 py-0.5 text-[10px] text-text-secondary hover:bg-black/10"
+                    type="button"
+                    onClick={() => handleRemoveTag(tag)}
+                    title="Remove tag"
+                  >
+                    {tag}
+                    <span className="material-symbols-outlined text-[12px]">close</span>
+                  </button>
+                ))}
+              </div>
+              <div className="mt-2 flex gap-2">
+                <input
+                  className="flex-1 rounded-md border border-black/10 bg-white/80 px-2 py-1 text-xs text-text-primary placeholder:text-text-secondary focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  placeholder="Add tag"
+                  value={tagInput}
+                  onChange={(event) => setTagInput(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      handleAddTag();
+                    }
+                  }}
+                />
+                <button
+                  className="rounded-md bg-primary/15 px-2 text-[10px] font-semibold text-primary hover:bg-primary/25"
+                  type="button"
+                  onClick={handleAddTag}
+                >
+                  Add
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div>
+            <div className="text-xs uppercase tracking-wide text-text-secondary/70 mb-2">
+              Usage
+            </div>
             <div className="flex justify-between items-center text-xs">
               <span className="text-text-secondary">Tokens (This Month)</span>
               <span className="text-primary font-bold">84%</span>
             </div>
-            <div className="w-full bg-black/10 rounded-full h-1.5">
-              <div className="bg-primary h-1.5 rounded-full shadow-[0_0_10px_rgba(212,122,106,0.2)]" style={{ width: "84%" }}></div>
+            <div className="w-full bg-black/10 rounded-full h-1.5 mt-2">
+              <div
+                className="bg-primary h-1.5 rounded-full shadow-[0_0_10px_rgba(212,122,106,0.2)]"
+                style={{ width: "84%" }}
+              />
             </div>
-            <div className="flex items-center gap-3 pt-2">
-              <div className="size-8 rounded-full bg-gray-300 ring-2 ring-black/10 flex items-center justify-center text-text-secondary font-bold" style={{ backgroundImage: `url(${currentUser?.image})`, backgroundSize: 'cover' }}>
-                {!currentUser?.image && (currentUser?.displayName?.[0] || "U")}
-              </div>
-              <div className="flex flex-col">
-                <span className="text-sm font-medium text-text-primary">{currentUser?.displayName || "User"}</span>
-                <span className="text-xs text-text-secondary">{currentUser?.planName || "Pro Plan"}</span>
-              </div>
-              <Link href="/settings" className="ml-auto text-text-secondary hover:text-text-primary">
-                <span className="material-symbols-outlined text-[20px]">settings</span>
-              </Link>
+          </div>
+
+          <div className="flex items-center gap-3 rounded-lg border border-black/10 bg-black/5 px-3 py-2">
+            <div
+              className="size-8 rounded-full bg-gray-300 ring-2 ring-black/10 flex items-center justify-center text-text-secondary font-bold"
+              style={{ backgroundImage: `url(${currentUser?.image})`, backgroundSize: "cover" }}
+            >
+              {!currentUser?.image && (currentUser?.displayName?.[0] || "U")}
             </div>
+            <div className="flex flex-col">
+              <span className="text-sm font-medium text-text-primary">
+                {currentUser?.displayName || "User"}
+              </span>
+              <span className="text-xs text-text-secondary">
+                {currentUser?.planName || "Pro Plan"}
+              </span>
+            </div>
+            <Link
+              href="/settings"
+              className="ml-auto text-text-secondary hover:text-text-primary"
+            >
+              <span className="material-symbols-outlined text-[20px]">settings</span>
+            </Link>
           </div>
         </div>
       </aside>
@@ -1071,203 +1269,83 @@ export default function ChatApp() {
               >
                 <span className="material-symbols-outlined">menu</span>
               </button>
-              <h2 className="text-text-primary text-base md:text-lg font-bold leading-tight flex items-center gap-2">
+              <h2 className="text-text-primary text-base md:text-lg font-bold leading-tight">
                 {activeChat ? activeChat.title : "New Session"}
-                {(!activeChat || activeChat) && (
-                  <span className="hidden sm:inline-block px-2 py-0.5 rounded text-[10px] bg-primary/10 text-primary border border-primary/20">
-                    Active
-                  </span>
-                )}
-                <span
-                  className={`hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border ${isOnline ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-rose-50 text-rose-700 border-rose-200"}`}
-                >
-                  <span className="size-1.5 rounded-full bg-current" />
-                  {isOnline ? "Online" : "Offline"}
-                </span>
               </h2>
             </div>
 
-            <div className="flex items-center gap-2" ref={modelMenuRef}>
-              <div className="hidden md:flex h-8 items-center justify-center gap-x-2 rounded-lg bg-primary/10 border border-primary/20 pl-2 pr-3 cursor-pointer hover:bg-primary/20 transition-colors"
-                onClick={() => setModelMenuOpen(!modelMenuOpen)}
-              >
-                <span className="material-symbols-outlined text-primary text-[18px]">smart_toy</span>
-                <p className="text-primary text-xs font-bold">{selectedModelInfo?.name ?? "GPT-4"}</p>
-              </div>
-
-              <div className="hidden sm:flex h-8 items-center justify-center gap-x-2 rounded-lg bg-black/5 hover:bg-black/10 border border-black/5 pl-2 pr-3 cursor-pointer transition-colors">
-                <span className="material-symbols-outlined text-text-secondary text-[18px]">bolt</span>
-                <p className="text-text-secondary text-xs font-medium">Claude 3 Opus</p>
-              </div>
-
-              {modelMenuOpen && (
-                <div className="absolute right-0 top-full z-20 mt-2 w-72 rounded-xl border border-white/60 bg-white/90 p-2 shadow-glass-lg backdrop-blur-md">
-                  <div className="px-1 pb-2">
-                    <div className="relative">
-                      <span className="material-symbols-outlined text-[16px] text-text-secondary absolute left-3 top-1/2 -translate-y-1/2">
-                        search
-                      </span>
-                      <input
-                        className="w-full rounded-lg border border-black/10 bg-white/80 pl-9 pr-3 py-1.5 text-xs text-text-primary placeholder:text-text-secondary focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                        placeholder="Search models"
-                        value={modelQuery}
-                        onChange={(event) => setModelQuery(event.target.value)}
-                      />
-                    </div>
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      {([
-                        { id: "all", label: "All" },
-                        { id: "fast", label: "Fast" },
-                        { id: "cheap", label: "Cheap" },
-                        { id: "long", label: "Long" },
-                      ] as const).map((filter) => (
-                        <button
-                          key={filter.id}
-                          type="button"
-                          className={`rounded-full px-2 py-0.5 text-[10px] ${modelFilter === filter.id ? "bg-primary/15 text-primary" : "text-text-secondary hover:text-text-primary hover:bg-black/5"}`}
-                          onClick={() => setModelFilter(filter.id)}
-                        >
-                          {filter.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="max-h-60 overflow-y-auto px-1 pb-1">
-                    {filteredModels.map(model => (
-                      <button
-                        key={model.id}
-                        className={`w-full text-left px-3 py-2 rounded-lg text-sm mb-1 ${selectedModel === model.id ? 'bg-primary/10 text-primary font-medium' : 'hover:bg-black/5 text-text-main'}`}
-                        onClick={() => void handleSelectModel(model.id)}
-                      >
-                        <div className="flex flex-col gap-0.5">
-                          <span>{model.name}</span>
-                          <span className="text-[10px] text-text-secondary">
-                            {formatPricing(model.pricing)}
-                          </span>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <div className="h-8 w-[1px] bg-black/10 mx-1"></div>
-
-              <button
-                className="size-8 flex items-center justify-center rounded-lg hover:bg-black/10 text-text-secondary hover:text-text-primary transition-colors"
-                onClick={() => activeChatId && handleShareChat(activeChatId)}
-              >
-                <span className="material-symbols-outlined text-[20px]">share</span>
-              </button>
-              <div className="relative" ref={quickSettingsRef}>
-                <button
-                  className="size-8 flex items-center justify-center rounded-lg hover:bg-black/10 text-text-secondary hover:text-text-primary transition-colors"
-                  onClick={() => setQuickSettingsOpen((prev) => !prev)}
-                  aria-expanded={quickSettingsOpen}
-                  aria-haspopup="true"
-                  type="button"
+            <div className="flex items-center gap-2">
+              <div className="relative" ref={modelMenuRef}>
+                <div
+                  className="hidden md:flex h-8 items-center justify-center gap-x-2 rounded-lg bg-primary/10 border border-primary/20 pl-2 pr-3 cursor-pointer hover:bg-primary/20 transition-colors"
+                  onClick={() => setModelMenuOpen(!modelMenuOpen)}
                 >
-                  <span className="material-symbols-outlined text-[20px]">tune</span>
-                </button>
+                  <span className="material-symbols-outlined text-primary text-[18px]">smart_toy</span>
+                  <p className="text-primary text-xs font-bold">
+                    {selectedModelInfo?.name ?? "GPT-4"}
+                  </p>
+                </div>
 
-                {quickSettingsOpen && (
-                  <div className="absolute right-0 top-full z-20 mt-2 w-72 rounded-xl border border-white/60 bg-white/95 p-3 shadow-glass-lg backdrop-blur-md space-y-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-medium text-text-primary">Web search</p>
-                        <p className="text-xs text-text-secondary">Добавлять результаты в подсказку</p>
+                {modelMenuOpen && (
+                  <div className="absolute right-0 top-full z-20 mt-2 w-72 rounded-xl border border-white/60 bg-white/90 p-2 shadow-glass-lg backdrop-blur-md">
+                    <div className="px-1 pb-2">
+                      <div className="relative">
+                        <span className="material-symbols-outlined text-[16px] text-text-secondary absolute left-3 top-1/2 -translate-y-1/2">
+                          search
+                        </span>
+                        <input
+                          className="w-full rounded-lg border border-black/10 bg-white/80 pl-9 pr-3 py-1.5 text-xs text-text-primary placeholder:text-text-secondary focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                          placeholder="Search models"
+                          value={modelQuery}
+                          onChange={(event) => setModelQuery(event.target.value)}
+                        />
                       </div>
-                      <button
-                        className={`material-symbols-outlined text-[26px] ${useWebSearch ? "text-primary" : "text-text-secondary"}`}
-                        onClick={() => setUseWebSearch((prev) => !prev)}
-                        aria-pressed={useWebSearch}
-                        type="button"
-                      >
-                        {useWebSearch ? "toggle_on" : "toggle_off"}
-                      </button>
-                    </div>
-
-                    <div>
-                      <div className="text-xs uppercase tracking-wide text-text-secondary/70 mb-2">
-                        Источники чатов
-                      </div>
-                      <div className="grid grid-cols-3 gap-2">
-                        {(["ALL", "WEB", "TELEGRAM"] as const).map((option) => (
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {([
+                          { id: "all", label: "All" },
+                          { id: "fast", label: "Fast" },
+                          { id: "cheap", label: "Cheap" },
+                          { id: "long", label: "Long" },
+                        ] as const).map((filter) => (
                           <button
-                            key={option}
-                            className={`w-full px-3 py-2 text-xs rounded-lg border transition-colors ${sourceFilter === option
-                              ? "bg-primary/10 text-primary border-primary/30"
-                              : "bg-black/5 text-text-secondary border-black/5 hover:text-text-primary"
-                              }`}
-                            onClick={() => setSourceFilter(option)}
+                            key={filter.id}
                             type="button"
+                            className={`rounded-full px-2 py-0.5 text-[10px] ${modelFilter === filter.id ? "bg-primary/15 text-primary" : "text-text-secondary hover:text-text-primary hover:bg-black/5"}`}
+                            onClick={() => setModelFilter(filter.id)}
                           >
-                            {option === "ALL" ? "Все" : option === "WEB" ? "Web" : "Telegram"}
+                            {filter.label}
                           </button>
                         ))}
                       </div>
                     </div>
-
-                    {activeChat && (
-                      <div>
-                        <div className="text-xs uppercase tracking-wide text-text-secondary/70 mb-2">
-                          Tags
-                        </div>
-                        <div className="flex flex-wrap gap-1">
-                          {(activeChat.tags ?? []).length === 0 && (
-                            <span className="text-[11px] text-text-secondary/80">
-                              No tags yet.
+                    <div className="max-h-60 overflow-y-auto px-1 pb-1">
+                      {filteredModels.map((model) => (
+                        <button
+                          key={model.id}
+                          className={`w-full text-left px-3 py-2 rounded-lg text-sm mb-1 ${selectedModel === model.id ? "bg-primary/10 text-primary font-medium" : "hover:bg-black/5 text-text-main"}`}
+                          onClick={() => void handleSelectModel(model.id)}
+                        >
+                          <div className="flex flex-col gap-0.5">
+                            <span>{model.name}</span>
+                            <span className="text-[10px] text-text-secondary">
+                              {formatPricing(model.pricing)}
                             </span>
-                          )}
-                          {(activeChat.tags ?? []).map((tag) => (
-                            <button
-                              key={tag}
-                              className="flex items-center gap-1 rounded-full bg-black/5 px-2 py-0.5 text-[10px] text-text-secondary hover:bg-black/10"
-                              type="button"
-                              onClick={() => handleRemoveTag(tag)}
-                              title="Remove tag"
-                            >
-                              {tag}
-                              <span className="material-symbols-outlined text-[12px]">close</span>
-                            </button>
-                          ))}
-                        </div>
-                        <div className="mt-2 flex gap-2">
-                          <input
-                            className="flex-1 rounded-md border border-black/10 bg-white/80 px-2 py-1 text-xs text-text-primary placeholder:text-text-secondary focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                            placeholder="Add tag"
-                            value={tagInput}
-                            onChange={(event) => setTagInput(event.target.value)}
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter") {
-                                event.preventDefault();
-                                handleAddTag();
-                              }
-                            }}
-                          />
-                          <button
-                            className="rounded-md bg-primary/15 px-2 text-[10px] font-semibold text-primary hover:bg-primary/25"
-                            type="button"
-                            onClick={handleAddTag}
-                          >
-                            Add
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="flex items-center justify-between rounded-lg border border-black/10 bg-black/5 px-3 py-2">
-                      <div>
-                        <p className="text-sm font-medium text-text-primary">Профиль и лимиты</p>
-                        <p className="text-xs text-text-secondary">Биллинг, ключи, организация</p>
-                      </div>
-                      <Link href="/settings" className="text-primary text-sm font-semibold hover:text-primary-hover">
-                        Открыть
-                      </Link>
+                          </div>
+                        </button>
+                      ))}
                     </div>
                   </div>
                 )}
               </div>
+
+              <button
+                className="size-8 flex items-center justify-center rounded-lg hover:bg-black/10 text-text-secondary hover:text-text-primary transition-colors"
+                onClick={() => setDetailsOpen(true)}
+                aria-label="Open details"
+                type="button"
+              >
+                <span className="material-symbols-outlined text-[20px]">info</span>
+              </button>
             </div>
           </div>
         </header>
@@ -1386,7 +1464,9 @@ export default function ChatApp() {
                     <div className={`flex flex-col gap-2 max-w-[85%] md:max-w-[75%] ${!isAI && 'items-end'}`}>
                       <div className="flex items-baseline gap-2">
                         <span className="text-sm font-bold text-text-primary">{isAI ? "PlatformaAI" : "You"}</span>
-                        <span className="text-xs text-text-secondary" suppressHydrationWarning>{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        <span className="text-xs text-text-secondary" suppressHydrationWarning>
+                          {new Date(message.createdAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
                       </div>
 
                       <div className={`p-5 text-sm md:text-base leading-relaxed text-text-primary shadow-sm
@@ -1592,24 +1672,15 @@ export default function ChatApp() {
               </button>
             </div>
             <div className="flex items-center justify-between px-3 pb-1">
-              <div className="flex items-center gap-1">
-                <button className="p-1.5 rounded-md hover:bg-black/5 text-text-secondary hover:text-text-primary transition-colors">
-                  <span className="material-symbols-outlined text-[18px]">mic</span>
-                </button>
-                <button className="p-1.5 rounded-md hover:bg-black/5 text-text-secondary hover:text-text-primary transition-colors">
-                  <span className="material-symbols-outlined text-[18px]">image</span>
-                </button>
-              </div>
+              <span
+                className={`text-[10px] font-mono font-semibold ${composerState === "idle" ? "text-text-secondary/70" : "text-primary"}`}
+              >
+                {composerStatusLabel}
+              </span>
               <div className="flex items-center gap-3 text-[10px] text-text-secondary/70 font-mono">
-                <span className={`font-semibold ${composerState === "idle" ? "text-text-secondary/70" : "text-primary"}`}>
-                  {composerStatusLabel}
-                </span>
                 <span className="hidden sm:inline">Est. {estimatedCostLabel}</span>
                 <span className="hidden md:inline">
                   {estimatedPromptTokens.toLocaleString()} tok
-                </span>
-                <span className="hidden sm:inline">
-                  Press Enter to send, Shift + Enter for new line
                 </span>
               </div>
             </div>

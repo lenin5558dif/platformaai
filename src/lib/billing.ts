@@ -81,7 +81,10 @@ export async function spendCredits(params: {
     });
 
     const updated = await tx.user.update({
-      where: { id: params.userId },
+      where: {
+        id: params.userId,
+        balance: { gte: params.amount },
+      },
       data: {
         balance: { decrement: params.amount },
         dailySpent: nextDailySpent,
@@ -90,6 +93,11 @@ export async function spendCredits(params: {
         monthlyResetAt: resets.monthlyResetAt,
       },
       select: { balance: true },
+    }).catch((e) => {
+      if (e.code === "P2025") {
+        throw new Error("INSUFFICIENT_BALANCE");
+      }
+      throw e;
     });
 
     if (user.org) {
