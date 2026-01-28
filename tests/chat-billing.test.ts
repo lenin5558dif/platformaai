@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { requestSchema } from "../src/lib/chat-request-schema";
 import { mapBillingError } from "../src/lib/billing-errors";

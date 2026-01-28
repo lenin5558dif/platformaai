@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test } from "vitest";
 import assert from "node:assert/strict";
 // Note: This test requires a running database or a very sophisticated mock.
 // Since we are in a CLI environment, we'll implement a unit test that 

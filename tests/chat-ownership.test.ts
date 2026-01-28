@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 import { findOwnedChat } from "../src/lib/chat-ownership";
 
