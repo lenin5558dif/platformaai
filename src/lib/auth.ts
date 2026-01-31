@@ -145,6 +145,25 @@ const nextAuth = NextAuth({
         });
       }
 
+      if (account?.type !== "credentials") {
+        await prisma.userChannel.upsert({
+          where: {
+            userId_channel: {
+              userId: user.id,
+              channel: "WEB",
+            },
+          },
+          update: {
+            externalId: user.id,
+          },
+          create: {
+            userId: user.id,
+            channel: "WEB",
+            externalId: user.id,
+          },
+        });
+      }
+
       return true;
     },
     session: async ({ session, user }) => {
@@ -213,12 +232,19 @@ export async function auth(request?: Request): Promise<Session | null> {
 
   const dbUser = await prisma.user.findUnique({
     where: { id: session.user.id },
-    select: { isActive: true },
+    select: { isActive: true, orgId: true, role: true },
   });
 
-  if (dbUser && dbUser.isActive === false) {
+  if (!dbUser) {
     return null;
   }
+
+  if (dbUser.isActive === false) {
+    return null;
+  }
+
+  session.user.orgId = dbUser.orgId;
+  session.user.role = dbUser.role;
 
   return session;
 }
