@@ -115,3 +115,23 @@ Allowed cost centers are enforced as:
 - **Authorization**: requires `org:cost-center.manage`
 - Body: `{ defaultCostCenterId?: string|null, allowedCostCenterIds?: string[] }`
 - Setting `allowedCostCenterIds: []` clears restrictions (reverts to allow-all)
+
+### Limits And Quotas
+
+`GET /api/org/limits/summary`
+
+- **Authorization**: requires `org:limits.manage`
+- Returns current org budget utilization and active reservation totals
+- Optional query: `?userId=<id>` to include that member's daily/monthly limits + utilization
+
+`GET /api/org/cost-centers/:id/budget`
+
+- **Authorization**: requires `org:limits.manage`
+- Returns the cost center budget (all-time) and spent amount
+
+`PATCH /api/org/cost-centers/:id/budget`
+
+- **Authorization**: requires `org:limits.manage`
+- Body: `{ budget?: number|null }`
+- `budget: null` disables the budget (treats it as unlimited)
+- `409` if the budget/quota would be exceeded

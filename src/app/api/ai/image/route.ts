@@ -6,8 +6,15 @@ import { prisma } from "@/lib/db";
 import { getOpenRouterBaseUrl, getOpenRouterHeaders } from "@/lib/openrouter";
 import { getUserOpenRouterKey } from "@/lib/user-settings";
 import { calculateCreditsFromUsage } from "@/lib/pricing";
-import { preflightCredits, spendCredits } from "@/lib/billing";
+import {
+  commitAiQuotaHold,
+  preflightCredits,
+  releaseAiQuotaHold,
+  reserveAiQuotaHold,
+  spendCredits,
+} from "@/lib/billing";
 import { mapBillingError } from "@/lib/billing-errors";
+import { estimateTokensFromText, estimateUpperBoundCredits } from "@/lib/quota-estimation";
 import { getOrgModelPolicy, getOrgDlpPolicy } from "@/lib/org-settings";
 import {
   validateModelPolicy,
@@ -160,24 +167,48 @@ export async function POST(request: Request) {
     ? getUserOpenRouterKey(user?.settings ?? null)
     : undefined;
 
+  const idempotencyKey = crypto.randomUUID();
+  let quotaHold = null;
+
+  try {
+    const promptTokensEstimate = estimateTokensFromText(safePrompt);
+    const estimatedCredits = await estimateUpperBoundCredits({
+      modelId,
+      promptTokensEstimate,
+      apiKey: userKey,
+    });
+
+    const reserveAmount = Math.max(1, estimatedCredits);
+    quotaHold = await reserveAiQuotaHold({
+      userId: session.user.id,
+      amount: reserveAmount,
+      idempotencyKey,
+      costCenterId,
+    });
+
+    if (!quotaHold) {
+      await preflightCredits({
+        userId: session.user.id,
+        minAmount: reserveAmount,
+      });
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "BILLING_ERROR";
+    const mapped = mapBillingError(message);
+    if (mapped) {
+      return NextResponse.json({ error: mapped.error }, { status: mapped.status });
+    }
+    return NextResponse.json({ error: "Billing error" }, { status: 500 });
+  }
+
   let headers: Record<string, string>;
   try {
     headers = getOpenRouterHeaders(userKey);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Missing config";
+    await releaseAiQuotaHold({ hold: quotaHold });
     const status = message.includes("OPENROUTER_API_KEY") ? 401 : 500;
     return NextResponse.json({ error: message }, { status });
-  }
-
-  try {
-    await preflightCredits({ userId: session.user.id, minAmount: 1 });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "BILLING_ERROR";
-    const mapped = mapBillingError(message);
-    if (mapped) {
-      return NextResponse.json({ error: mapped.message }, { status: mapped.status });
-    }
-    return NextResponse.json({ error: "Billing error" }, { status: 500 });
   }
 
   const buffer = await readFile(attachment.storagePath);
@@ -203,6 +234,7 @@ export async function POST(request: Request) {
   });
 
   if (!response.ok) {
+    await releaseAiQuotaHold({ hold: quotaHold });
     return NextResponse.json(
       { error: "OpenRouter error", details: await response.text() },
       { status: response.status }
@@ -214,22 +246,35 @@ export async function POST(request: Request) {
   const usage = data?.usage;
 
   let creditsResult = { credits: 0 };
-  if (usage) {
-    creditsResult = await calculateCreditsFromUsage({
-      modelId,
-      promptTokens: usage.prompt_tokens ?? 0,
-      completionTokens: usage.completion_tokens ?? 0,
-      apiKey: userKey,
-    });
-
-    if (creditsResult.credits > 0) {
-      await spendCredits({
-        userId: session.user.id,
-        amount: creditsResult.credits,
-        description: "OpenRouter image description",
-        costCenterId,
+  try {
+    if (usage) {
+      creditsResult = await calculateCreditsFromUsage({
+        modelId,
+        promptTokens: usage.prompt_tokens ?? 0,
+        completionTokens: usage.completion_tokens ?? 0,
+        apiKey: userKey,
       });
+
+      if (creditsResult.credits > 0) {
+        await spendCredits({
+          userId: session.user.id,
+          amount: creditsResult.credits,
+          description: "OpenRouter image description",
+          costCenterId,
+        });
+      }
     }
+
+    await commitAiQuotaHold({ hold: quotaHold, finalAmount: creditsResult.credits });
+    quotaHold = null;
+  } catch (error) {
+    await releaseAiQuotaHold({ hold: quotaHold });
+    const message = error instanceof Error ? error.message : "Billing error";
+    const mapped = mapBillingError(message);
+    if (mapped) {
+      return NextResponse.json({ error: mapped.error }, { status: mapped.status });
+    }
+    return NextResponse.json({ error: "Billing error" }, { status: 500 });
   }
 
   if (body.chatId && description.trim()) {

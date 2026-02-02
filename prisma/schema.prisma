@@ -290,6 +290,7 @@ model QuotaBucket {
 
   @@unique([scope, subjectId, periodStart, periodEnd])
   @@index([orgId])
+  @@index([scope, subjectId, periodEnd])
 }
 
 model QuotaReservation {
@@ -307,6 +308,7 @@ model QuotaReservation {
 
   @@index([orgId])
   @@index([scope, subjectId])
+  @@index([orgId, reservedAt])
 }
 
 model Chat {

@@ -4,8 +4,19 @@ import { trimMessages } from "@/lib/context";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { calculateCreditsFromUsage } from "@/lib/pricing";
-import { preflightCredits, spendCredits } from "@/lib/billing";
+import {
+  commitAiQuotaHold,
+  preflightCredits,
+  releaseAiQuotaHold,
+  reserveAiQuotaHold,
+  spendCredits,
+  type AiQuotaHold,
+} from "@/lib/billing";
 import { mapBillingError } from "@/lib/billing-errors";
+import {
+  estimateChatPromptTokens,
+  estimateUpperBoundCredits,
+} from "@/lib/quota-estimation";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { logEvent } from "@/lib/telemetry";
 import { getUserOpenRouterKey } from "@/lib/user-settings";
@@ -277,13 +288,41 @@ export async function POST(request: Request) {
 
   const trimmedMessages = trimMessages(enrichedMessages, body.contextLength);
 
+  const userKey = allowUserKey
+    ? getUserOpenRouterKey(user?.settings ?? null)
+    : undefined;
+
+  const idempotencyKey = crypto.randomUUID();
+  let quotaHold: AiQuotaHold | null = null;
+
   try {
-    await preflightCredits({ userId: session.user.id, minAmount: 1 });
+    const promptTokensEstimate = estimateChatPromptTokens(trimmedMessages);
+    const estimatedCredits = await estimateUpperBoundCredits({
+      modelId: body.model,
+      promptTokensEstimate,
+      maxTokens: body.max_tokens,
+      apiKey: userKey,
+    });
+
+    const reserveAmount = Math.max(1, estimatedCredits);
+    quotaHold = await reserveAiQuotaHold({
+      userId: session.user.id,
+      amount: reserveAmount,
+      idempotencyKey,
+      costCenterId,
+    });
+
+    if (!quotaHold) {
+      await preflightCredits({
+        userId: session.user.id,
+        minAmount: reserveAmount,
+      });
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : "BILLING_ERROR";
     const mapped = mapBillingError(message);
     if (mapped) {
-      return NextResponse.json({ error: mapped.message }, { status: mapped.status });
+      return NextResponse.json({ error: mapped.error }, { status: mapped.status });
     }
     return NextResponse.json({ error: "Billing error" }, { status: 500 });
   }
@@ -301,14 +340,12 @@ export async function POST(request: Request) {
   });
   const baseUrl = getOpenRouterBaseUrl();
   let requestHeaders: Record<string, string>;
-  const userKey = allowUserKey
-    ? getUserOpenRouterKey(user?.settings ?? null)
-    : undefined;
 
   try {
     requestHeaders = getOpenRouterHeaders(userKey);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Missing config";
+    await releaseAiQuotaHold({ hold: quotaHold });
     await logEvent({
       type: "AI_ERROR",
       userId: session.user.id,
@@ -356,8 +393,12 @@ export async function POST(request: Request) {
           costCenterId,
         });
       }
+
+      await commitAiQuotaHold({ hold: quotaHold, finalAmount: creditsResult.credits });
+      quotaHold = null;
     } catch (error) {
       const message = error instanceof Error ? error.message : "Billing error";
+      await releaseAiQuotaHold({ hold: quotaHold });
       await logEvent({
         type: "BILLING_ERROR",
         userId: session.user.id,
@@ -424,33 +465,47 @@ export async function POST(request: Request) {
   let response: Response | null = null;
   let usedModel = body.model;
 
-  for (const modelId of modelsToTry) {
-    usedModel = modelId;
-    response = await fetch(`${baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: requestHeaders,
-      body: JSON.stringify({
-        model: modelId,
-        messages: trimmedMessages,
-        temperature: body.temperature,
-        max_tokens: body.max_tokens,
-        stream: body.stream ?? true,
-        stream_options: { include_usage: true },
-      }),
+  try {
+    for (const modelId of modelsToTry) {
+      usedModel = modelId;
+      response = await fetch(`${baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: requestHeaders,
+        body: JSON.stringify({
+          model: modelId,
+          messages: trimmedMessages,
+          temperature: body.temperature,
+          max_tokens: body.max_tokens,
+          stream: body.stream ?? true,
+          stream_options: { include_usage: true },
+        }),
+      });
+
+      if (response.ok) {
+        break;
+      }
+
+      if (![429, 503].includes(response.status)) {
+        break;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    }
+  } catch (error) {
+    await releaseAiQuotaHold({ hold: quotaHold });
+    const message = error instanceof Error ? error.message : "OpenRouter error";
+    await logEvent({
+      type: "AI_ERROR",
+      userId: session.user.id,
+      chatId: body.chatId,
+      modelId: usedModel,
+      message,
     });
-
-    if (response.ok) {
-      break;
-    }
-
-    if (![429, 503].includes(response.status)) {
-      break;
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, 400));
+    return NextResponse.json({ error: "OpenRouter error" }, { status: 502 });
   }
 
   if (!response || !response.ok) {
+    await releaseAiQuotaHold({ hold: quotaHold });
     const text = response ? await response.text() : "No response";
     const status = response?.status ?? 502;
     let message = "OpenRouter error";
@@ -511,8 +566,8 @@ export async function POST(request: Request) {
     let creditsResult = { credits: 0 };
     const tokenCount = usage?.total_tokens ?? 0;
 
-    if (usage) {
-      try {
+    try {
+      if (usage) {
         creditsResult = await calculateCreditsFromUsage({
           modelId: usedModel,
           promptTokens: usage.prompt_tokens ?? 0,
@@ -528,17 +583,21 @@ export async function POST(request: Request) {
             costCenterId,
           });
         }
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Billing error";
-        await logEvent({
-          type: "BILLING_ERROR",
-          userId: session.user.id,
-          chatId,
-          modelId: usedModel,
-          message,
-        });
-        return buildBillingErrorResponse(message);
       }
+
+      await commitAiQuotaHold({ hold: quotaHold, finalAmount: creditsResult.credits });
+      quotaHold = null;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Billing error";
+      await releaseAiQuotaHold({ hold: quotaHold });
+      await logEvent({
+        type: "BILLING_ERROR",
+        userId: session.user.id,
+        chatId,
+        modelId: usedModel,
+        message,
+      });
+      return buildBillingErrorResponse(message);
     }
 
     await prisma.message.create({
@@ -592,6 +651,7 @@ export async function POST(request: Request) {
   const reader = response.body?.getReader();
 
   if (!reader) {
+    await releaseAiQuotaHold({ hold: quotaHold });
     return NextResponse.json({ error: "OpenRouter error" }, { status: 502 });
   }
 
@@ -599,8 +659,8 @@ export async function POST(request: Request) {
     let creditsResult = { credits: 0 };
     const tokenCount = usage?.total_tokens ?? 0;
 
-    if (usage) {
-      try {
+    try {
+      if (usage) {
         creditsResult = await calculateCreditsFromUsage({
           modelId: usedModel,
           promptTokens: usage.prompt_tokens ?? 0,
@@ -616,16 +676,20 @@ export async function POST(request: Request) {
             costCenterId,
           });
         }
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Billing error";
-        await logEvent({
-          type: "BILLING_ERROR",
-          userId,
-          chatId,
-          modelId: usedModel,
-          message,
-        });
       }
+
+      await commitAiQuotaHold({ hold: quotaHold, finalAmount: creditsResult.credits });
+      quotaHold = null;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Billing error";
+      await releaseAiQuotaHold({ hold: quotaHold });
+      await logEvent({
+        type: "BILLING_ERROR",
+        userId,
+        chatId,
+        modelId: usedModel,
+        message,
+      });
     }
 
     await prisma.message.create({
