@@ -89,7 +89,7 @@ export async function POST(request: Request) {
           userId: session.user.id,
         },
       },
-      select: { defaultCostCenterId: true },
+      select: { id: true, defaultCostCenterId: true },
     });
 
     if (!membership) {
@@ -99,6 +99,7 @@ export async function POST(request: Request) {
     try {
       costCenterId = await resolveOrgCostCenterId({
         orgId: user.orgId,
+        membershipId: membership.id,
         requestedCostCenterId: body.costCenterId ?? null,
         defaultCostCenterId: membership.defaultCostCenterId,
         fallbackCostCenterId: user.costCenterId,

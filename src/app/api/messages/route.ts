@@ -35,16 +35,41 @@ export async function POST(request: Request) {
           userId: session.user.id,
         },
       },
-      select: { defaultCostCenterId: true },
+      select: { id: true, defaultCostCenterId: true },
     });
 
     const candidate = membership?.defaultCostCenterId ?? userProfile.costCenterId ?? null;
-    if (candidate) {
-      const exists = await prisma.costCenter.findFirst({
-        where: { id: candidate, orgId: userProfile.orgId },
-        select: { id: true },
+    if (candidate && membership) {
+      // Check allowed set
+      const allowedCount = await prisma.orgMembershipAllowedCostCenter.count({
+        where: { membershipId: membership.id },
       });
-      costCenterId = exists ? candidate : undefined;
+      if (allowedCount > 0) {
+        const allowed = await prisma.orgMembershipAllowedCostCenter.findUnique({
+          where: {
+            membershipId_costCenterId: {
+              membershipId: membership.id,
+              costCenterId: candidate,
+            },
+          },
+          select: { id: true },
+        });
+        if (!allowed) {
+          costCenterId = undefined;
+        } else {
+          const exists = await prisma.costCenter.findFirst({
+            where: { id: candidate, orgId: userProfile.orgId },
+            select: { id: true },
+          });
+          costCenterId = exists ? candidate : undefined;
+        }
+      } else {
+        const exists = await prisma.costCenter.findFirst({
+          where: { id: candidate, orgId: userProfile.orgId },
+          select: { id: true },
+        });
+        costCenterId = exists ? candidate : undefined;
+      }
     } else {
       costCenterId = undefined;
     }

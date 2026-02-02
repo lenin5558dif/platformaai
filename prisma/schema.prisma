@@ -151,6 +151,7 @@ model OrgMembership {
   user            User @relation(fields: [userId], references: [id], onDelete: Cascade)
   role            OrgRole @relation(fields: [roleId], references: [id], onDelete: Restrict)
   defaultCostCenter CostCenter? @relation(fields: [defaultCostCenterId], references: [id])
+  allowedCostCenters OrgMembershipAllowedCostCenter[]
 
   @@unique([orgId, userId])
   @@index([orgId])
@@ -483,9 +484,24 @@ model CostCenter {
   transactions Transaction[]
   defaultMemberships OrgMembership[]
   defaultInvites     OrgInvite[]
+  allowedMemberships OrgMembershipAllowedCostCenter[]
 
   @@index([orgId])
   @@unique([orgId, name])
+}
+
+model OrgMembershipAllowedCostCenter {
+  id        String   @id @default(cuid())
+  membershipId String
+  costCenterId String
+  createdAt DateTime @default(now())
+
+  membership OrgMembership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  costCenter CostCenter @relation(fields: [costCenterId], references: [id], onDelete: Cascade)
+
+  @@unique([membershipId, costCenterId])
+  @@index([membershipId])
+  @@index([costCenterId])
 }
 
 model ScimToken {

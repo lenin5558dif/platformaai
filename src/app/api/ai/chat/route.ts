@@ -124,6 +124,7 @@ export async function POST(request: Request) {
         },
       },
       select: {
+        id: true,
         defaultCostCenterId: true,
       },
     });
@@ -135,6 +136,7 @@ export async function POST(request: Request) {
     try {
       costCenterId = await resolveOrgCostCenterId({
         orgId: user.orgId,
+        membershipId: membership.id,
         requestedCostCenterId: body.costCenterId ?? null,
         defaultCostCenterId: membership.defaultCostCenterId,
         fallbackCostCenterId: user.costCenterId,

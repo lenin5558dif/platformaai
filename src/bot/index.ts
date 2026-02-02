@@ -327,7 +327,7 @@ async function resolveUserCostCenterId(user: User): Promise<string | undefined> 
         userId: user.id,
       },
     },
-    select: { defaultCostCenterId: true },
+    select: { id: true, defaultCostCenterId: true },
   });
 
   if (!membership) {
@@ -337,6 +337,7 @@ async function resolveUserCostCenterId(user: User): Promise<string | undefined> 
   try {
     return await resolveOrgCostCenterId({
       orgId: user.orgId,
+      membershipId: membership.id,
       defaultCostCenterId: membership.defaultCostCenterId,
       fallbackCostCenterId: user.costCenterId,
     });
