@@ -13,12 +13,14 @@ import { buildPersonalizationSystemPrompt } from "@/lib/personalization";
 import { searchWeb } from "@/lib/search";
 import { checkModeration } from "@/lib/moderation";
 import { getOrgDlpPolicy, getOrgModelPolicy } from "@/lib/org-settings";
-import { evaluateDlp } from "@/lib/dlp";
-import { isModelAllowed } from "@/lib/model-policy";
-import { logAudit } from "@/lib/audit";
+import {
+  validateModelPolicy,
+  filterFallbackModels,
+  applyDlpToMessages,
+} from "@/lib/ai-authorization";
 import { findOwnedChat } from "@/lib/chat-ownership";
 import { resolveOrgCostCenterId } from "@/lib/cost-centers";
-import { HttpError } from "@/lib/authorize";
+import { HttpError } from "@/lib/http-error";
 import {
   buildCacheKey,
   getCachedResponse,
@@ -144,23 +146,26 @@ export async function POST(request: Request) {
       throw error;
     }
   }
-  if (!isModelAllowed(body.model, modelPolicy)) {
-    await logAudit({
-      action: "POLICY_BLOCKED",
+  const modelValidation = await validateModelPolicy({
+    modelId: body.model,
+    policy: modelPolicy,
+    audit: {
       orgId: user.orgId,
       actorId: session.user.id,
-      targetType: "model",
       targetId: body.model,
-      metadata: { reason: "blocked_by_policy" },
-    });
+    },
+  });
+
+  if (!modelValidation.ok) {
     return NextResponse.json(
-      { error: "Модель запрещена политикой организации." },
-      { status: 403 }
+      { error: modelValidation.error },
+      { status: modelValidation.status }
     );
   }
 
-  const allowedFallbacks = (body.fallbackModels ?? []).filter((modelId) =>
-    isModelAllowed(modelId, modelPolicy)
+  const allowedFallbacks = filterFallbackModels(
+    body.fallbackModels ?? [],
+    modelPolicy
   );
 
   const personalization = buildPersonalizationSystemPrompt(
@@ -225,47 +230,24 @@ export async function POST(request: Request) {
     }
   }
 
-  let dlpRedacted = false;
-  let dlpBlockedMatches: string[] | null = null;
-  const safeMessages = body.messages.map((message) => {
-    if (message.role !== "user") return message;
-    const outcome = evaluateDlp(message.content, dlpPolicy);
-    if (outcome.action === "block") {
-      dlpBlockedMatches = outcome.matches;
-      return message;
-    }
-    if (outcome.action === "redact" && outcome.redactedText) {
-      dlpRedacted = true;
-      return { ...message, content: outcome.redactedText };
-    }
-    return message;
-  });
-
-  if (dlpBlockedMatches) {
-    await logAudit({
-      action: "POLICY_BLOCKED",
+  const dlpResult = await applyDlpToMessages({
+    messages: body.messages,
+    policy: dlpPolicy,
+    audit: {
       orgId: user.orgId,
       actorId: session.user.id,
-      targetType: "dlp",
       targetId: body.chatId ?? null,
-      metadata: { matches: dlpBlockedMatches },
-    });
+    },
+  });
+
+  if (!dlpResult.ok) {
     return NextResponse.json(
-      { error: "Запрос отклонен политикой DLP." },
-      { status: 400 }
+      { error: dlpResult.error },
+      { status: dlpResult.status }
     );
   }
 
-  if (dlpRedacted) {
-    await logAudit({
-      action: "POLICY_BLOCKED",
-      orgId: user.orgId,
-      actorId: session.user.id,
-      targetType: "dlp",
-      targetId: body.chatId ?? null,
-      metadata: { action: "redact" },
-    });
-  }
+  const safeMessages = dlpResult.messages ?? body.messages;
 
   const enrichedMessages = [
     ...systemMessages,

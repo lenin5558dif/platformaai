@@ -3,19 +3,9 @@ import type { Session } from "next-auth";
 import { prisma } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import type { OrgPermissionKey } from "@/lib/org-permissions";
+import { HttpError } from "@/lib/http-error";
 
 export type AuthzChannel = "web" | "telegram" | "scim" | "api";
-
-export class HttpError extends Error {
-  status: number;
-  code: string;
-
-  constructor(status: number, code: string, message: string) {
-    super(message);
-    this.status = status;
-    this.code = code;
-  }
-}
 
 export function toErrorResponse(error: unknown) {
   if (error instanceof HttpError) {

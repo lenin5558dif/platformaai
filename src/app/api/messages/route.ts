@@ -3,8 +3,7 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getOrgDlpPolicy } from "@/lib/org-settings";
-import { evaluateDlp } from "@/lib/dlp";
-import { logAudit } from "@/lib/audit";
+import { applyDlpToText } from "@/lib/ai-authorization";
 
 const createSchema = z.object({
   chatId: z.string().min(1),
@@ -60,32 +59,24 @@ export async function POST(request: Request) {
   let content = payload.content;
 
   if (payload.role === "USER") {
-    const outcome = evaluateDlp(content, dlpPolicy);
-    if (outcome.action === "block") {
-      await logAudit({
-        action: "POLICY_BLOCKED",
+    const dlpResult = await applyDlpToText({
+      text: payload.content,
+      policy: dlpPolicy,
+      audit: {
         orgId: userProfile?.orgId ?? null,
         actorId: session.user.id,
-        targetType: "dlp",
         targetId: payload.chatId,
-        metadata: { matches: outcome.matches },
-      });
+      },
+    });
+
+    if (!dlpResult.ok) {
       return NextResponse.json(
-        { error: "Сообщение отклонено политикой DLP." },
-        { status: 400 }
+        { error: dlpResult.error },
+        { status: dlpResult.status }
       );
     }
-    if (outcome.action === "redact" && outcome.redactedText) {
-      content = outcome.redactedText;
-      await logAudit({
-        action: "POLICY_BLOCKED",
-        orgId: userProfile?.orgId ?? null,
-        actorId: session.user.id,
-        targetType: "dlp",
-        targetId: payload.chatId,
-        metadata: { action: "redact" },
-      });
-    }
+
+    content = dlpResult.content ?? payload.content;
   }
   const chat = await prisma.chat.findFirst({
     where: {

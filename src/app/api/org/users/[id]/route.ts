@@ -3,7 +3,8 @@ import { z } from "zod";
 import { UserRole } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
-import { HttpError, createAuthorizer, requireSession, toErrorResponse } from "@/lib/authorize";
+import { createAuthorizer, requireSession, toErrorResponse } from "@/lib/authorize";
+import { HttpError } from "@/lib/http-error";
 import { ORG_PERMISSIONS, SYSTEM_ROLE_NAMES } from "@/lib/org-permissions";
 
 const patchSchema = z

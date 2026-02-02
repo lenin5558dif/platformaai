@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { HttpError } from "@/lib/authorize";
+import { HttpError } from "@/lib/http-error";
 
 export async function assertCostCenterAccess(params: {
   orgId: string;

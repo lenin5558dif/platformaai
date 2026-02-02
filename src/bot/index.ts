@@ -11,10 +11,11 @@ import { preflightCredits, spendCredits } from "@/lib/billing";
 import { mapBillingError } from "@/lib/billing-errors";
 import { transcribeAudio } from "@/lib/whisper";
 import { logEvent } from "@/lib/telemetry";
-import { getOrgDlpPolicy, getOrgModelPolicy } from "@/lib/org-settings";
-import { evaluateDlp } from "@/lib/dlp";
-import { isModelAllowed } from "@/lib/model-policy";
-import { logAudit } from "@/lib/audit";
+import {
+  checkModelAllowed,
+  authorizeAiRequest,
+  type AuthorizationContext,
+} from "@/lib/ai-authorization";
 import { resolveOrgCostCenterId } from "@/lib/cost-centers";
 
 const prisma = new PrismaClient();
@@ -358,48 +359,24 @@ async function handleUserPrompt(ctx: Context, user: User, content: string) {
         select: { settings: true },
       })
     : null;
-  const modelPolicy = getOrgModelPolicy(org?.settings ?? null);
-  if (!isModelAllowed(modelId, modelPolicy)) {
-    await logAudit({
-      action: "POLICY_BLOCKED",
-      orgId: user.orgId,
-      actorId: user.id,
-      targetType: "model",
-      targetId: modelId,
-      metadata: { source: "telegram" },
-    });
-    await ctx.reply("Выбранная модель запрещена политикой организации.");
-    return;
-  }
 
-  const dlpPolicy = getOrgDlpPolicy(org?.settings ?? null);
-  const dlpOutcome = evaluateDlp(clean, dlpPolicy);
-  if (dlpOutcome.action === "block") {
-    await logAudit({
-      action: "POLICY_BLOCKED",
-      orgId: user.orgId,
-      actorId: user.id,
-      targetType: "dlp",
-      targetId: null,
-      metadata: { source: "telegram", matches: dlpOutcome.matches },
-    });
-    await ctx.reply("Запрос отклонен политикой DLP.");
+  const authCtx: AuthorizationContext = {
+    userId: user.id,
+    orgId: user.orgId,
+    settings: org?.settings ?? null,
+    source: "telegram",
+  };
+
+  const authResult = await authorizeAiRequest(modelId, clean, authCtx);
+  if (!authResult.allowed) {
+    if (authResult.reason === "model_blocked") {
+      await ctx.reply("Выбранная модель запрещена политикой организации.");
+    } else {
+      await ctx.reply("Запрос отклонен политикой DLP.");
+    }
     return;
   }
-  if (dlpOutcome.action === "redact") {
-    await logAudit({
-      action: "POLICY_BLOCKED",
-      orgId: user.orgId,
-      actorId: user.id,
-      targetType: "dlp",
-      targetId: null,
-      metadata: { source: "telegram", action: "redact" },
-    });
-  }
-  const finalContent =
-    dlpOutcome.action === "redact" && dlpOutcome.redactedText
-      ? dlpOutcome.redactedText
-      : clean;
+  const finalContent = authResult.finalContent;
   const chat = await getOrCreateChat(user.id, modelId);
 
   await prisma.message.create({
@@ -700,16 +677,15 @@ bot.action(/model:(.+)/, async (ctx) => {
   }
 
   const modelId = ctx.match[1];
-  const modelPolicy = getOrgModelPolicy(user.org?.settings ?? null);
-  if (!isModelAllowed(modelId, modelPolicy)) {
-    await logAudit({
-      action: "POLICY_BLOCKED",
-      orgId: user.orgId,
-      actorId: user.id,
-      targetType: "model",
-      targetId: modelId,
-      metadata: { source: "telegram" },
-    });
+  const authCtx: AuthorizationContext = {
+    userId: user.id,
+    orgId: user.orgId,
+    settings: user.org?.settings ?? null,
+    source: "telegram",
+  };
+
+  const modelResult = await checkModelAllowed(modelId, authCtx);
+  if (!modelResult.allowed) {
     await ctx.answerCbQuery("Эта модель запрещена политикой организации.", {
       show_alert: true,
     });

@@ -8,12 +8,14 @@ import { getUserOpenRouterKey } from "@/lib/user-settings";
 import { calculateCreditsFromUsage } from "@/lib/pricing";
 import { preflightCredits, spendCredits } from "@/lib/billing";
 import { mapBillingError } from "@/lib/billing-errors";
-import { getOrgModelPolicy } from "@/lib/org-settings";
-import { isModelAllowed } from "@/lib/model-policy";
-import { logAudit } from "@/lib/audit";
+import { getOrgModelPolicy, getOrgDlpPolicy } from "@/lib/org-settings";
+import {
+  validateModelPolicy,
+  applyDlpToText,
+} from "@/lib/ai-authorization";
 import { findOwnedChat } from "@/lib/chat-ownership";
 import { resolveOrgCostCenterId } from "@/lib/cost-centers";
-import { HttpError } from "@/lib/authorize";
+import { HttpError } from "@/lib/http-error";
 
 const requestSchema = z.object({
   attachmentId: z.string().min(1),
@@ -111,20 +113,47 @@ export async function POST(request: Request) {
 
   const modelId = "openai/gpt-4o-mini";
   const modelPolicy = getOrgModelPolicy(user?.org?.settings ?? null);
-  if (!isModelAllowed(modelId, modelPolicy)) {
-    await logAudit({
-      action: "POLICY_BLOCKED",
+  const dlpPolicy = getOrgDlpPolicy(user?.org?.settings ?? null);
+
+  const modelValidation = await validateModelPolicy({
+    modelId,
+    policy: modelPolicy,
+    audit: {
       orgId: user?.orgId ?? null,
       actorId: session.user.id,
-      targetType: "model",
       targetId: modelId,
-      metadata: { reason: "blocked_by_policy" },
-    });
+    },
+  });
+
+  if (!modelValidation.ok) {
     return NextResponse.json(
-      { error: "Модель запрещена политикой организации." },
-      { status: 403 }
+      { error: modelValidation.error },
+      { status: modelValidation.status }
     );
   }
+
+  const prompt =
+    body.prompt ?? "Опиши изображение кратко и по делу на русском языке.";
+
+  // Apply DLP to prompt before external AI call
+  const dlpResult = await applyDlpToText({
+    text: prompt,
+    policy: dlpPolicy,
+    audit: {
+      orgId: user?.orgId ?? null,
+      actorId: session.user.id,
+      targetId: body.chatId ?? null,
+    },
+  });
+
+  if (!dlpResult.ok) {
+    return NextResponse.json(
+      { error: dlpResult.error },
+      { status: dlpResult.status }
+    );
+  }
+
+  const safePrompt = dlpResult.content ?? prompt;
 
   const userKey = allowUserKey
     ? getUserOpenRouterKey(user?.settings ?? null)
@@ -153,8 +182,6 @@ export async function POST(request: Request) {
   const buffer = await readFile(attachment.storagePath);
   const base64 = buffer.toString("base64");
   const imageUrl = `data:${attachment.mimeType};base64,${base64}`;
-  const prompt =
-    body.prompt ?? "Опиши изображение кратко и по делу на русском языке.";
 
   const response = await fetch(`${getOpenRouterBaseUrl()}/chat/completions`, {
     method: "POST",
@@ -165,7 +192,7 @@ export async function POST(request: Request) {
         {
           role: "user",
           content: [
-            { type: "text", text: prompt },
+            { type: "text", text: safePrompt },
             { type: "image_url", image_url: { url: imageUrl } },
           ],
         },
