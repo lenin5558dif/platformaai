@@ -6,16 +6,20 @@ import { prisma } from "@/lib/db";
 import { getOpenRouterBaseUrl, getOpenRouterHeaders } from "@/lib/openrouter";
 import { getUserOpenRouterKey } from "@/lib/user-settings";
 import { calculateCreditsFromUsage } from "@/lib/pricing";
-import { spendCredits } from "@/lib/billing";
+import { preflightCredits, spendCredits } from "@/lib/billing";
+import { mapBillingError } from "@/lib/billing-errors";
 import { getOrgModelPolicy } from "@/lib/org-settings";
 import { isModelAllowed } from "@/lib/model-policy";
 import { logAudit } from "@/lib/audit";
 import { findOwnedChat } from "@/lib/chat-ownership";
+import { resolveOrgCostCenterId } from "@/lib/cost-centers";
+import { HttpError } from "@/lib/authorize";
 
 const requestSchema = z.object({
   attachmentId: z.string().min(1),
   chatId: z.string().optional(),
   prompt: z.string().optional(),
+  costCenterId: z.string().min(1).optional(),
 });
 
 export async function POST(request: Request) {
@@ -68,6 +72,43 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Insufficient balance" }, { status: 402 });
   }
 
+  let costCenterId: string | undefined = undefined;
+  if (body.costCenterId && !user.orgId) {
+    return NextResponse.json(
+      { error: "costCenterId requires organization" },
+      { status: 400 }
+    );
+  }
+  if (user.orgId) {
+    const membership = await prisma.orgMembership.findUnique({
+      where: {
+        orgId_userId: {
+          orgId: user.orgId,
+          userId: session.user.id,
+        },
+      },
+      select: { defaultCostCenterId: true },
+    });
+
+    if (!membership) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    try {
+      costCenterId = await resolveOrgCostCenterId({
+        orgId: user.orgId,
+        requestedCostCenterId: body.costCenterId ?? null,
+        defaultCostCenterId: membership.defaultCostCenterId,
+        fallbackCostCenterId: user.costCenterId,
+      });
+    } catch (error) {
+      if (error instanceof HttpError) {
+        return NextResponse.json({ error: error.message }, { status: error.status });
+      }
+      throw error;
+    }
+  }
+
   const modelId = "openai/gpt-4o-mini";
   const modelPolicy = getOrgModelPolicy(user?.org?.settings ?? null);
   if (!isModelAllowed(modelId, modelPolicy)) {
@@ -96,6 +137,17 @@ export async function POST(request: Request) {
     const message = error instanceof Error ? error.message : "Missing config";
     const status = message.includes("OPENROUTER_API_KEY") ? 401 : 500;
     return NextResponse.json({ error: message }, { status });
+  }
+
+  try {
+    await preflightCredits({ userId: session.user.id, minAmount: 1 });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "BILLING_ERROR";
+    const mapped = mapBillingError(message);
+    if (mapped) {
+      return NextResponse.json({ error: mapped.message }, { status: mapped.status });
+    }
+    return NextResponse.json({ error: "Billing error" }, { status: 500 });
   }
 
   const buffer = await readFile(attachment.storagePath);
@@ -147,6 +199,7 @@ export async function POST(request: Request) {
         userId: session.user.id,
         amount: creditsResult.credits,
         description: "OpenRouter image description",
+        costCenterId,
       });
     }
   }
@@ -156,7 +209,7 @@ export async function POST(request: Request) {
       data: {
         chatId: body.chatId,
         userId: session.user.id,
-        costCenterId: user?.costCenterId ?? undefined,
+        costCenterId,
         role: "ASSISTANT",
         content: `Описание изображения: ${description}`,
         tokenCount: usage?.total_tokens ?? 0,

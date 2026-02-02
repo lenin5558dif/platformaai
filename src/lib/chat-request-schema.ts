@@ -12,6 +12,7 @@ export const requestSchema = z.object({
   max_tokens: z.number().int().positive().optional(),
   stream: z.boolean().optional().default(true),
   chatId: z.string().min(1),
+  costCenterId: z.string().min(1).optional(),
   contextLength: z.number().int().positive().optional(),
   fallbackModels: z.array(z.string().min(1)).optional(),
   useWebSearch: z.boolean().optional(),

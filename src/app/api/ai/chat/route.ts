@@ -4,7 +4,7 @@ import { trimMessages } from "@/lib/context";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { calculateCreditsFromUsage } from "@/lib/pricing";
-import { spendCredits } from "@/lib/billing";
+import { preflightCredits, spendCredits } from "@/lib/billing";
 import { mapBillingError } from "@/lib/billing-errors";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { logEvent } from "@/lib/telemetry";
@@ -17,6 +17,8 @@ import { evaluateDlp } from "@/lib/dlp";
 import { isModelAllowed } from "@/lib/model-policy";
 import { logAudit } from "@/lib/audit";
 import { findOwnedChat } from "@/lib/chat-ownership";
+import { resolveOrgCostCenterId } from "@/lib/cost-centers";
+import { HttpError } from "@/lib/authorize";
 import {
   buildCacheKey,
   getCachedResponse,
@@ -102,6 +104,45 @@ export async function POST(request: Request) {
   });
   if (!ownedChat) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  let costCenterId: string | undefined = undefined;
+  if (body.costCenterId && !user.orgId) {
+    return NextResponse.json(
+      { error: "costCenterId requires organization" },
+      { status: 400 }
+    );
+  }
+  if (user.orgId) {
+    const membership = await prisma.orgMembership.findUnique({
+      where: {
+        orgId_userId: {
+          orgId: user.orgId,
+          userId: session.user.id,
+        },
+      },
+      select: {
+        defaultCostCenterId: true,
+      },
+    });
+
+    if (!membership) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    try {
+      costCenterId = await resolveOrgCostCenterId({
+        orgId: user.orgId,
+        requestedCostCenterId: body.costCenterId ?? null,
+        defaultCostCenterId: membership.defaultCostCenterId,
+        fallbackCostCenterId: user.costCenterId,
+      });
+    } catch (error) {
+      if (error instanceof HttpError) {
+        return NextResponse.json({ error: error.message }, { status: error.status });
+      }
+      throw error;
+    }
   }
   if (!isModelAllowed(body.model, modelPolicy)) {
     await logAudit({
@@ -252,6 +293,17 @@ export async function POST(request: Request) {
 
   const trimmedMessages = trimMessages(enrichedMessages, body.contextLength);
 
+  try {
+    await preflightCredits({ userId: session.user.id, minAmount: 1 });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "BILLING_ERROR";
+    const mapped = mapBillingError(message);
+    if (mapped) {
+      return NextResponse.json({ error: mapped.message }, { status: mapped.status });
+    }
+    return NextResponse.json({ error: "Billing error" }, { status: 500 });
+  }
+
   await logEvent({
     type: "AI_REQUEST",
     userId: session.user.id,
@@ -317,6 +369,7 @@ export async function POST(request: Request) {
           userId: session.user.id,
           amount: creditsResult.credits,
           description: `OpenRouter ${cached.modelId} (cache)`,
+          costCenterId,
         });
       }
     } catch (error) {
@@ -335,7 +388,7 @@ export async function POST(request: Request) {
       data: {
         chatId,
         userId: session.user.id,
-        costCenterId: user?.costCenterId ?? undefined,
+        costCenterId,
         role: "ASSISTANT",
         content: cached.content,
         tokenCount: cached.usage?.total_tokens ?? 0,
@@ -488,6 +541,7 @@ export async function POST(request: Request) {
             userId: session.user.id,
             amount: creditsResult.credits,
             description: `OpenRouter ${usedModel}`,
+            costCenterId,
           });
         }
       } catch (error) {
@@ -507,7 +561,7 @@ export async function POST(request: Request) {
       data: {
         chatId,
         userId: session.user.id,
-        costCenterId: user?.costCenterId ?? undefined,
+        costCenterId,
         role: "ASSISTANT",
         content: assistantContent,
         tokenCount,
@@ -575,6 +629,7 @@ export async function POST(request: Request) {
             userId,
             amount: creditsResult.credits,
             description: `OpenRouter ${usedModel}`,
+            costCenterId,
           });
         }
       } catch (error) {
@@ -593,7 +648,7 @@ export async function POST(request: Request) {
       data: {
         chatId,
         userId,
-        costCenterId: user?.costCenterId ?? undefined,
+        costCenterId,
         role: "ASSISTANT",
         content: assistantText,
         tokenCount,

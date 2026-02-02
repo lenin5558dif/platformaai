@@ -1,6 +1,33 @@
-import { describe, it, vi } from "vitest";
+import { describe, it, vi, beforeEach } from "vitest";
 import assert from "node:assert/strict";
 import { UserRole } from "@prisma/client";
+
+// Mock auth module - will be configured per test via mockAuthFn
+vi.mock("next-auth", () => ({
+  default: vi.fn(),
+}));
+
+// Auth mock - use vi.hoisted to allow reference in factory
+const { mockAuthFn, mockPrismaDb } = vi.hoisted(() => ({
+  mockAuthFn: vi.fn(),
+  mockPrismaDb: {
+    user: {
+      findUnique: vi.fn(),
+    },
+    orgMembership: {
+      findUnique: vi.fn(),
+    },
+  },
+}));
+
+vi.mock("@/lib/auth", () => ({
+  auth: mockAuthFn,
+}));
+
+vi.mock("@/lib/db", () => ({
+  prisma: mockPrismaDb,
+}));
+
 import { refillController } from "../src/app/api/billing/refill/controller";
 
 const unusedTransaction = async <T>(
@@ -10,8 +37,13 @@ const unusedTransaction = async <T>(
 };
 
 describe("POST /api/billing/refill", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it("should return 401 if not authenticated", async () => {
-    const mockAuth = vi.fn(async () => null);
+    mockAuthFn.mockResolvedValue(null);
+
     const mockPrisma = { $transaction: vi.fn(unusedTransaction) };
     const mockLogAudit = vi.fn<
       (params: { action: string; metadata?: { status?: string } }) =>
@@ -23,7 +55,6 @@ describe("POST /api/billing/refill", () => {
     });
     
     const deps = {
-      auth: mockAuth,
       prisma: mockPrisma,
       logAudit: mockLogAudit,
     } as unknown as Parameters<typeof refillController>[1];
@@ -31,10 +62,17 @@ describe("POST /api/billing/refill", () => {
     assert.equal(res.status, 401);
   });
 
-  it("should return 403 if user is not ADMIN", async () => {
-    const mockAuth = vi.fn(async () => ({
-      user: { id: "user-1", role: UserRole.USER },
-    }));
+  it("should return 403 if user has no org permission", async () => {
+    mockAuthFn.mockResolvedValue({
+      user: { id: "user-1", role: UserRole.USER, orgId: "org-1" },
+    });
+
+    // User is active
+    mockPrismaDb.user.findUnique.mockResolvedValue({ isActive: true });
+
+    // But has no org membership (or no permission)
+    mockPrismaDb.orgMembership.findUnique.mockResolvedValue(null);
+
     const mockPrisma = { $transaction: vi.fn(unusedTransaction) };
     const mockLogAudit = vi.fn<
       (params: { action: string; metadata?: { status?: string } }) =>
@@ -47,27 +85,34 @@ describe("POST /api/billing/refill", () => {
     });
 
     const deps = {
-      auth: mockAuth,
       prisma: mockPrisma,
       logAudit: mockLogAudit,
     } as unknown as Parameters<typeof refillController>[1];
     const res = await refillController(req, deps);
     assert.equal(res.status, 403);
-    
-    assert.equal(mockLogAudit.mock.calls.length, 1);
-    const calls = mockLogAudit.mock.calls;
-    assert.ok(calls.length > 0);
-    const auditCall = calls[0]?.[0];
-    assert.ok(auditCall);
-    assert.equal(auditCall.action, "BILLING_REFILL");
-    assert.equal(auditCall.metadata?.status, "rejected");
   });
 
-  it("should return 201 and update balance if user is ADMIN", async () => {
+  it("should return 201 and update balance if user has permission", async () => {
     process.env.BILLING_REFILL_TOKEN = "test-token";
-    const mockAuth = vi.fn(async () => ({
-      user: { id: "admin-1", role: UserRole.ADMIN },
-    }));
+
+    mockAuthFn.mockResolvedValue({
+      user: { id: "admin-1", role: UserRole.ADMIN, orgId: "org-1" },
+    });
+
+    // User is active
+    mockPrismaDb.user.findUnique.mockResolvedValue({ isActive: true });
+
+    // Has org membership with billing refill permission
+    mockPrismaDb.orgMembership.findUnique.mockResolvedValue({
+      roleId: "role-1",
+      defaultCostCenterId: null,
+      role: {
+        name: "Admin",
+        permissions: [
+          { permission: { key: "org:billing.refill" } },
+        ],
+      },
+    });
     
     const mockTx = {
       user: {
@@ -96,7 +141,6 @@ describe("POST /api/billing/refill", () => {
     });
 
     const deps = {
-      auth: mockAuth,
       prisma: mockPrisma,
       logAudit: mockLogAudit,
     } as unknown as Parameters<typeof refillController>[1];

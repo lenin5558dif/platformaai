@@ -7,13 +7,15 @@ import {
   calculateCreditsFromStt,
   calculateCreditsFromUsage,
 } from "@/lib/pricing";
-import { spendCredits } from "@/lib/billing";
+import { preflightCredits, spendCredits } from "@/lib/billing";
+import { mapBillingError } from "@/lib/billing-errors";
 import { transcribeAudio } from "@/lib/whisper";
 import { logEvent } from "@/lib/telemetry";
 import { getOrgDlpPolicy, getOrgModelPolicy } from "@/lib/org-settings";
 import { evaluateDlp } from "@/lib/dlp";
 import { isModelAllowed } from "@/lib/model-policy";
 import { logAudit } from "@/lib/audit";
+import { resolveOrgCostCenterId } from "@/lib/cost-centers";
 
 const prisma = new PrismaClient();
 const botToken = process.env.TELEGRAM_BOT_TOKEN;
@@ -312,11 +314,44 @@ async function getAuthorizedUser(ctx: Context): Promise<User | null> {
   return user;
 }
 
+async function resolveUserCostCenterId(user: User): Promise<string | undefined> {
+  if (!user.orgId) {
+    return undefined;
+  }
+
+  const membership = await prisma.orgMembership.findUnique({
+    where: {
+      orgId_userId: {
+        orgId: user.orgId,
+        userId: user.id,
+      },
+    },
+    select: { defaultCostCenterId: true },
+  });
+
+  if (!membership) {
+    return undefined;
+  }
+
+  try {
+    return await resolveOrgCostCenterId({
+      orgId: user.orgId,
+      defaultCostCenterId: membership.defaultCostCenterId,
+      fallbackCostCenterId: user.costCenterId,
+    });
+  } catch {
+    return undefined;
+  }
+}
+
 async function handleUserPrompt(ctx: Context, user: User, content: string) {
   const clean = content.trim();
   if (!clean) return;
 
   const modelId = await resolveModel(user.id);
+
+  const costCenterId = await resolveUserCostCenterId(user);
+
   const org = user.orgId
     ? await prisma.organization.findUnique({
         where: { id: user.orgId },
@@ -371,7 +406,7 @@ async function handleUserPrompt(ctx: Context, user: User, content: string) {
     data: {
       chatId: chat.id,
       userId: user.id,
-      costCenterId: user.costCenterId ?? undefined,
+      costCenterId,
       role: "USER",
       content: finalContent,
       tokenCount: 0,
@@ -382,6 +417,15 @@ async function handleUserPrompt(ctx: Context, user: User, content: string) {
 
   const history = await fetchChatMessages(chat.id);
   const trimmed = trimMessages(history);
+
+  try {
+    await preflightCredits({ userId: user.id, minAmount: 1 });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "BILLING_ERROR";
+    const mapped = mapBillingError(message);
+    await ctx.reply(mapped?.message ?? "Недостаточно средств или исчерпан лимит.");
+    return;
+  }
 
   const stopTyping = startTyping(ctx);
   const placeholder = await ctx.reply("⏳ Готовлю ответ...");
@@ -530,6 +574,7 @@ async function handleUserPrompt(ctx: Context, user: User, content: string) {
             userId: user.id,
             amount: creditsResult.credits,
             description: `OpenRouter ${modelId}`,
+            costCenterId,
           });
         }
       } catch (error) {
@@ -548,7 +593,7 @@ async function handleUserPrompt(ctx: Context, user: User, content: string) {
       data: {
         chatId: chat.id,
         userId: user.id,
-        costCenterId: user.costCenterId ?? undefined,
+        costCenterId,
         role: "ASSISTANT",
         content: assistantText,
         tokenCount,
@@ -723,10 +768,12 @@ bot.on("voice", async (ctx) => {
 
     if (sttCost.credits > 0) {
       try {
+        const costCenterId = await resolveUserCostCenterId(user);
         await spendCredits({
           userId: user.id,
           amount: sttCost.credits,
           description: `Whisper STT (${voice.duration ?? 0}s)`,
+          costCenterId,
         });
       } catch (error) {
         await logEvent({

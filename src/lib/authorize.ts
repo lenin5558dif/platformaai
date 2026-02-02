@@ -40,6 +40,7 @@ type ResolvedMembership = {
   orgId: string;
   roleId: string;
   roleName: string;
+  defaultCostCenterId: string | null;
   permissionKeys: Set<string>;
 };
 
@@ -114,6 +115,7 @@ export function createAuthorizer(session: Session) {
       orgId: resolvedOrgId,
       roleId: membership.roleId,
       roleName: membership.role.name,
+      defaultCostCenterId: membership.defaultCostCenterId ?? null,
       permissionKeys,
     };
 

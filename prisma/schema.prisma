@@ -169,6 +169,7 @@ model OrgRole {
   org          Organization? @relation(fields: [orgId], references: [id], onDelete: Cascade)
   permissions  OrgRolePermission[]
   memberships  OrgMembership[]
+  invites      OrgInvite[]
 
   @@unique([orgId, name])
   @@index([orgId])
@@ -480,6 +481,8 @@ model CostCenter {
   users     User[]
   messages  Message[]
   transactions Transaction[]
+  defaultMemberships OrgMembership[]
+  defaultInvites     OrgInvite[]
 
   @@index([orgId])
   @@unique([orgId, name])

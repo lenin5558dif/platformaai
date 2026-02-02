@@ -26,6 +26,30 @@ export async function POST(request: Request) {
     where: { id: session.user.id },
     select: { costCenterId: true, orgId: true },
   });
+
+  let costCenterId: string | undefined = userProfile?.costCenterId ?? undefined;
+  if (userProfile?.orgId) {
+    const membership = await prisma.orgMembership.findUnique({
+      where: {
+        orgId_userId: {
+          orgId: userProfile.orgId,
+          userId: session.user.id,
+        },
+      },
+      select: { defaultCostCenterId: true },
+    });
+
+    const candidate = membership?.defaultCostCenterId ?? userProfile.costCenterId ?? null;
+    if (candidate) {
+      const exists = await prisma.costCenter.findFirst({
+        where: { id: candidate, orgId: userProfile.orgId },
+        select: { id: true },
+      });
+      costCenterId = exists ? candidate : undefined;
+    } else {
+      costCenterId = undefined;
+    }
+  }
   const org = userProfile?.orgId
     ? await prisma.organization.findUnique({
         where: { id: userProfile.orgId },
@@ -78,7 +102,7 @@ export async function POST(request: Request) {
     data: {
       chatId: payload.chatId,
       userId: session.user.id,
-      costCenterId: userProfile?.costCenterId ?? undefined,
+      costCenterId,
       role: payload.role,
       content,
       tokenCount: payload.tokenCount,
