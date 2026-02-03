@@ -47,6 +47,8 @@ enum AuditAction {
   ORG_UPDATED
   USER_INVITED
   USER_UPDATED
+  TELEGRAM_LINKED
+  TELEGRAM_UNLINKED
   USER_DISABLED
   COST_CENTER_CREATED
   COST_CENTER_UPDATED
@@ -110,6 +112,7 @@ model User {
   prompts    Prompt[]
   auditLogs  AuditLog[] @relation("AuditActor")
   sessionInvalidatedAt DateTime?
+  globalRevokeCounter Int @default(0)
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
 }
@@ -433,6 +436,7 @@ model VerificationToken {
 model TelegramLinkToken {
   id        String   @id @default(cuid())
   token     String   @unique
+  telegramLinkTokenHash String?
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   expiresAt DateTime
@@ -440,6 +444,7 @@ model TelegramLinkToken {
   createdAt DateTime @default(now())
 
   @@index([userId])
+  @@index([telegramLinkTokenHash])
 }
 
 model Prompt {

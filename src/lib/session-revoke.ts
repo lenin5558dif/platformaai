@@ -6,7 +6,10 @@ export async function revokeAllSessionsForUser(userId: string) {
   const deletedSessions = await prisma.$transaction(async (tx) => {
     await tx.user.update({
       where: { id: userId },
-      data: { sessionInvalidatedAt: revokedAt },
+      data: {
+        sessionInvalidatedAt: revokedAt,
+        globalRevokeCounter: { increment: 1 },
+      },
       select: { id: true },
     });
 

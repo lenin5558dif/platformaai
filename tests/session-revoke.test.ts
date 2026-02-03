@@ -29,7 +29,10 @@ describe("revokeAllSessionsForUser", () => {
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
     expect(tx.user.update).toHaveBeenCalledWith({
       where: { id: "user_1" },
-      data: { sessionInvalidatedAt: new Date("2026-02-03T12:00:00.000Z") },
+      data: {
+        sessionInvalidatedAt: new Date("2026-02-03T12:00:00.000Z"),
+        globalRevokeCounter: { increment: 1 },
+      },
       select: { id: true },
     });
     expect(tx.session.deleteMany).toHaveBeenCalledWith({ where: { userId: "user_1" } });
