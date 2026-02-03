@@ -34,4 +34,26 @@ describe("revokeAllSessionsForUser", () => {
     });
     expect(tx.session.deleteMany).toHaveBeenCalledWith({ where: { userId: "user_1" } });
   });
+
+  test("is safe to repeat (idempotent)", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-02-03T12:00:00.000Z"));
+
+    prisma.$transaction.mockClear();
+    tx.user.update.mockClear();
+    tx.session.deleteMany.mockClear();
+
+    const { revokeAllSessionsForUser } = await import("../src/lib/session-revoke");
+
+    const first = await revokeAllSessionsForUser("user_1");
+    expect(first.deletedSessions).toBe(2);
+
+    vi.setSystemTime(new Date("2026-02-03T12:00:01.000Z"));
+    const second = await revokeAllSessionsForUser("user_1");
+    expect(second.deletedSessions).toBe(2);
+
+    expect(prisma.$transaction).toHaveBeenCalledTimes(2);
+    expect(tx.user.update).toHaveBeenCalledTimes(2);
+    expect(tx.session.deleteMany).toHaveBeenCalledTimes(2);
+  });
 });
