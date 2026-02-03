@@ -1,22 +1,33 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { HttpError } from "@/lib/http-error";
+import { AuditAction } from "@prisma/client";
+import { logAudit } from "@/lib/audit";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 const state = vi.hoisted(() => ({
   authenticated: true,
   orgId: "org_1",
   userId: "user_1",
   email: "invitee@example.com",
+  emailVerified: true as boolean | undefined | null,
   perms: new Set<string>(),
+  rateLimitOk: true,
+  rateLimitRemaining: 9,
+  rateLimitResetAt: Date.now() + 3600000,
 }));
 
 function makeSession() {
-  return {
+  const session: any = {
     user: {
       id: state.userId,
       orgId: state.orgId,
       email: state.email,
     },
-  } as any;
+  };
+  if (state.emailVerified !== undefined) {
+    session.user.emailVerified = state.emailVerified;
+  }
+  return session;
 }
 
 function jsonResponse(res: Response) {
@@ -161,6 +172,21 @@ vi.mock("@/lib/unisender", () => ({
 vi.mock("@/lib/audit", () => ({
   logAudit: vi.fn(async () => undefined),
 }));
+vi.mock("@/lib/rate-limit", () => ({
+  checkRateLimit: vi.fn(() => ({
+    ok: state.rateLimitOk,
+    remaining: state.rateLimitRemaining,
+    resetAt: state.rateLimitResetAt,
+  })),
+  getRateLimitHeaders: vi.fn(() => ({
+    "x-ratelimit-limit": "10",
+    "x-ratelimit-remaining": String(state.rateLimitRemaining),
+    "x-ratelimit-reset": String(Math.ceil(state.rateLimitResetAt / 1000)),
+  })),
+  getRetryAfterHeader: vi.fn(() => ({
+    "retry-after": String(Math.ceil((state.rateLimitResetAt - Date.now()) / 1000)),
+  })),
+}));
 vi.mock("@/lib/authorize", () => {
   function toErrorResponse(error: any) {
     const status = typeof error?.status === "number" ? error.status : 500;
@@ -202,7 +228,11 @@ describe("org invites routes", () => {
     state.orgId = "org_1";
     state.userId = "user_1";
     state.email = "invitee@example.com";
+    state.emailVerified = true;
     state.perms = new Set(["org:invite.create", "org:invite.revoke"]);
+    state.rateLimitOk = true;
+    state.rateLimitRemaining = 9;
+    state.rateLimitResetAt = Date.now() + 3600000;
     db.roles.set("role_1", { id: "role_1", orgId: "org_1", name: "Member" });
     vi.resetModules();
     vi.clearAllMocks();
@@ -349,5 +379,322 @@ describe("org invites routes", () => {
 
     const membershipKey = `${state.orgId}:${state.userId}`;
     expect(db.memberships.get(membershipKey)).toBeTruthy();
+  });
+
+  test("resend rotates token (tokenHash/tokenPrefix change)", async () => {
+    const { POST: create } = await import("../src/app/api/org/invites/route");
+    const created = await create(
+      new Request("http://localhost/api/org/invites", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: "resend@test.com", roleId: "role_1" }),
+      })
+    );
+    const createdBody = await jsonResponse(created);
+    const inviteId = createdBody.data.id;
+    const oldTokenPrefix = createdBody.data.tokenPrefix;
+
+    // Get the stored invite to check original tokenHash
+    const originalInvite = db.invites.get(inviteId);
+    const oldTokenHash = originalInvite?.tokenHash;
+
+    // Resend the invite
+    const { POST: resend } = await import(
+      "../src/app/api/org/invites/[id]/resend/route"
+    );
+    const resendRes = await resend(
+      new Request("http://localhost/api/org/invites/x/resend", { method: "POST" }),
+      { params: { id: inviteId } }
+    );
+    expect(resendRes.status).toBe(200);
+
+    // Verify tokenHash and tokenPrefix changed
+    const updatedInvite = db.invites.get(inviteId);
+    expect(updatedInvite?.tokenHash).not.toBe(oldTokenHash);
+    expect(updatedInvite?.tokenPrefix).not.toBe(oldTokenPrefix);
+  });
+
+  test("old token invalid after resend (accept with old token -> 400 INVALID_TOKEN)", async () => {
+    const { POST: create } = await import("../src/app/api/org/invites/route");
+    const created = await create(
+      new Request("http://localhost/api/org/invites", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: "oldtoken@test.com", roleId: "role_1" }),
+      })
+    );
+    const createdBody = await jsonResponse(created);
+    const inviteId = createdBody.data.id;
+    const oldToken = createdBody.data.token;
+
+    // Resend the invite
+    const { POST: resend } = await import(
+      "../src/app/api/org/invites/[id]/resend/route"
+    );
+    await resend(
+      new Request("http://localhost/api/org/invites/x/resend", { method: "POST" }),
+      { params: { id: inviteId } }
+    );
+
+    // Try to accept with old token
+    state.email = "oldtoken@test.com";
+    const { POST: accept } = await import("../src/app/api/org/invites/accept/route");
+    const acceptRes = await accept(
+      new Request("http://localhost/api/org/invites/accept", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ token: oldToken }),
+      })
+    );
+    expect(acceptRes.status).toBe(400);
+    const body = await jsonResponse(acceptRes);
+    expect(body.code).toBe("INVALID_TOKEN");
+  });
+
+  test("verified email enforcement (emailVerified=false -> 403 EMAIL_NOT_VERIFIED)", async () => {
+    const { POST: create } = await import("../src/app/api/org/invites/route");
+    const created = await create(
+      new Request("http://localhost/api/org/invites", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: "unverified@test.com", roleId: "role_1" }),
+      })
+    );
+    const createdBody = await jsonResponse(created);
+    const token = createdBody.data.token;
+
+    // Set email as unverified
+    state.email = "unverified@test.com";
+    state.emailVerified = false;
+
+    const { POST: accept } = await import("../src/app/api/org/invites/accept/route");
+    const acceptRes = await accept(
+      new Request("http://localhost/api/org/invites/accept", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ token }),
+      })
+    );
+    expect(acceptRes.status).toBe(403);
+    const body = await jsonResponse(acceptRes);
+    expect(body.code).toBe("EMAIL_NOT_VERIFIED");
+  });
+
+  test("bypass when emailVerified signal missing (undefined/null -> accept OK)", async () => {
+    const { POST: create } = await import("../src/app/api/org/invites/route");
+    const created = await create(
+      new Request("http://localhost/api/org/invites", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: "noverify@test.com", roleId: "role_1" }),
+      })
+    );
+    const createdBody = await jsonResponse(created);
+    const token = createdBody.data.token;
+    const inviteId = createdBody.data.id;
+
+    // Set emailVerified as undefined (signal missing)
+    state.email = "noverify@test.com";
+    state.emailVerified = undefined;
+
+    const { POST: accept } = await import("../src/app/api/org/invites/accept/route");
+    const acceptRes = await accept(
+      new Request("http://localhost/api/org/invites/accept", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ token }),
+      })
+    );
+    expect(acceptRes.status).toBe(200);
+    expect(db.invites.get(inviteId)?.usedAt).not.toBeNull();
+  });
+
+  test("create rate limit returns 429 with rate limit headers", async () => {
+    state.rateLimitOk = false;
+    state.rateLimitRemaining = 0;
+    state.rateLimitResetAt = Date.now() + 1800000; // 30 min
+
+    const { POST: create } = await import("../src/app/api/org/invites/route");
+    const res = await create(
+      new Request("http://localhost/api/org/invites", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: "ratelimit@test.com", roleId: "role_1" }),
+      })
+    );
+    expect(res.status).toBe(429);
+    const body = await jsonResponse(res);
+    expect(body.code).toBe("RATE_LIMITED");
+    expect(res.headers.get("x-ratelimit-limit")).toBe("10");
+    expect(res.headers.get("retry-after")).toBeTruthy();
+    expect(checkRateLimit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        key: `invite:create:${state.userId}:${state.orgId}`,
+        limit: 10,
+        windowMs: 3600000,
+      })
+    );
+  });
+
+  test("resend rate limit returns 429 with rate limit headers", async () => {
+    // First create an invite
+    const { POST: create } = await import("../src/app/api/org/invites/route");
+    const created = await create(
+      new Request("http://localhost/api/org/invites", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: "resendrate@test.com", roleId: "role_1" }),
+      })
+    );
+    const createdBody = await jsonResponse(created);
+    const inviteId = createdBody.data.id;
+
+    // Reset rate limit mock to simulate rate limit hit on resend
+    state.rateLimitOk = false;
+    state.rateLimitRemaining = 0;
+    state.rateLimitResetAt = Date.now() + 1800000;
+
+    vi.resetModules();
+    const { POST: resend } = await import(
+      "../src/app/api/org/invites/[id]/resend/route"
+    );
+    const res = await resend(
+      new Request("http://localhost/api/org/invites/x/resend", { method: "POST" }),
+      { params: { id: inviteId } }
+    );
+    expect(res.status).toBe(429);
+    const body = await jsonResponse(res);
+    expect(body.code).toBe("RATE_LIMITED");
+    expect(res.headers.get("x-ratelimit-limit")).toBe("10");
+    expect(res.headers.get("retry-after")).toBeTruthy();
+  });
+
+  test("accept rate limit returns 429 and audit called with ORG_INVITE_ACCEPT_RATE_LIMITED", async () => {
+    const { POST: create } = await import("../src/app/api/org/invites/route");
+    const created = await create(
+      new Request("http://localhost/api/org/invites", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: "acceptrate@test.com", roleId: "role_1" }),
+      })
+    );
+    const createdBody = await jsonResponse(created);
+    const token = createdBody.data.token;
+
+    // Set rate limit to fail
+    state.rateLimitOk = false;
+    state.rateLimitRemaining = 0;
+    state.rateLimitResetAt = Date.now() + 900000; // 15 min
+
+    state.email = "acceptrate@test.com";
+    vi.resetModules();
+    const { POST: accept } = await import("../src/app/api/org/invites/accept/route");
+    const res = await accept(
+      new Request("http://localhost/api/org/invites/accept", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ token }),
+      })
+    );
+    expect(res.status).toBe(429);
+    const body = await jsonResponse(res);
+    expect(body.code).toBe("RATE_LIMITED");
+
+    // Verify audit was called with ORG_INVITE_ACCEPT_RATE_LIMITED
+    expect(logAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: AuditAction.ORG_INVITE_ACCEPT_RATE_LIMITED,
+        actorId: state.userId,
+        metadata: expect.objectContaining({
+          invite: expect.objectContaining({
+            rateLimited: true,
+          }),
+        }),
+      })
+    );
+  });
+
+  test("audit event emission for resend", async () => {
+    const { POST: create } = await import("../src/app/api/org/invites/route");
+    const created = await create(
+      new Request("http://localhost/api/org/invites", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: "auditresend@test.com", roleId: "role_1" }),
+      })
+    );
+    const createdBody = await jsonResponse(created);
+    const inviteId = createdBody.data.id;
+
+    vi.resetModules();
+    const { POST: resend } = await import(
+      "../src/app/api/org/invites/[id]/resend/route"
+    );
+    await resend(
+      new Request("http://localhost/api/org/invites/x/resend", { method: "POST" }),
+      { params: { id: inviteId } }
+    );
+
+    // Find the ORG_INVITE_RESENT call (second call, first is USER_INVITED from create)
+    const resentCalls = (logAudit as any).mock.calls.filter(
+      (call: any[]) => call[0]?.action === AuditAction.ORG_INVITE_RESENT
+    );
+    expect(resentCalls).toHaveLength(1);
+    expect(resentCalls[0][0]).toMatchObject({
+      action: AuditAction.ORG_INVITE_RESENT,
+      orgId: state.orgId,
+      actorId: state.userId,
+      targetType: "OrgInvite",
+      targetId: inviteId,
+      metadata: {
+        invite: {
+          resent: true,
+        },
+      },
+    });
+  });
+
+  test("audit event emission for unverified rejection", async () => {
+    const { POST: create } = await import("../src/app/api/org/invites/route");
+    const created = await create(
+      new Request("http://localhost/api/org/invites", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: "auditunverified@test.com", roleId: "role_1" }),
+      })
+    );
+    const createdBody = await jsonResponse(created);
+    const token = createdBody.data.token;
+    const inviteId = createdBody.data.id;
+
+    state.email = "auditunverified@test.com";
+    state.emailVerified = false;
+
+    vi.resetModules();
+    const { POST: accept } = await import("../src/app/api/org/invites/accept/route");
+    await accept(
+      new Request("http://localhost/api/org/invites/accept", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ token }),
+      })
+    );
+
+    expect(logAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: AuditAction.ORG_INVITE_ACCEPT_REJECTED_UNVERIFIED,
+        orgId: state.orgId,
+        actorId: state.userId,
+        targetType: "OrgInvite",
+        targetId: inviteId,
+        metadata: expect.objectContaining({
+          invite: expect.objectContaining({
+            email: "auditunverified@test.com",
+            rejected: true,
+            reason: "email_not_verified",
+          }),
+        }),
+      })
+    );
   });
 });

@@ -46,6 +46,9 @@ enum EventType {
 enum AuditAction {
   ORG_UPDATED
   USER_INVITED
+  ORG_INVITE_RESENT
+  ORG_INVITE_ACCEPT_REJECTED_UNVERIFIED
+  ORG_INVITE_ACCEPT_RATE_LIMITED
   USER_UPDATED
   TELEGRAM_LINKED
   TELEGRAM_UNLINKED
@@ -79,6 +82,7 @@ enum QuotaScope {
 model User {
   id          String      @id @default(cuid())
   email       String?     @unique
+  emailVerifiedByProvider Boolean?
   telegramId  String?     @unique
   isActive    Boolean     @default(true)
   balance     Decimal     @default(0.0) @db.Decimal(12, 2)

@@ -51,3 +51,18 @@ export function buildTelegramLinkConfirmationPrompt(params: {
 export function isTelegramAccessRevoked(params: { globalRevokeCounter: number }) {
   return params.globalRevokeCounter > 0;
 }
+
+export function getTelegramAccessBlockMessage(params: {
+  isActive: boolean;
+  globalRevokeCounter: number;
+}) {
+  if (params.isActive === false) {
+    return "Ваш аккаунт деактивирован. Обратитесь к администратору.";
+  }
+
+  if (isTelegramAccessRevoked({ globalRevokeCounter: params.globalRevokeCounter })) {
+    return "Доступ через Telegram был отозван. Перейдите в веб и привяжите Telegram заново (кнопка 'Подключить Telegram').";
+  }
+
+  return null;
+}

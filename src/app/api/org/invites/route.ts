@@ -11,6 +11,11 @@ import {
   generateInviteToken,
 } from "@/lib/org-invites";
 import { sendOrgInviteEmail } from "@/lib/unisender";
+import {
+  checkRateLimit,
+  getRateLimitHeaders,
+  getRetryAfterHeader,
+} from "@/lib/rate-limit";
 
 const createInviteSchema = z.object({
   email: z.string().trim().toLowerCase().email(),
@@ -62,6 +67,33 @@ export async function POST(request: Request) {
     const membership = await authorizer.requireOrgPermission(
       ORG_PERMISSIONS.ORG_INVITE_CREATE
     );
+
+    // Rate limit: 10 invites per hour per user/org
+    const rateLimitKey = `invite:create:${session.user.id}:${membership.orgId}`;
+    const rateLimit = checkRateLimit({
+      key: rateLimitKey,
+      limit: 10,
+      windowMs: 3600000,
+    });
+    if (!rateLimit.ok) {
+      return NextResponse.json(
+        {
+          error: "Too many invites. Please try again later.",
+          code: "RATE_LIMITED",
+        },
+        {
+          status: 429,
+          headers: {
+            ...getRateLimitHeaders({
+              limit: 10,
+              remaining: rateLimit.remaining,
+              resetAt: rateLimit.resetAt,
+            }),
+            ...getRetryAfterHeader(rateLimit.resetAt),
+          },
+        }
+      );
+    }
 
     const payload = createInviteSchema.parse(await request.json());
     const email = payload.email;

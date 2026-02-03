@@ -12,7 +12,6 @@ import { mapBillingError } from "@/lib/billing-errors";
 import { transcribeAudio } from "@/lib/whisper";
 import { logEvent } from "@/lib/telemetry";
 import { logAudit } from "@/lib/audit";
-import { buildTelegramLinkAuditMetadata } from "@/lib/telegram-audit";
 import {
   checkModelAllowed,
   authorizeAiRequest,
@@ -20,12 +19,13 @@ import {
 } from "@/lib/ai-authorization";
 import { resolveOrgCostCenterId } from "@/lib/cost-centers";
 import {
-  buildTelegramLinkConfirmationPrompt,
-  getTelegramLinkTokenPrefix,
-  isTelegramAccessRevoked,
-  isTelegramLinkTokenMatch,
-  maskEmail,
+  getTelegramAccessBlockMessage,
 } from "@/lib/telegram-linking";
+import {
+  beginTelegramLink,
+  cancelTelegramLink,
+  confirmTelegramLink,
+} from "@/bot/telegram-linking-flow";
 
 const prisma = new PrismaClient();
 const botToken = process.env.TELEGRAM_BOT_TOKEN;
@@ -316,15 +316,12 @@ async function getAuthorizedUser(ctx: Context): Promise<User | null> {
     return null;
   }
 
-  if (user.isActive === false) {
-    await ctx.reply("Ваш аккаунт деактивирован. Обратитесь к администратору.");
-    return null;
-  }
-
-  if (isTelegramAccessRevoked({ globalRevokeCounter: user.globalRevokeCounter })) {
-    await ctx.reply(
-      "Доступ через Telegram был отозван. Перейдите в веб и привяжите Telegram заново (кнопка 'Подключить Telegram')."
-    );
+  const block = getTelegramAccessBlockMessage({
+    isActive: user.isActive,
+    globalRevokeCounter: user.globalRevokeCounter,
+  });
+  if (block) {
+    await ctx.reply(block);
     return null;
   }
 
@@ -626,45 +623,19 @@ bot.start(async (ctx) => {
   const [, token] = text.split(" ");
 
   if (token) {
-    const tokenPrefix = getTelegramLinkTokenPrefix(token);
-
-    const record = await prisma.telegramLinkToken.findFirst({
-      where: {
-        OR: [{ token }, { token: tokenPrefix }],
-      },
-      include: { user: true },
-    });
-
-    if (!record || record.usedAt || record.expiresAt < new Date()) {
-      await ctx.reply("Токен недействителен или истек. Сгенерируйте новый.");
+    const res = await beginTelegramLink({ prisma, token });
+    if (!res.ok) {
+      await ctx.reply(res.message);
       return;
     }
-
-    const matches = isTelegramLinkTokenMatch({
-      incomingToken: token,
-      recordToken: record.token,
-      recordHash: record.telegramLinkTokenHash,
-    });
-
-    if (!matches) {
-      await ctx.reply("Токен недействителен или истек. Сгенерируйте новый.");
-      return;
-    }
-
-    const masked = maskEmail(record.user?.email);
-    const prompt = buildTelegramLinkConfirmationPrompt({
-      maskedEmail: masked,
-      tokenId: record.id,
-    });
 
     await ctx.reply(
-      prompt.text,
+      res.prompt.text,
       Markup.inlineKeyboard([
-        Markup.button.callback("Подтвердить", prompt.confirmData),
-        Markup.button.callback("Отменить", prompt.cancelData),
+        Markup.button.callback("Подтвердить", res.prompt.confirmData),
+        Markup.button.callback("Отменить", res.prompt.cancelData),
       ])
     );
-
     return;
   }
 
@@ -710,61 +681,23 @@ bot.action(/^tg_link_confirm:(.+)$/, async (ctx) => {
 
   await ctx.answerCbQuery();
 
-  const record = await prisma.telegramLinkToken.findUnique({
-    where: { id: tokenId },
-    include: { user: true },
-  });
-
-  if (!record || record.usedAt || record.expiresAt < new Date()) {
-    await ctx.reply("Токен недействителен или истек. Сгенерируйте новый.");
-    return;
-  }
-
   const telegramId = ctx.from?.id?.toString();
   if (!telegramId) {
     await ctx.reply("Не удалось получить Telegram ID.");
     return;
   }
 
-  const existing = await prisma.user.findUnique({
-    where: { telegramId },
-    select: { id: true },
+  const res = await confirmTelegramLink({
+    prisma,
+    tokenId,
+    telegramId,
+    logAudit,
   });
 
-  if (existing && existing.id !== record.userId) {
-    await prisma.telegramLinkToken.update({
-      where: { id: record.id },
-      data: { usedAt: new Date() },
-    });
-    await ctx.reply("Этот Telegram уже привязан к другому аккаунту.");
+  if (!res.ok) {
+    await ctx.reply(res.message);
     return;
   }
-
-  await prisma.user.update({
-    where: { id: record.userId },
-    data: {
-      telegramId,
-      globalRevokeCounter: 0,
-    },
-  });
-
-  await prisma.telegramLinkToken.update({
-    where: { id: record.id },
-    data: { usedAt: new Date() },
-  });
-
-  await logAudit({
-    action: AuditAction.TELEGRAM_LINKED,
-    orgId: record.user?.orgId ?? undefined,
-    actorId: record.userId,
-    targetType: "User",
-    targetId: record.userId,
-    metadata: buildTelegramLinkAuditMetadata({
-      telegramId,
-      source: "bot",
-      maskedEmail: maskEmail(record.user?.email),
-    }),
-  });
 
   await ctx.reply(
     "Аккаунт привязан. Выберите модель:",
@@ -781,10 +714,7 @@ bot.action(/^tg_link_cancel:(.+)$/, async (ctx) => {
 
   await ctx.answerCbQuery();
 
-  await prisma.telegramLinkToken.update({
-    where: { id: tokenId },
-    data: { usedAt: new Date() },
-  });
+  await cancelTelegramLink({ prisma, tokenId });
 
   await ctx.reply("Привязка отменена.");
 });

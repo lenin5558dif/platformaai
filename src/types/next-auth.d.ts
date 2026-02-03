@@ -8,6 +8,7 @@ declare module "next-auth" {
       role: "USER" | "ADMIN" | "EMPLOYEE";
       orgId: string | null;
       balance: string;
+      emailVerified?: boolean | null;
     } & DefaultSession["user"];
   }
 

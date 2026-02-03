@@ -108,8 +108,9 @@ const nextAuth = NextAuth({
     ...(ssoProvider ? [ssoProvider] : []),
   ],
   callbacks: {
-    signIn: async ({ user, account }) => {
+    signIn: async ({ user, account, profile }) => {
       if (!user?.email) return true;
+      if (!user?.id) return true;
 
       const dbUser = await prisma.user.findUnique({
         where: { id: user.id },
@@ -162,6 +163,18 @@ const nextAuth = NextAuth({
             externalId: user.id,
           },
         });
+
+        const emailVerifiedByProvider =
+          account?.provider === "email"
+            ? true
+            : typeof (profile as any)?.email_verified === "boolean"
+              ? Boolean((profile as any).email_verified)
+              : null;
+
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { emailVerifiedByProvider },
+        });
       }
 
       return true;
@@ -172,6 +185,7 @@ const nextAuth = NextAuth({
         session.user.role = user.role;
         session.user.orgId = user.orgId;
         session.user.balance = String(user.balance);
+        session.user.emailVerified = (user as any).emailVerifiedByProvider ?? null;
       }
       return session;
     },
@@ -213,6 +227,7 @@ async function getBypassSession() {
       role: user.role,
       orgId: user.orgId,
       balance: user.balance.toString(),
+      emailVerified: null,
     },
   };
 }
@@ -232,7 +247,7 @@ export async function auth(request?: Request): Promise<Session | null> {
 
   const dbUser = await prisma.user.findUnique({
     where: { id: session.user.id },
-    select: { isActive: true, orgId: true, role: true },
+    select: { isActive: true, orgId: true, role: true, emailVerifiedByProvider: true },
   });
 
   if (!dbUser) {
@@ -245,6 +260,7 @@ export async function auth(request?: Request): Promise<Session | null> {
 
   session.user.orgId = dbUser.orgId;
   session.user.role = dbUser.role;
+  (session.user as any).emailVerified = dbUser.emailVerifiedByProvider ?? null;
 
   return session;
 }

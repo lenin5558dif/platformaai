@@ -11,6 +11,11 @@ import {
   normalizeInviteEmail,
   tokenHashesEqual,
 } from "@/lib/org-invites";
+import {
+  checkRateLimit,
+  getRateLimitHeaders,
+  getRetryAfterHeader,
+} from "@/lib/rate-limit";
 
 const acceptSchema = z.object({
   token: z.string().min(1),
@@ -30,6 +35,50 @@ export async function POST(request: Request) {
     const token = payload.token;
     const tokenPrefix = inviteTokenPrefix(token);
     const tokenHash = hashInviteToken(token);
+
+    // Rate limit: 5 attempts per 15 minutes per token (anti-bruteforce)
+    const acceptRateLimitKey = `invite:accept:${tokenHash}`;
+    const acceptRateLimit = checkRateLimit({
+      key: acceptRateLimitKey,
+      limit: 5,
+      windowMs: 15 * 60 * 1000,
+    });
+    if (!acceptRateLimit.ok) {
+      await logAudit({
+        action: AuditAction.ORG_INVITE_ACCEPT_RATE_LIMITED,
+        orgId: session.user.orgId ?? undefined,
+        actorId: session.user.id,
+        targetType: null,
+        targetId: null,
+        ip: request.headers.get("x-forwarded-for") ?? undefined,
+        userAgent: request.headers.get("user-agent") ?? undefined,
+        metadata: {
+          invite: {
+            tokenPrefix,
+            tokenHash,
+            rateLimited: true,
+          },
+        },
+      });
+
+      return NextResponse.json(
+        {
+          error: "Too many attempts. Please try again later.",
+          code: "RATE_LIMITED",
+        },
+        {
+          status: 429,
+          headers: {
+            ...getRateLimitHeaders({
+              limit: 5,
+              remaining: acceptRateLimit.remaining,
+              resetAt: acceptRateLimit.resetAt,
+            }),
+            ...getRetryAfterHeader(acceptRateLimit.resetAt),
+          },
+        }
+      );
+    }
 
     const candidates = await prisma.orgInvite.findMany({
       where: { tokenPrefix },
@@ -69,6 +118,31 @@ export async function POST(request: Request) {
         "INVITE_EMAIL_MISMATCH",
         "Invite email does not match"
       );
+    }
+
+    const emailVerified = (session.user as any).emailVerified as
+      | boolean
+      | null
+      | undefined;
+    if (emailVerified === false) {
+      await logAudit({
+        action: AuditAction.ORG_INVITE_ACCEPT_REJECTED_UNVERIFIED,
+        orgId: invite.orgId,
+        actorId: session.user.id,
+        targetType: "OrgInvite",
+        targetId: invite.id,
+        ip: request.headers.get("x-forwarded-for") ?? undefined,
+        userAgent: request.headers.get("user-agent") ?? undefined,
+        metadata: {
+          invite: {
+            email: inviteEmail,
+            rejected: true,
+            reason: "email_not_verified",
+          },
+        },
+      });
+
+      throw new HttpError(403, "EMAIL_NOT_VERIFIED", "Email not verified");
     }
 
     const existingOrgId = session.user.orgId ?? null;
