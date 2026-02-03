@@ -78,4 +78,23 @@ describe("audit log metrics", () => {
     const age = metricsRegistry.getGaugeValue(__metrics.oldestRetainedAge as any, undefined);
     expect(age).toBe(42);
   });
+
+  test("audit_log_errors_total increments on write failure", async () => {
+    prisma.auditLog.create.mockImplementationOnce(async () => {
+      throw new Error("DB_DOWN");
+    });
+
+    const { logAudit } = await import("@/lib/audit");
+    await logAudit({
+      action: AuditAction.USER_UPDATED,
+      targetType: "User",
+      targetId: "u1",
+    });
+
+    const { __metrics } = await import("@/lib/audit-metrics");
+    const value = metricsRegistry.getCounterValue(__metrics.auditErrorsTotal as any, {
+      error_type: "DB",
+    });
+    expect(value).toBe(1);
+  });
 });

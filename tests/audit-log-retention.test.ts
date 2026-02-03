@@ -8,9 +8,40 @@ function makePrisma(rows: { id: string; createdAt: Date }[]) {
     auditLog: {
       findMany: async (args: any) => {
         const cutoff = args.where.createdAt.lte as Date;
-        const filtered = data
-          .filter((r) => r.createdAt <= cutoff)
-          .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+        let filtered = data.filter((r) => r.createdAt <= cutoff);
+
+        // Support cursor pagination for dry-run mode.
+        const ors = Array.isArray(args.where.OR) ? args.where.OR : null;
+        if (ors) {
+          let cursorCreatedAt: Date | null = null;
+          let cursorId: string | null = null;
+
+          for (const cond of ors) {
+            if (cond?.createdAt?.gt) {
+              cursorCreatedAt = cond.createdAt.gt as Date;
+            }
+            if (cond?.createdAt instanceof Date && cond?.id?.gt) {
+              cursorCreatedAt = cond.createdAt as Date;
+              cursorId = cond.id.gt as string;
+            }
+          }
+
+          if (cursorCreatedAt) {
+            filtered = filtered.filter((r) => {
+              if (r.createdAt.getTime() > cursorCreatedAt!.getTime()) return true;
+              if (r.createdAt.getTime() < cursorCreatedAt!.getTime()) return false;
+              if (!cursorId) return false;
+              return r.id > cursorId;
+            });
+          }
+        }
+
+        filtered = filtered
+          .sort((a, b) => {
+            const dt = a.createdAt.getTime() - b.createdAt.getTime();
+            if (dt !== 0) return dt;
+            return a.id.localeCompare(b.id);
+          })
           .slice(0, args.take);
         return filtered.map((r) => ({ id: r.id, createdAt: r.createdAt }));
       },
@@ -162,7 +193,7 @@ describe("audit log retention", () => {
         enabled: true,
         days: 90,
         batchSize: 1,
-        batchDelayMs: 0,
+        batchDelayMs: 1,
         maxRuntimeMinutes: 1,
         dryRun: false,
       },

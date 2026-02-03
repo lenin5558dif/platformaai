@@ -36,6 +36,9 @@ export async function purgeAuditLogs(params: {
   let deleted = 0;
   let errors = 0;
 
+  let cursorCreatedAt: Date | null = null;
+  let cursorId: string | null = null;
+
   const emitPurgeMetrics = async (stoppedReason: AuditLogPurgeResult["stoppedReason"], durationMs: number) => {
     let oldest: Date | null = null;
     try {
@@ -94,10 +97,23 @@ export async function purgeAuditLogs(params: {
 
     let batch: { id: string; createdAt: Date }[];
     try {
+      const cursorWhere =
+        cursorCreatedAt && cursorId
+          ? {
+              OR: [
+                { createdAt: { gt: cursorCreatedAt } },
+                { createdAt: cursorCreatedAt, id: { gt: cursorId } },
+              ],
+            }
+          : undefined;
+
       batch = await params.prisma.auditLog.findMany({
-        where: { createdAt: { lte: cutoff } },
+        where: {
+          createdAt: { lte: cutoff },
+          ...(cursorWhere ? cursorWhere : {}),
+        },
         select: { id: true, createdAt: true },
-        orderBy: { createdAt: "asc" },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
         take: params.config.batchSize,
       });
     } catch {
@@ -132,6 +148,9 @@ export async function purgeAuditLogs(params: {
 
     batches += 1;
     scanned += batch.length;
+
+    cursorCreatedAt = batch[batch.length - 1]?.createdAt ?? cursorCreatedAt;
+    cursorId = batch[batch.length - 1]?.id ?? cursorId;
 
     const oldest = batch[0]?.createdAt?.toISOString();
     const newest = batch[batch.length - 1]?.createdAt?.toISOString();

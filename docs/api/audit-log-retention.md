@@ -198,7 +198,6 @@ Alert when the oldest retained audit log entry age exceeds the retention target 
     summary: "Audit log retention lag"
     description: "Oldest retained audit log is older than expected (possible purge lag)"
 ```
-```
 
 ### 5.5 Audit Logging Failures
 

@@ -1,5 +1,4 @@
 import { loadAuditLogOpsConfig } from "@/lib/audit-log-config";
-import { runAuditLogPurgeJob } from "@/lib/audit-log-purge-job";
 
 let started = false;
 let timer: NodeJS.Timeout | null = null;
@@ -16,7 +15,9 @@ export function startAuditLogPurgeScheduler() {
 
   started = true;
   timer = setInterval(() => {
-    void runAuditLogPurgeJob();
+    void import("@/lib/audit-log-purge-job")
+      .then((m) => m.runAuditLogPurgeJob())
+      .catch(() => undefined);
   }, intervalMs);
 
   const stop = () => {
