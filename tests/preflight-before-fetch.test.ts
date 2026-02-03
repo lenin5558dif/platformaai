@@ -47,11 +47,19 @@ vi.mock("@/lib/telemetry", () => ({
   logEvent: vi.fn(async () => {}),
 }));
 
+vi.mock("@/lib/quota-estimation", () => ({
+  estimateChatPromptTokens: vi.fn(() => 10),
+  estimateUpperBoundCredits: vi.fn(async () => 5),
+}));
+
 vi.mock("@/lib/billing", () => ({
   preflightCredits: vi.fn(async () => {
     throw new Error("INSUFFICIENT_BALANCE");
   }),
   spendCredits: vi.fn(),
+  reserveAiQuotaHold: vi.fn(async () => null),
+  commitAiQuotaHold: vi.fn(),
+  releaseAiQuotaHold: vi.fn(),
 }));
 
 import { POST } from "@/app/api/ai/chat/route";
