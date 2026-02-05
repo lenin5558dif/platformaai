@@ -26,7 +26,7 @@ export async function POST(request: Request) {
     const session = await requireSession(request);
     const payload = acceptSchema.parse(await request.json());
 
-    const sessionEmailRaw = (session.user as any).email as string | undefined;
+    const sessionEmailRaw = session.user.email ?? undefined;
     if (!sessionEmailRaw) {
       throw new HttpError(401, "UNAUTHORIZED", "Missing session email");
     }
@@ -120,10 +120,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const emailVerified = (session.user as any).emailVerified as
-      | boolean
-      | null
-      | undefined;
+    const emailVerified = session.user.emailVerified;
     if (emailVerified === false) {
       await logAudit({
         action: AuditAction.ORG_INVITE_ACCEPT_REJECTED_UNVERIFIED,

@@ -3,7 +3,11 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import { createAuthorizer, requireSession, toErrorResponse } from "@/lib/authorize";
-import { ORG_PERMISSIONS, SYSTEM_ROLE_NAMES } from "@/lib/org-permissions";
+import {
+  ORG_PERMISSIONS,
+  SYSTEM_ROLE_NAMES,
+  type SystemRoleName,
+} from "@/lib/org-permissions";
 import { HttpError } from "@/lib/http-error";
 
 const updateSchema = z.object({
@@ -11,8 +15,10 @@ const updateSchema = z.object({
   permissionKeys: z.array(z.string()).min(0).optional(),
 });
 
-function isSystemRole(name: string): boolean {
-  return Object.values(SYSTEM_ROLE_NAMES).includes(name as any);
+const systemRoleNames = new Set<SystemRoleName>(Object.values(SYSTEM_ROLE_NAMES));
+
+function isSystemRole(name: string): name is SystemRoleName {
+  return systemRoleNames.has(name as SystemRoleName);
 }
 
 interface RouteParams {

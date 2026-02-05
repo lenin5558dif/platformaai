@@ -3,17 +3,13 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import { createAuthorizer, requireSession, toErrorResponse } from "@/lib/authorize";
-import { ORG_PERMISSIONS, SYSTEM_ROLE_NAMES } from "@/lib/org-permissions";
+import { ORG_PERMISSIONS } from "@/lib/org-permissions";
 import { HttpError } from "@/lib/http-error";
 
 const createSchema = z.object({
   name: z.string().min(1).max(100),
   permissionKeys: z.array(z.string()).min(0),
 });
-
-function isSystemRole(name: string): boolean {
-  return Object.values(SYSTEM_ROLE_NAMES).includes(name as any);
-}
 
 export async function GET() {
   try {

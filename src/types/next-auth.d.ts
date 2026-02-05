@@ -16,5 +16,6 @@ declare module "next-auth" {
     role: "USER" | "ADMIN" | "EMPLOYEE";
     orgId: string | null;
     balance: Prisma.Decimal | string;
+    emailVerifiedByProvider?: boolean | null;
   }
 }

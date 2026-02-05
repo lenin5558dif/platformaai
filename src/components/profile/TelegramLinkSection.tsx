@@ -2,6 +2,16 @@
 
 import { useCallback, useState } from "react";
 
+type TelegramTokenResponse = {
+  deepLink?: string | null;
+  expiresAt?: string | null;
+  error?: string | null;
+};
+
+type TelegramErrorResponse = {
+  error?: string | null;
+};
+
 export default function TelegramLinkSection(params: {
   telegramId?: string | null;
 }) {
@@ -16,7 +26,7 @@ export default function TelegramLinkSection(params: {
 
     try {
       const res = await fetch("/api/telegram/token", { method: "POST" });
-      const body = (await res.json().catch(() => null)) as any;
+      const body = (await res.json().catch(() => null)) as TelegramTokenResponse | null;
       if (!res.ok) {
         setError(body?.error ?? "Не удалось сгенерировать ссылку");
         return;
@@ -38,7 +48,7 @@ export default function TelegramLinkSection(params: {
     try {
       const res = await fetch("/api/telegram/unlink", { method: "DELETE" });
       if (res.status !== 204) {
-        const body = (await res.json().catch(() => null)) as any;
+        const body = (await res.json().catch(() => null)) as TelegramErrorResponse | null;
         setError(body?.error ?? "Не удалось отвязать Telegram");
         return;
       }

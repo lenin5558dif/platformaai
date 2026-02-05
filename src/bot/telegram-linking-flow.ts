@@ -1,5 +1,4 @@
-import type { PrismaClient } from "@prisma/client";
-import { AuditAction } from "@prisma/client";
+import { AuditAction, type Prisma, type PrismaClient } from "@prisma/client";
 import { buildTelegramLinkAuditMetadata } from "@/lib/telegram-audit";
 import {
   buildTelegramLinkConfirmationPrompt,
@@ -64,7 +63,7 @@ export async function confirmTelegramLink(params: {
     actorId?: string | null;
     targetType?: string | null;
     targetId?: string | null;
-    metadata?: any;
+    metadata?: Prisma.InputJsonValue;
   }) => Promise<void>;
 }) {
   const now = params.now ?? new Date();

@@ -37,7 +37,7 @@ export async function POST() {
   const token = generateToken();
   const tokenPrefix = token.slice(0, TOKEN_PREFIX_LEN);
   const telegramLinkTokenHash = bcrypt.hashSync(token, 10);
-  const record = await prisma.telegramLinkToken.create({
+  await prisma.telegramLinkToken.create({
     data: {
       token: tokenPrefix,
       telegramLinkTokenHash,

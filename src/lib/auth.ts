@@ -164,12 +164,13 @@ const nextAuth = NextAuth({
           },
         });
 
+        const profileRecord = profile as Record<string, unknown> | null;
+        const profileEmailVerified =
+          profileRecord && typeof profileRecord["email_verified"] === "boolean"
+            ? (profileRecord["email_verified"] as boolean)
+            : null;
         const emailVerifiedByProvider =
-          account?.provider === "email"
-            ? true
-            : typeof (profile as any)?.email_verified === "boolean"
-              ? Boolean((profile as any).email_verified)
-              : null;
+          account?.provider === "email" ? true : profileEmailVerified;
 
         await prisma.user.update({
           where: { id: user.id },
@@ -185,7 +186,7 @@ const nextAuth = NextAuth({
         session.user.role = user.role;
         session.user.orgId = user.orgId;
         session.user.balance = String(user.balance);
-        session.user.emailVerified = (user as any).emailVerifiedByProvider ?? null;
+        session.user.emailVerified = user.emailVerifiedByProvider ?? null;
       }
       return session;
     },
@@ -260,7 +261,7 @@ export async function auth(request?: Request): Promise<Session | null> {
 
   session.user.orgId = dbUser.orgId;
   session.user.role = dbUser.role;
-  (session.user as any).emailVerified = dbUser.emailVerifiedByProvider ?? null;
+  session.user.emailVerified = dbUser.emailVerifiedByProvider ?? null;
 
   return session;
 }

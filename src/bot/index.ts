@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { Telegraf, Markup, type Context } from "telegraf";
-import { PrismaClient, Prisma, AuditAction, type User } from "@prisma/client";
+import { PrismaClient, Prisma, type User } from "@prisma/client";
 import { getOpenRouterBaseUrl, getOpenRouterHeaders } from "@/lib/openrouter";
 import { trimMessages, type ChatMessage } from "@/lib/context";
 import {
@@ -676,7 +676,7 @@ bot.action(/model:(.+)/, async (ctx) => {
 });
 
 bot.action(/^tg_link_confirm:(.+)$/, async (ctx) => {
-  const tokenId = (ctx.match as any)?.[1] as string | undefined;
+  const tokenId = Array.isArray(ctx.match) ? ctx.match[1] : undefined;
   if (!tokenId) return;
 
   await ctx.answerCbQuery();
@@ -709,7 +709,7 @@ bot.action(/^tg_link_confirm:(.+)$/, async (ctx) => {
 });
 
 bot.action(/^tg_link_cancel:(.+)$/, async (ctx) => {
-  const tokenId = (ctx.match as any)?.[1] as string | undefined;
+  const tokenId = Array.isArray(ctx.match) ? ctx.match[1] : undefined;
   if (!tokenId) return;
 
   await ctx.answerCbQuery();

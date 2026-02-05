@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import { createAuthorizer, requireSession, toErrorResponse } from "@/lib/authorize";
@@ -35,12 +34,12 @@ export async function GET() {
       },
     });
 
-  const data = users.map((entry) => ({
-    ...entry,
-    balance: entry.balance.toString(),
-    dailyLimit: entry.dailyLimit?.toString() ?? null,
-    monthlyLimit: entry.monthlyLimit?.toString() ?? null,
-  }));
+    const data = users.map((entry) => ({
+      ...entry,
+      balance: entry.balance.toString(),
+      dailyLimit: entry.dailyLimit?.toString() ?? null,
+      monthlyLimit: entry.monthlyLimit?.toString() ?? null,
+    }));
 
     return NextResponse.json({ data });
   } catch (error) {
