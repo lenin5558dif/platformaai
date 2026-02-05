@@ -31,8 +31,9 @@ vi.mock("@/lib/db", () => ({
 import { refillController } from "../src/app/api/billing/refill/controller";
 
 const unusedTransaction = async <T>(
-  _callback: (tx: unknown) => Promise<T>
+  callback: (tx: unknown) => Promise<T>
 ): Promise<T> => {
+  void callback;
   throw new Error("Transaction should not be called in this test");
 };
 

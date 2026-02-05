@@ -398,7 +398,6 @@ export class QuotaManager {
         if (params.finalAmount > reservedAmount) {
           // Policy: allow overage on commit (the AI call already happened), but make it visible.
           // A separate metrics/monitoring task should alert on overages.
-          // eslint-disable-next-line no-console
           console.warn("QUOTA_OVERAGE", {
             orgId: params.orgId,
             scope: reservation.scope,

@@ -23,7 +23,6 @@ export async function runAuditLogPurgeJob(params?: { signal?: AbortSignal }) {
       signal: params?.signal,
       log: (msg, meta) => {
         // Keep logs low-cardinality; do not include IDs.
-        // eslint-disable-next-line no-console
         console.log(msg, meta ?? {});
       },
     });
