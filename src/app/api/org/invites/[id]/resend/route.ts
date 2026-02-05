@@ -17,7 +17,7 @@ const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 export async function POST(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await requireSession(request);
@@ -53,8 +53,9 @@ export async function POST(
       );
     }
 
+    const { id } = await params;
     const invite = await prisma.orgInvite.findFirst({
-      where: { id: params.id, orgId: membership.orgId },
+      where: { id, orgId: membership.orgId },
       select: {
         id: true,
         orgId: true,

@@ -8,7 +8,7 @@ import { createAuthorizer, requireSession, toErrorResponse } from "@/lib/authori
 
 export async function POST(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await requireSession(request);
@@ -17,8 +17,9 @@ export async function POST(
       ORG_PERMISSIONS.ORG_INVITE_REVOKE
     );
 
+    const { id } = await params;
     const invite = await prisma.orgInvite.findFirst({
-      where: { id: params.id, orgId: membership.orgId },
+      where: { id, orgId: membership.orgId },
       select: {
         id: true,
         email: true,

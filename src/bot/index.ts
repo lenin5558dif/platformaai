@@ -8,7 +8,6 @@ import {
   calculateCreditsFromUsage,
 } from "@/lib/pricing";
 import { preflightCredits, spendCredits } from "@/lib/billing";
-import { mapBillingError } from "@/lib/billing-errors";
 import { transcribeAudio } from "@/lib/whisper";
 import { logEvent } from "@/lib/telemetry";
 import { logAudit } from "@/lib/audit";
@@ -293,6 +292,8 @@ function getBillingErrorMessage(error: unknown) {
         return "Превышен месячный лимит.";
       case "ORG_BUDGET_EXCEEDED":
         return "Превышен бюджет организации.";
+      case "COST_CENTER_BUDGET_EXCEEDED":
+        return "Превышен бюджет центра затрат.";
       default:
         return "Не удалось списать кредиты.";
     }
@@ -412,9 +413,7 @@ async function handleUserPrompt(ctx: Context, user: User, content: string) {
   try {
     await preflightCredits({ userId: user.id, minAmount: 1 });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "BILLING_ERROR";
-    const mapped = mapBillingError(message);
-    await ctx.reply(mapped?.message ?? "Недостаточно средств или исчерпан лимит.");
+    await ctx.reply(getBillingErrorMessage(error));
     return;
   }
 

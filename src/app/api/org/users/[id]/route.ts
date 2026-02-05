@@ -66,7 +66,7 @@ function userRoleForOrgRoleName(roleName: string): UserRole {
 
 export async function PATCH(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await requireSession(request);
@@ -75,7 +75,7 @@ export async function PATCH(
       ORG_PERMISSIONS.ORG_ROLE_CHANGE
     );
 
-    const { id: targetUserId } = params;
+    const { id: targetUserId } = await params;
     const payload = patchSchema.parse(await request.json());
 
     const currentMembership = await prisma.orgMembership.findUnique({
@@ -136,7 +136,7 @@ export async function PATCH(
 
 export async function DELETE(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await requireSession(request);
@@ -145,7 +145,7 @@ export async function DELETE(
       ORG_PERMISSIONS.ORG_USER_MANAGE
     );
 
-    const { id: targetUserId } = params;
+    const { id: targetUserId } = await params;
 
     const currentMembership = await prisma.orgMembership.findUnique({
       where: {

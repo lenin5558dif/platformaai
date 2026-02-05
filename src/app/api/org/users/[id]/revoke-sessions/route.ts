@@ -9,7 +9,7 @@ import { revokeAllSessionsForUser } from "@/lib/session-revoke";
 
 export async function POST(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await requireSession(request);
@@ -18,8 +18,9 @@ export async function POST(
       ORG_PERMISSIONS.ORG_USER_MANAGE
     );
 
+    const { id } = await params;
     const targetUser = await prisma.user.findFirst({
-      where: { id: params.id, orgId: membership.orgId },
+      where: { id, orgId: membership.orgId },
       select: { id: true },
     });
 

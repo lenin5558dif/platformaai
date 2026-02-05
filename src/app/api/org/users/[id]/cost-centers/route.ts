@@ -12,7 +12,7 @@ const patchSchema = z.object({
 
 export async function PATCH(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await requireSession(request);
@@ -21,7 +21,7 @@ export async function PATCH(
       ORG_PERMISSIONS.ORG_COST_CENTER_MANAGE
     );
 
-    const { id: targetUserId } = params;
+    const { id: targetUserId } = await params;
     const payload = patchSchema.parse(await request.json());
 
     const targetMembership = await prisma.orgMembership.findUnique({
@@ -118,7 +118,7 @@ export async function PATCH(
 
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await requireSession(request);
@@ -127,7 +127,7 @@ export async function GET(
       ORG_PERMISSIONS.ORG_COST_CENTER_MANAGE
     );
 
-    const { id: targetUserId } = params;
+    const { id: targetUserId } = await params;
 
     const targetMembership = await prisma.orgMembership.findUnique({
       where: {

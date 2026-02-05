@@ -186,7 +186,8 @@ const nextAuth = NextAuth({
         session.user.role = user.role;
         session.user.orgId = user.orgId;
         session.user.balance = String(user.balance);
-        session.user.emailVerified = user.emailVerifiedByProvider ?? null;
+        session.user.emailVerifiedByProvider =
+          user.emailVerifiedByProvider ?? null;
       }
       return session;
     },
@@ -228,7 +229,7 @@ async function getBypassSession() {
       role: user.role,
       orgId: user.orgId,
       balance: user.balance.toString(),
-      emailVerified: null,
+      emailVerifiedByProvider: null,
     },
   };
 }
@@ -261,7 +262,8 @@ export async function auth(request?: Request): Promise<Session | null> {
 
   session.user.orgId = dbUser.orgId;
   session.user.role = dbUser.role;
-  session.user.emailVerified = dbUser.emailVerifiedByProvider ?? null;
+  session.user.emailVerifiedByProvider =
+    dbUser.emailVerifiedByProvider ?? null;
 
   return session;
 }

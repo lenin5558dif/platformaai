@@ -9,7 +9,7 @@ const state = vi.hoisted(() => ({
   orgId: "org_1",
   userId: "user_1",
   email: "invitee@example.com",
-  emailVerified: true as boolean | undefined | null,
+  emailVerifiedByProvider: true as boolean | undefined | null,
   perms: new Set<string>(),
   rateLimitOk: true,
   rateLimitRemaining: 9,
@@ -24,8 +24,8 @@ function makeSession() {
       email: state.email,
     },
   };
-  if (state.emailVerified !== undefined) {
-    session.user.emailVerified = state.emailVerified;
+  if (state.emailVerifiedByProvider !== undefined) {
+    session.user.emailVerifiedByProvider = state.emailVerifiedByProvider;
   }
   return session;
 }
@@ -228,7 +228,7 @@ describe("org invites routes", () => {
     state.orgId = "org_1";
     state.userId = "user_1";
     state.email = "invitee@example.com";
-    state.emailVerified = true;
+    state.emailVerifiedByProvider = true;
     state.perms = new Set(["org:invite.create", "org:invite.revoke"]);
     state.rateLimitOk = true;
     state.rateLimitRemaining = 9;
@@ -301,7 +301,7 @@ describe("org invites routes", () => {
     );
     const revoked = await revoke(
       new Request("http://localhost/api/org/invites/x/revoke", { method: "POST" }),
-      { params: { id: inviteId } }
+      { params: Promise.resolve({ id: inviteId }) }
     );
     expect(revoked.status).toBe(200);
 
@@ -404,7 +404,7 @@ describe("org invites routes", () => {
     );
     const resendRes = await resend(
       new Request("http://localhost/api/org/invites/x/resend", { method: "POST" }),
-      { params: { id: inviteId } }
+      { params: Promise.resolve({ id: inviteId }) }
     );
     expect(resendRes.status).toBe(200);
 
@@ -433,7 +433,7 @@ describe("org invites routes", () => {
     );
     await resend(
       new Request("http://localhost/api/org/invites/x/resend", { method: "POST" }),
-      { params: { id: inviteId } }
+      { params: Promise.resolve({ id: inviteId }) }
     );
 
     // Try to accept with old token
@@ -451,7 +451,9 @@ describe("org invites routes", () => {
     expect(body.code).toBe("INVALID_TOKEN");
   });
 
-  test("verified email enforcement (emailVerified=false -> 403 EMAIL_NOT_VERIFIED)", async () => {
+  test(
+    "verified email enforcement (emailVerifiedByProvider=false -> 403 EMAIL_NOT_VERIFIED)",
+    async () => {
     const { POST: create } = await import("../src/app/api/org/invites/route");
     const created = await create(
       new Request("http://localhost/api/org/invites", {
@@ -465,7 +467,7 @@ describe("org invites routes", () => {
 
     // Set email as unverified
     state.email = "unverified@test.com";
-    state.emailVerified = false;
+    state.emailVerifiedByProvider = false;
 
     const { POST: accept } = await import("../src/app/api/org/invites/accept/route");
     const acceptRes = await accept(
@@ -480,7 +482,9 @@ describe("org invites routes", () => {
     expect(body.code).toBe("EMAIL_NOT_VERIFIED");
   });
 
-  test("bypass when emailVerified signal missing (undefined/null -> accept OK)", async () => {
+  test(
+    "bypass when emailVerifiedByProvider signal missing (undefined/null -> accept OK)",
+    async () => {
     const { POST: create } = await import("../src/app/api/org/invites/route");
     const created = await create(
       new Request("http://localhost/api/org/invites", {
@@ -495,7 +499,7 @@ describe("org invites routes", () => {
 
     // Set emailVerified as undefined (signal missing)
     state.email = "noverify@test.com";
-    state.emailVerified = undefined;
+    state.emailVerifiedByProvider = undefined;
 
     const { POST: accept } = await import("../src/app/api/org/invites/accept/route");
     const acceptRes = await accept(
@@ -560,7 +564,7 @@ describe("org invites routes", () => {
     );
     const res = await resend(
       new Request("http://localhost/api/org/invites/x/resend", { method: "POST" }),
-      { params: { id: inviteId } }
+      { params: Promise.resolve({ id: inviteId }) }
     );
     expect(res.status).toBe(429);
     const body = await jsonResponse(res);
@@ -632,7 +636,7 @@ describe("org invites routes", () => {
     );
     await resend(
       new Request("http://localhost/api/org/invites/x/resend", { method: "POST" }),
-      { params: { id: inviteId } }
+      { params: Promise.resolve({ id: inviteId }) }
     );
 
     // Find the ORG_INVITE_RESENT call (second call, first is USER_INVITED from create)
@@ -668,7 +672,7 @@ describe("org invites routes", () => {
     const inviteId = createdBody.data.id;
 
     state.email = "auditunverified@test.com";
-    state.emailVerified = false;
+    state.emailVerifiedByProvider = false;
 
     vi.resetModules();
     const { POST: accept } = await import("../src/app/api/org/invites/accept/route");

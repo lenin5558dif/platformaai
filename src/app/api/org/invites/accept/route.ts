@@ -120,8 +120,8 @@ export async function POST(request: Request) {
       );
     }
 
-    const emailVerified = session.user.emailVerified;
-    if (emailVerified === false) {
+    const emailVerifiedByProvider = session.user.emailVerifiedByProvider;
+    if (emailVerifiedByProvider === false) {
       await logAudit({
         action: AuditAction.ORG_INVITE_ACCEPT_REJECTED_UNVERIFIED,
         orgId: invite.orgId,

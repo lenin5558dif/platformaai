@@ -104,7 +104,7 @@ export async function PATCH(
     });
 
     await logAudit({
-      action: "COST_CENTER_BUDGET_UPDATED",
+      action: "COST_CENTER_UPDATED",
       orgId: membership.orgId,
       actorId: session.user.id,
       targetType: "costCenter",
