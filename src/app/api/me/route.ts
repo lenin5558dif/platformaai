@@ -17,6 +17,12 @@ export async function GET() {
       role: true,
       balance: true,
       settings: true,
+      channelBindings: {
+        select: {
+          channel: true,
+          createdAt: true,
+        },
+      },
     },
   });
 
@@ -28,6 +34,10 @@ export async function GET() {
     data: {
       ...user,
       balance: user.balance.toString(),
+      channels: user.channelBindings.map((binding) => ({
+        channel: binding.channel,
+        linkedAt: binding.createdAt.toISOString(),
+      })),
     },
   });
 }

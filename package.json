@@ -19,6 +19,7 @@
     "@auth/core": "0.41.1",
     "@auth/prisma-adapter": "^2.7.4",
     "@prisma/client": "^5.22.0",
+    "bcryptjs": "^3.0.3",
     "cheerio": "^1.0.0-rc.12",
     "clsx": "^2.1.1",
     "dotenv": "^16.4.7",

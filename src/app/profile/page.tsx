@@ -1,35 +1,10 @@
-import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { generateToken } from "@/lib/tokens";
 import TopUpForm from "@/components/billing/TopUpForm";
 import AppShell from "@/components/layout/AppShell";
+import TelegramLinkSection from "@/components/profile/TelegramLinkSection";
 
 export const dynamic = "force-dynamic";
-
-async function createTelegramToken() {
-  "use server";
-  const session = await auth();
-
-  if (!session?.user?.id) {
-    return;
-  }
-
-  const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
-  await prisma.telegramLinkToken.deleteMany({
-    where: { userId: session.user.id },
-  });
-
-  await prisma.telegramLinkToken.create({
-    data: {
-      token: generateToken(),
-      userId: session.user.id,
-      expiresAt,
-    },
-  });
-
-  revalidatePath("/profile");
-}
 
 export default async function ProfilePage({
   searchParams,
@@ -59,19 +34,6 @@ export default async function ProfilePage({
     select: { telegramId: true },
   });
 
-  const tokenRecord = await prisma.telegramLinkToken.findFirst({
-    where: {
-      userId: session.user.id,
-      expiresAt: { gt: new Date() },
-      usedAt: null,
-    },
-    orderBy: { createdAt: "desc" },
-  });
-
-  const botName = process.env.TELEGRAM_LOGIN_BOT_NAME ?? "platformaai_bot";
-  const deepLink = tokenRecord
-    ? `https://t.me/${botName}?start=${tokenRecord.token}`
-    : null;
 
   return (
     <AppShell
@@ -129,31 +91,7 @@ export default async function ProfilePage({
         <div className="mt-6 rounded-xl border border-gray-200 bg-white/70 p-4">
           <TopUpForm />
         </div>
-        <div className="mt-6 rounded-xl border border-gray-200 bg-white/70 p-4">
-          <p className="text-sm font-medium text-text-main mb-2">
-            Привязка Telegram
-          </p>
-          <p className="text-xs text-text-secondary mb-3">
-            Сгенерируйте токен и перейдите по ссылке, чтобы связать аккаунт.
-          </p>
-          {deepLink ? (
-            <div className="mb-3 text-xs text-text-main">
-              <span className="font-medium">Deep link:</span>{" "}
-              <a className="text-primary underline" href={deepLink}>
-                {deepLink}
-              </a>
-            </div>
-          ) : (
-            <p className="text-xs text-text-secondary mb-3">
-              Активных токенов нет.
-            </p>
-          )}
-          <form action={createTelegramToken}>
-            <button className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-hover">
-              Сгенерировать ссылку
-            </button>
-          </form>
-        </div>
+        <TelegramLinkSection telegramId={dbUser?.telegramId ?? null} />
       </div>
     </AppShell>
   );

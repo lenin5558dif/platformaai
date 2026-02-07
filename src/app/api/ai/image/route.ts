@@ -6,16 +6,29 @@ import { prisma } from "@/lib/db";
 import { getOpenRouterBaseUrl, getOpenRouterHeaders } from "@/lib/openrouter";
 import { getUserOpenRouterKey } from "@/lib/user-settings";
 import { calculateCreditsFromUsage } from "@/lib/pricing";
-import { spendCredits } from "@/lib/billing";
-import { getOrgModelPolicy } from "@/lib/org-settings";
-import { isModelAllowed } from "@/lib/model-policy";
-import { logAudit } from "@/lib/audit";
+import {
+  commitAiQuotaHold,
+  preflightCredits,
+  releaseAiQuotaHold,
+  reserveAiQuotaHold,
+  spendCredits,
+} from "@/lib/billing";
+import { mapBillingError } from "@/lib/billing-errors";
+import { estimateTokensFromText, estimateUpperBoundCredits } from "@/lib/quota-estimation";
+import { getOrgModelPolicy, getOrgDlpPolicy } from "@/lib/org-settings";
+import {
+  validateModelPolicy,
+  applyDlpToText,
+} from "@/lib/ai-authorization";
 import { findOwnedChat } from "@/lib/chat-ownership";
+import { resolveOrgCostCenterId } from "@/lib/cost-centers";
+import { HttpError } from "@/lib/http-error";
 
 const requestSchema = z.object({
   attachmentId: z.string().min(1),
   chatId: z.string().optional(),
   prompt: z.string().optional(),
+  costCenterId: z.string().min(1).optional(),
 });
 
 export async function POST(request: Request) {
@@ -68,32 +81,132 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Insufficient balance" }, { status: 402 });
   }
 
-  const modelId = "openai/gpt-4o-mini";
-  const modelPolicy = getOrgModelPolicy(user?.org?.settings ?? null);
-  if (!isModelAllowed(modelId, modelPolicy)) {
-    await logAudit({
-      action: "POLICY_BLOCKED",
-      orgId: user?.orgId ?? null,
-      actorId: session.user.id,
-      targetType: "model",
-      targetId: modelId,
-      metadata: { reason: "blocked_by_policy" },
-    });
+  let costCenterId: string | undefined = undefined;
+  if (body.costCenterId && !user.orgId) {
     return NextResponse.json(
-      { error: "Модель запрещена политикой организации." },
-      { status: 403 }
+      { error: "costCenterId requires organization" },
+      { status: 400 }
     );
   }
+  if (user.orgId) {
+    const membership = await prisma.orgMembership.findUnique({
+      where: {
+        orgId_userId: {
+          orgId: user.orgId,
+          userId: session.user.id,
+        },
+      },
+      select: { id: true, defaultCostCenterId: true },
+    });
+
+    if (!membership) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    try {
+      costCenterId = await resolveOrgCostCenterId({
+        orgId: user.orgId,
+        membershipId: membership.id,
+        requestedCostCenterId: body.costCenterId ?? null,
+        defaultCostCenterId: membership.defaultCostCenterId,
+        fallbackCostCenterId: user.costCenterId,
+      });
+    } catch (error) {
+      if (error instanceof HttpError) {
+        return NextResponse.json({ error: error.message }, { status: error.status });
+      }
+      throw error;
+    }
+  }
+
+  const modelId = "openai/gpt-4o-mini";
+  const modelPolicy = getOrgModelPolicy(user?.org?.settings ?? null);
+  const dlpPolicy = getOrgDlpPolicy(user?.org?.settings ?? null);
+
+  const modelValidation = await validateModelPolicy({
+    modelId,
+    policy: modelPolicy,
+    audit: {
+      orgId: user?.orgId ?? null,
+      actorId: session.user.id,
+      targetId: modelId,
+    },
+  });
+
+  if (!modelValidation.ok) {
+    return NextResponse.json(
+      { error: modelValidation.error },
+      { status: modelValidation.status }
+    );
+  }
+
+  const prompt =
+    body.prompt ?? "Опиши изображение кратко и по делу на русском языке.";
+
+  // Apply DLP to prompt before external AI call
+  const dlpResult = await applyDlpToText({
+    text: prompt,
+    policy: dlpPolicy,
+    audit: {
+      orgId: user?.orgId ?? null,
+      actorId: session.user.id,
+      targetId: body.chatId ?? null,
+    },
+  });
+
+  if (!dlpResult.ok) {
+    return NextResponse.json(
+      { error: dlpResult.error },
+      { status: dlpResult.status }
+    );
+  }
+
+  const safePrompt = dlpResult.content ?? prompt;
 
   const userKey = allowUserKey
     ? getUserOpenRouterKey(user?.settings ?? null)
     : undefined;
+
+  const idempotencyKey = crypto.randomUUID();
+  let quotaHold = null;
+
+  try {
+    const promptTokensEstimate = estimateTokensFromText(safePrompt);
+    const estimatedCredits = await estimateUpperBoundCredits({
+      modelId,
+      promptTokensEstimate,
+      apiKey: userKey,
+    });
+
+    const reserveAmount = Math.max(1, estimatedCredits);
+    quotaHold = await reserveAiQuotaHold({
+      userId: session.user.id,
+      amount: reserveAmount,
+      idempotencyKey,
+      costCenterId,
+    });
+
+    if (!quotaHold) {
+      await preflightCredits({
+        userId: session.user.id,
+        minAmount: reserveAmount,
+      });
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "BILLING_ERROR";
+    const mapped = mapBillingError(message);
+    if (mapped) {
+      return NextResponse.json({ error: mapped.error }, { status: mapped.status });
+    }
+    return NextResponse.json({ error: "Billing error" }, { status: 500 });
+  }
 
   let headers: Record<string, string>;
   try {
     headers = getOpenRouterHeaders(userKey);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Missing config";
+    await releaseAiQuotaHold({ hold: quotaHold });
     const status = message.includes("OPENROUTER_API_KEY") ? 401 : 500;
     return NextResponse.json({ error: message }, { status });
   }
@@ -101,8 +214,6 @@ export async function POST(request: Request) {
   const buffer = await readFile(attachment.storagePath);
   const base64 = buffer.toString("base64");
   const imageUrl = `data:${attachment.mimeType};base64,${base64}`;
-  const prompt =
-    body.prompt ?? "Опиши изображение кратко и по делу на русском языке.";
 
   const response = await fetch(`${getOpenRouterBaseUrl()}/chat/completions`, {
     method: "POST",
@@ -113,7 +224,7 @@ export async function POST(request: Request) {
         {
           role: "user",
           content: [
-            { type: "text", text: prompt },
+            { type: "text", text: safePrompt },
             { type: "image_url", image_url: { url: imageUrl } },
           ],
         },
@@ -123,6 +234,7 @@ export async function POST(request: Request) {
   });
 
   if (!response.ok) {
+    await releaseAiQuotaHold({ hold: quotaHold });
     return NextResponse.json(
       { error: "OpenRouter error", details: await response.text() },
       { status: response.status }
@@ -134,21 +246,35 @@ export async function POST(request: Request) {
   const usage = data?.usage;
 
   let creditsResult = { credits: 0 };
-  if (usage) {
-    creditsResult = await calculateCreditsFromUsage({
-      modelId,
-      promptTokens: usage.prompt_tokens ?? 0,
-      completionTokens: usage.completion_tokens ?? 0,
-      apiKey: userKey,
-    });
-
-    if (creditsResult.credits > 0) {
-      await spendCredits({
-        userId: session.user.id,
-        amount: creditsResult.credits,
-        description: "OpenRouter image description",
+  try {
+    if (usage) {
+      creditsResult = await calculateCreditsFromUsage({
+        modelId,
+        promptTokens: usage.prompt_tokens ?? 0,
+        completionTokens: usage.completion_tokens ?? 0,
+        apiKey: userKey,
       });
+
+      if (creditsResult.credits > 0) {
+        await spendCredits({
+          userId: session.user.id,
+          amount: creditsResult.credits,
+          description: "OpenRouter image description",
+          costCenterId,
+        });
+      }
     }
+
+    await commitAiQuotaHold({ hold: quotaHold, finalAmount: creditsResult.credits });
+    quotaHold = null;
+  } catch (error) {
+    await releaseAiQuotaHold({ hold: quotaHold });
+    const message = error instanceof Error ? error.message : "Billing error";
+    const mapped = mapBillingError(message);
+    if (mapped) {
+      return NextResponse.json({ error: mapped.error }, { status: mapped.status });
+    }
+    return NextResponse.json({ error: "Billing error" }, { status: 500 });
   }
 
   if (body.chatId && description.trim()) {
@@ -156,7 +282,7 @@ export async function POST(request: Request) {
       data: {
         chatId: body.chatId,
         userId: session.user.id,
-        costCenterId: user?.costCenterId ?? undefined,
+        costCenterId,
         role: "ASSISTANT",
         content: `Описание изображения: ${description}`,
         tokenCount: usage?.total_tokens ?? 0,

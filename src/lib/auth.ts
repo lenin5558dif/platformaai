@@ -108,8 +108,9 @@ const nextAuth = NextAuth({
     ...(ssoProvider ? [ssoProvider] : []),
   ],
   callbacks: {
-    signIn: async ({ user, account }) => {
+    signIn: async ({ user, account, profile }) => {
       if (!user?.email) return true;
+      if (!user?.id) return true;
 
       const dbUser = await prisma.user.findUnique({
         where: { id: user.id },
@@ -145,6 +146,38 @@ const nextAuth = NextAuth({
         });
       }
 
+      if (account?.type !== "credentials") {
+        await prisma.userChannel.upsert({
+          where: {
+            userId_channel: {
+              userId: user.id,
+              channel: "WEB",
+            },
+          },
+          update: {
+            externalId: user.id,
+          },
+          create: {
+            userId: user.id,
+            channel: "WEB",
+            externalId: user.id,
+          },
+        });
+
+        const profileRecord = profile as Record<string, unknown> | null;
+        const profileEmailVerified =
+          profileRecord && typeof profileRecord["email_verified"] === "boolean"
+            ? (profileRecord["email_verified"] as boolean)
+            : null;
+        const emailVerifiedByProvider =
+          account?.provider === "email" ? true : profileEmailVerified;
+
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { emailVerifiedByProvider },
+        });
+      }
+
       return true;
     },
     session: async ({ session, user }) => {
@@ -153,6 +186,8 @@ const nextAuth = NextAuth({
         session.user.role = user.role;
         session.user.orgId = user.orgId;
         session.user.balance = String(user.balance);
+        session.user.emailVerifiedByProvider =
+          user.emailVerifiedByProvider ?? null;
       }
       return session;
     },
@@ -194,6 +229,7 @@ async function getBypassSession() {
       role: user.role,
       orgId: user.orgId,
       balance: user.balance.toString(),
+      emailVerifiedByProvider: null,
     },
   };
 }
@@ -213,12 +249,21 @@ export async function auth(request?: Request): Promise<Session | null> {
 
   const dbUser = await prisma.user.findUnique({
     where: { id: session.user.id },
-    select: { isActive: true },
+    select: { isActive: true, orgId: true, role: true, emailVerifiedByProvider: true },
   });
 
-  if (dbUser && dbUser.isActive === false) {
+  if (!dbUser) {
     return null;
   }
+
+  if (dbUser.isActive === false) {
+    return null;
+  }
+
+  session.user.orgId = dbUser.orgId;
+  session.user.role = dbUser.role;
+  session.user.emailVerifiedByProvider =
+    dbUser.emailVerifiedByProvider ?? null;
 
   return session;
 }

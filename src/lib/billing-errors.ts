@@ -16,6 +16,9 @@ export const mapBillingError = (message: string): BillingErrorResponse => {
   if (message === "ORG_BUDGET_EXCEEDED") {
     return { status: 409, error: "Organization budget exceeded" };
   }
+  if (message === "COST_CENTER_BUDGET_EXCEEDED") {
+    return { status: 409, error: "Cost center budget exceeded" };
+  }
   if (message === "USER_NOT_FOUND") {
     return { status: 404, error: "User not found" };
   }

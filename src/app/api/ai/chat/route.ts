@@ -4,8 +4,19 @@ import { trimMessages } from "@/lib/context";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { calculateCreditsFromUsage } from "@/lib/pricing";
-import { spendCredits } from "@/lib/billing";
+import {
+  commitAiQuotaHold,
+  preflightCredits,
+  releaseAiQuotaHold,
+  reserveAiQuotaHold,
+  spendCredits,
+  type AiQuotaHold,
+} from "@/lib/billing";
 import { mapBillingError } from "@/lib/billing-errors";
+import {
+  estimateChatPromptTokens,
+  estimateUpperBoundCredits,
+} from "@/lib/quota-estimation";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { logEvent } from "@/lib/telemetry";
 import { getUserOpenRouterKey } from "@/lib/user-settings";
@@ -13,10 +24,14 @@ import { buildPersonalizationSystemPrompt } from "@/lib/personalization";
 import { searchWeb } from "@/lib/search";
 import { checkModeration } from "@/lib/moderation";
 import { getOrgDlpPolicy, getOrgModelPolicy } from "@/lib/org-settings";
-import { evaluateDlp } from "@/lib/dlp";
-import { isModelAllowed } from "@/lib/model-policy";
-import { logAudit } from "@/lib/audit";
+import {
+  validateModelPolicy,
+  filterFallbackModels,
+  applyDlpToMessages,
+} from "@/lib/ai-authorization";
 import { findOwnedChat } from "@/lib/chat-ownership";
+import { resolveOrgCostCenterId } from "@/lib/cost-centers";
+import { HttpError } from "@/lib/http-error";
 import {
   buildCacheKey,
   getCachedResponse,
@@ -103,23 +118,67 @@ export async function POST(request: Request) {
   if (!ownedChat) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
-  if (!isModelAllowed(body.model, modelPolicy)) {
-    await logAudit({
-      action: "POLICY_BLOCKED",
+
+  let costCenterId: string | undefined = undefined;
+  if (body.costCenterId && !user.orgId) {
+    return NextResponse.json(
+      { error: "costCenterId requires organization" },
+      { status: 400 }
+    );
+  }
+  if (user.orgId) {
+    const membership = await prisma.orgMembership.findUnique({
+      where: {
+        orgId_userId: {
+          orgId: user.orgId,
+          userId: session.user.id,
+        },
+      },
+      select: {
+        id: true,
+        defaultCostCenterId: true,
+      },
+    });
+
+    if (!membership) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    try {
+      costCenterId = await resolveOrgCostCenterId({
+        orgId: user.orgId,
+        membershipId: membership.id,
+        requestedCostCenterId: body.costCenterId ?? null,
+        defaultCostCenterId: membership.defaultCostCenterId,
+        fallbackCostCenterId: user.costCenterId,
+      });
+    } catch (error) {
+      if (error instanceof HttpError) {
+        return NextResponse.json({ error: error.message }, { status: error.status });
+      }
+      throw error;
+    }
+  }
+  const modelValidation = await validateModelPolicy({
+    modelId: body.model,
+    policy: modelPolicy,
+    audit: {
       orgId: user.orgId,
       actorId: session.user.id,
-      targetType: "model",
       targetId: body.model,
-      metadata: { reason: "blocked_by_policy" },
-    });
+    },
+  });
+
+  if (!modelValidation.ok) {
     return NextResponse.json(
-      { error: "Модель запрещена политикой организации." },
-      { status: 403 }
+      { error: modelValidation.error },
+      { status: modelValidation.status }
     );
   }
 
-  const allowedFallbacks = (body.fallbackModels ?? []).filter((modelId) =>
-    isModelAllowed(modelId, modelPolicy)
+  const allowedFallbacks = filterFallbackModels(
+    body.fallbackModels ?? [],
+    modelPolicy
   );
 
   const personalization = buildPersonalizationSystemPrompt(
@@ -184,47 +243,24 @@ export async function POST(request: Request) {
     }
   }
 
-  let dlpRedacted = false;
-  let dlpBlockedMatches: string[] | null = null;
-  const safeMessages = body.messages.map((message) => {
-    if (message.role !== "user") return message;
-    const outcome = evaluateDlp(message.content, dlpPolicy);
-    if (outcome.action === "block") {
-      dlpBlockedMatches = outcome.matches;
-      return message;
-    }
-    if (outcome.action === "redact" && outcome.redactedText) {
-      dlpRedacted = true;
-      return { ...message, content: outcome.redactedText };
-    }
-    return message;
-  });
-
-  if (dlpBlockedMatches) {
-    await logAudit({
-      action: "POLICY_BLOCKED",
+  const dlpResult = await applyDlpToMessages({
+    messages: body.messages,
+    policy: dlpPolicy,
+    audit: {
       orgId: user.orgId,
       actorId: session.user.id,
-      targetType: "dlp",
       targetId: body.chatId ?? null,
-      metadata: { matches: dlpBlockedMatches },
-    });
+    },
+  });
+
+  if (!dlpResult.ok) {
     return NextResponse.json(
-      { error: "Запрос отклонен политикой DLP." },
-      { status: 400 }
+      { error: dlpResult.error },
+      { status: dlpResult.status }
     );
   }
 
-  if (dlpRedacted) {
-    await logAudit({
-      action: "POLICY_BLOCKED",
-      orgId: user.orgId,
-      actorId: session.user.id,
-      targetType: "dlp",
-      targetId: body.chatId ?? null,
-      metadata: { action: "redact" },
-    });
-  }
+  const safeMessages = dlpResult.messages ?? body.messages;
 
   const enrichedMessages = [
     ...systemMessages,
@@ -252,6 +288,45 @@ export async function POST(request: Request) {
 
   const trimmedMessages = trimMessages(enrichedMessages, body.contextLength);
 
+  const userKey = allowUserKey
+    ? getUserOpenRouterKey(user?.settings ?? null)
+    : undefined;
+
+  const idempotencyKey = crypto.randomUUID();
+  let quotaHold: AiQuotaHold | null = null;
+
+  try {
+    const promptTokensEstimate = estimateChatPromptTokens(trimmedMessages);
+    const estimatedCredits = await estimateUpperBoundCredits({
+      modelId: body.model,
+      promptTokensEstimate,
+      maxTokens: body.max_tokens,
+      apiKey: userKey,
+    });
+
+    const reserveAmount = Math.max(1, estimatedCredits);
+    quotaHold = await reserveAiQuotaHold({
+      userId: session.user.id,
+      amount: reserveAmount,
+      idempotencyKey,
+      costCenterId,
+    });
+
+    if (!quotaHold) {
+      await preflightCredits({
+        userId: session.user.id,
+        minAmount: reserveAmount,
+      });
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "BILLING_ERROR";
+    const mapped = mapBillingError(message);
+    if (mapped) {
+      return NextResponse.json({ error: mapped.error }, { status: mapped.status });
+    }
+    return NextResponse.json({ error: "Billing error" }, { status: 500 });
+  }
+
   await logEvent({
     type: "AI_REQUEST",
     userId: session.user.id,
@@ -265,14 +340,12 @@ export async function POST(request: Request) {
   });
   const baseUrl = getOpenRouterBaseUrl();
   let requestHeaders: Record<string, string>;
-  const userKey = allowUserKey
-    ? getUserOpenRouterKey(user?.settings ?? null)
-    : undefined;
 
   try {
     requestHeaders = getOpenRouterHeaders(userKey);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Missing config";
+    await releaseAiQuotaHold({ hold: quotaHold });
     await logEvent({
       type: "AI_ERROR",
       userId: session.user.id,
@@ -317,10 +390,15 @@ export async function POST(request: Request) {
           userId: session.user.id,
           amount: creditsResult.credits,
           description: `OpenRouter ${cached.modelId} (cache)`,
+          costCenterId,
         });
       }
+
+      await commitAiQuotaHold({ hold: quotaHold, finalAmount: creditsResult.credits });
+      quotaHold = null;
     } catch (error) {
       const message = error instanceof Error ? error.message : "Billing error";
+      await releaseAiQuotaHold({ hold: quotaHold });
       await logEvent({
         type: "BILLING_ERROR",
         userId: session.user.id,
@@ -335,7 +413,7 @@ export async function POST(request: Request) {
       data: {
         chatId,
         userId: session.user.id,
-        costCenterId: user?.costCenterId ?? undefined,
+        costCenterId,
         role: "ASSISTANT",
         content: cached.content,
         tokenCount: cached.usage?.total_tokens ?? 0,
@@ -387,33 +465,47 @@ export async function POST(request: Request) {
   let response: Response | null = null;
   let usedModel = body.model;
 
-  for (const modelId of modelsToTry) {
-    usedModel = modelId;
-    response = await fetch(`${baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: requestHeaders,
-      body: JSON.stringify({
-        model: modelId,
-        messages: trimmedMessages,
-        temperature: body.temperature,
-        max_tokens: body.max_tokens,
-        stream: body.stream ?? true,
-        stream_options: { include_usage: true },
-      }),
+  try {
+    for (const modelId of modelsToTry) {
+      usedModel = modelId;
+      response = await fetch(`${baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: requestHeaders,
+        body: JSON.stringify({
+          model: modelId,
+          messages: trimmedMessages,
+          temperature: body.temperature,
+          max_tokens: body.max_tokens,
+          stream: body.stream ?? true,
+          stream_options: { include_usage: true },
+        }),
+      });
+
+      if (response.ok) {
+        break;
+      }
+
+      if (![429, 503].includes(response.status)) {
+        break;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    }
+  } catch (error) {
+    await releaseAiQuotaHold({ hold: quotaHold });
+    const message = error instanceof Error ? error.message : "OpenRouter error";
+    await logEvent({
+      type: "AI_ERROR",
+      userId: session.user.id,
+      chatId: body.chatId,
+      modelId: usedModel,
+      message,
     });
-
-    if (response.ok) {
-      break;
-    }
-
-    if (![429, 503].includes(response.status)) {
-      break;
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, 400));
+    return NextResponse.json({ error: "OpenRouter error" }, { status: 502 });
   }
 
   if (!response || !response.ok) {
+    await releaseAiQuotaHold({ hold: quotaHold });
     const text = response ? await response.text() : "No response";
     const status = response?.status ?? 502;
     let message = "OpenRouter error";
@@ -474,8 +566,8 @@ export async function POST(request: Request) {
     let creditsResult = { credits: 0 };
     const tokenCount = usage?.total_tokens ?? 0;
 
-    if (usage) {
-      try {
+    try {
+      if (usage) {
         creditsResult = await calculateCreditsFromUsage({
           modelId: usedModel,
           promptTokens: usage.prompt_tokens ?? 0,
@@ -488,26 +580,31 @@ export async function POST(request: Request) {
             userId: session.user.id,
             amount: creditsResult.credits,
             description: `OpenRouter ${usedModel}`,
+            costCenterId,
           });
         }
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Billing error";
-        await logEvent({
-          type: "BILLING_ERROR",
-          userId: session.user.id,
-          chatId,
-          modelId: usedModel,
-          message,
-        });
-        return buildBillingErrorResponse(message);
       }
+
+      await commitAiQuotaHold({ hold: quotaHold, finalAmount: creditsResult.credits });
+      quotaHold = null;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Billing error";
+      await releaseAiQuotaHold({ hold: quotaHold });
+      await logEvent({
+        type: "BILLING_ERROR",
+        userId: session.user.id,
+        chatId,
+        modelId: usedModel,
+        message,
+      });
+      return buildBillingErrorResponse(message);
     }
 
     await prisma.message.create({
       data: {
         chatId,
         userId: session.user.id,
-        costCenterId: user?.costCenterId ?? undefined,
+        costCenterId,
         role: "ASSISTANT",
         content: assistantContent,
         tokenCount,
@@ -554,6 +651,7 @@ export async function POST(request: Request) {
   const reader = response.body?.getReader();
 
   if (!reader) {
+    await releaseAiQuotaHold({ hold: quotaHold });
     return NextResponse.json({ error: "OpenRouter error" }, { status: 502 });
   }
 
@@ -561,8 +659,8 @@ export async function POST(request: Request) {
     let creditsResult = { credits: 0 };
     const tokenCount = usage?.total_tokens ?? 0;
 
-    if (usage) {
-      try {
+    try {
+      if (usage) {
         creditsResult = await calculateCreditsFromUsage({
           modelId: usedModel,
           promptTokens: usage.prompt_tokens ?? 0,
@@ -575,25 +673,30 @@ export async function POST(request: Request) {
             userId,
             amount: creditsResult.credits,
             description: `OpenRouter ${usedModel}`,
+            costCenterId,
           });
         }
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Billing error";
-        await logEvent({
-          type: "BILLING_ERROR",
-          userId,
-          chatId,
-          modelId: usedModel,
-          message,
-        });
       }
+
+      await commitAiQuotaHold({ hold: quotaHold, finalAmount: creditsResult.credits });
+      quotaHold = null;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Billing error";
+      await releaseAiQuotaHold({ hold: quotaHold });
+      await logEvent({
+        type: "BILLING_ERROR",
+        userId,
+        chatId,
+        modelId: usedModel,
+        message,
+      });
     }
 
     await prisma.message.create({
       data: {
         chatId,
         userId,
-        costCenterId: user?.costCenterId ?? undefined,
+        costCenterId,
         role: "ASSISTANT",
         content: assistantText,
         tokenCount,

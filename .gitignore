@@ -45,3 +45,5 @@ next-env.d.ts
 .opencode/
 openspec/
 AGENTS.md
+.github/agents/
+.github/prompts/

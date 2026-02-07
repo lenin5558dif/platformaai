@@ -3,8 +3,10 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { generateToken } from "@/lib/tokens";
 import { checkRateLimit } from "@/lib/rate-limit";
+import * as bcrypt from "bcryptjs";
 
-const EXPIRY_MINUTES = 30;
+const EXPIRY_MINUTES = 10;
+const TOKEN_PREFIX_LEN = 16;
 
 export async function POST() {
   const session = await auth();
@@ -33,16 +35,19 @@ export async function POST() {
   });
 
   const token = generateToken();
-  const record = await prisma.telegramLinkToken.create({
+  const tokenPrefix = token.slice(0, TOKEN_PREFIX_LEN);
+  const telegramLinkTokenHash = bcrypt.hashSync(token, 10);
+  await prisma.telegramLinkToken.create({
     data: {
-      token,
+      token: tokenPrefix,
+      telegramLinkTokenHash,
       userId: session.user.id,
       expiresAt,
     },
   });
 
   const botName = process.env.TELEGRAM_LOGIN_BOT_NAME ?? "platformaai_bot";
-  const deepLink = `https://t.me/${botName}?start=${record.token}`;
+  const deepLink = `https://t.me/${botName}?start=${token}`;
 
-  return NextResponse.json({ token: record.token, deepLink, expiresAt });
+  return NextResponse.json({ token, deepLink, expiresAt });
 }
