@@ -1,0 +1,104 @@
+export type AuthMode = "signin" | "register";
+
+export type AuthViewState =
+  | "idle"
+  | "submitting"
+  | "sent"
+  | "success"
+  | "error"
+  | "expired";
+
+export type AuthCapabilities = {
+  email: boolean;
+  sso: boolean;
+  telegram: boolean;
+};
+
+export type MappedAuthError = {
+  state: AuthViewState;
+  title: string;
+  message: string;
+  action: "retry" | "use_sso" | "contact_admin" | null;
+};
+
+export function getAuthCapabilities(
+  env: Record<string, string | undefined> = process.env
+): AuthCapabilities {
+  const ssoConfigured =
+    env.SSO_ISSUER && env.SSO_CLIENT_ID && env.SSO_CLIENT_SECRET;
+
+  return {
+    email: true,
+    sso: env.NEXT_PUBLIC_SSO_ENABLED === "1" || Boolean(ssoConfigured),
+    telegram: Boolean(env.NEXT_PUBLIC_TELEGRAM_LOGIN_BOT_NAME),
+  };
+}
+
+export function resolveAuthMode(raw?: string): AuthMode {
+  return raw === "register" ? "register" : "signin";
+}
+
+export function getModeText(mode: AuthMode) {
+  if (mode === "register") {
+    return {
+      title: "Создание аккаунта PlatformaAI",
+      subtitle:
+        "Веб-аккаунт станет вашим основным идентификатором. Telegram можно подключить позже.",
+      emailAction: "Отправить ссылку для регистрации",
+      ssoAction: "Зарегистрироваться через SSO",
+    };
+  }
+
+  return {
+    title: "Вход в PlatformaAI",
+    subtitle:
+      "Войдите через magic link или SSO. Telegram - дополнительный канал к Web-профилю.",
+    emailAction: "Отправить magic link",
+    ssoAction: "Войти через SSO",
+  };
+}
+
+export function mapLoginError(error?: string): MappedAuthError | null {
+  if (!error) {
+    return null;
+  }
+
+  switch (error) {
+    case "SSORequired":
+      return {
+        state: "error",
+        title: "Требуется вход через SSO",
+        message: "Для этого домена разрешен только вход через корпоративный SSO.",
+        action: "use_sso",
+      };
+    case "Verification":
+      return {
+        state: "expired",
+        title: "Ссылка недействительна",
+        message:
+          "Срок действия ссылки истек или она уже была использована. Запросите новую ссылку.",
+        action: "retry",
+      };
+    case "AccessDenied":
+      return {
+        state: "error",
+        title: "Доступ отклонен",
+        message: "Вход отклонен политикой доступа. Обратитесь к администратору.",
+        action: "contact_admin",
+      };
+    case "Configuration":
+      return {
+        state: "error",
+        title: "Ошибка конфигурации входа",
+        message: "Временно недоступен один из методов входа. Попробуйте другой метод.",
+        action: "retry",
+      };
+    default:
+      return {
+        state: "error",
+        title: "Не удалось выполнить вход",
+        message: "Попробуйте еще раз или используйте другой доступный способ входа.",
+        action: "retry",
+      };
+  }
+}

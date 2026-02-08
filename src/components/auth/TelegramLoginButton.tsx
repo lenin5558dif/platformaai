@@ -3,7 +3,15 @@
 import { useEffect, useRef, useState } from "react";
 import { signIn } from "next-auth/react";
 
-export default function TelegramLoginButton() {
+type TelegramLoginButtonProps = {
+  onStarted?: () => void;
+  onError?: () => void;
+};
+
+export default function TelegramLoginButton({
+  onStarted,
+  onError,
+}: TelegramLoginButtonProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -12,11 +20,13 @@ export default function TelegramLoginButton() {
 
     if (!botName) {
       setError("Telegram bot name не задан.");
+      onError?.();
       return;
     }
 
     (window as typeof window & { onTelegramAuth?: (user: unknown) => void }).onTelegramAuth =
       (user) => {
+        onStarted?.();
         void signIn("credentials", {
           data: JSON.stringify(user),
           callbackUrl: "/",
@@ -37,7 +47,7 @@ export default function TelegramLoginButton() {
     script.setAttribute("data-request-access", "write");
     script.setAttribute("data-onauth", "onTelegramAuth(user)");
     ref.current.appendChild(script);
-  }, []);
+  }, [onError, onStarted]);
 
   return (
     <div className="space-y-2">
