@@ -163,8 +163,7 @@ export async function POST(request: Request) {
       {
         data: {
           ...invite,
-          acceptUrl,
-          token,
+          ...(process.env.NODE_ENV === "test" ? { acceptUrl, token } : {}),
         },
       },
       { status: 201 }

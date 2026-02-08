@@ -55,7 +55,6 @@ export async function POST(request: Request) {
         metadata: {
           invite: {
             tokenPrefix,
-            tokenHash,
             rateLimited: true,
           },
         },
