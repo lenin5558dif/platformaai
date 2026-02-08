@@ -8,9 +8,11 @@ import { ensureOrgSystemRolesAndPermissions } from "@/lib/org-rbac";
 import {
   getOrgDlpPolicy,
   getOrgModelPolicy,
-  mergeOrgSettings,
 } from "@/lib/org-settings";
 import ScimTokenManager from "@/components/org/ScimTokenManager";
+import InviteManager from "@/components/org/InviteManager";
+import RbacManager from "@/components/org/RbacManager";
+import QuotaDlpAuditManager from "@/components/org/QuotaDlpAuditManager";
 
 export const dynamic = "force-dynamic";
 
@@ -21,16 +23,6 @@ function parseOptionalNumber(value: FormDataEntryValue | null) {
 
   const parsed = Number(value);
   return Number.isNaN(parsed) ? null : parsed;
-}
-
-function parseListField(value: FormDataEntryValue | null) {
-  if (!value || typeof value !== "string") {
-    return [];
-  }
-  return value
-    .split(/\r?\n|,/)
-    .map((entry) => entry.trim())
-    .filter(Boolean);
 }
 
 async function createOrganization(formData: FormData) {
@@ -129,70 +121,6 @@ async function updateBudget(formData: FormData) {
       targetType: "organization",
       targetId: membership.orgId,
       metadata: { budget: budgetValue },
-    });
-
-    revalidatePath("/org");
-  } catch {
-    return;
-  }
-}
-
-async function addMember(formData: FormData) {
-  "use server";
-  try {
-    const session = await requireSession();
-    const authorizer = createAuthorizer(session);
-    const membership = await authorizer.requireOrgPermission(
-      ORG_PERMISSIONS.ORG_INVITE_CREATE
-    );
-
-  const email = String(formData.get("email") ?? "").trim();
-  const role = String(formData.get("role") ?? "EMPLOYEE") as
-    | "USER"
-    | "ADMIN"
-    | "EMPLOYEE";
-
-  if (!email) {
-    return;
-  }
-
-    const user = await prisma.user.upsert({
-      where: { email },
-      update: { orgId: membership.orgId, role },
-      create: { email, orgId: membership.orgId, role, balance: 0 },
-      select: { id: true, role: true },
-    });
-
-    const { rolesByName } = await ensureOrgSystemRolesAndPermissions(membership.orgId);
-    const assignedRoleName = role === "ADMIN" ? SYSTEM_ROLE_NAMES.ADMIN : SYSTEM_ROLE_NAMES.MEMBER;
-    const orgRole =
-      rolesByName.get(assignedRoleName) ?? rolesByName.get(SYSTEM_ROLE_NAMES.MEMBER);
-    if (orgRole) {
-      await prisma.orgMembership.upsert({
-        where: {
-          orgId_userId: {
-            orgId: membership.orgId,
-            userId: user.id,
-          },
-        },
-        update: {
-          roleId: orgRole.id,
-        },
-        create: {
-          orgId: membership.orgId,
-          userId: user.id,
-          roleId: orgRole.id,
-        },
-      });
-    }
-
-    await logAudit({
-      action: "USER_INVITED",
-      orgId: membership.orgId,
-      actorId: session.user.id,
-      targetType: "user",
-      targetId: email,
-      metadata: { role: user.role },
     });
 
     revalidatePath("/org");
@@ -461,93 +389,6 @@ async function toggleUserActive(userId: string, formData: FormData) {
   }
 }
 
-async function updateDlpPolicy(formData: FormData) {
-  "use server";
-  try {
-    const session = await requireSession();
-    const authorizer = createAuthorizer(session);
-    const membership = await authorizer.requireOrgPermission(
-      ORG_PERMISSIONS.ORG_POLICY_UPDATE
-    );
-
-    const enabled = String(formData.get("dlpEnabled")) === "true";
-    const actionRaw = String(formData.get("dlpAction") ?? "block");
-    const action = actionRaw === "redact" ? "redact" : "block";
-    const patterns = parseListField(formData.get("dlpPatterns"));
-
-    const org = await prisma.organization.findUnique({
-      where: { id: membership.orgId },
-      select: { settings: true },
-    });
-
-    const settings = mergeOrgSettings(org?.settings ?? null, {
-      dlpPolicy: { enabled, action, patterns },
-    });
-
-    await prisma.organization.update({
-      where: { id: membership.orgId },
-      data: { settings },
-    });
-
-    await logAudit({
-      action: "DLP_POLICY_UPDATED",
-      orgId: membership.orgId,
-      actorId: session.user.id,
-      targetType: "organization",
-      targetId: membership.orgId,
-      metadata: { enabled, action, patternsCount: patterns.length },
-    });
-
-    revalidatePath("/org");
-  } catch {
-    return;
-  }
-}
-
-async function updateModelPolicy(formData: FormData) {
-  "use server";
-  try {
-    const session = await requireSession();
-    const authorizer = createAuthorizer(session);
-    const membership = await authorizer.requireOrgPermission(
-      ORG_PERMISSIONS.ORG_POLICY_UPDATE
-    );
-
-    const modeRaw = String(formData.get("modelPolicyMode") ?? "denylist");
-    const mode = modeRaw === "allowlist" ? "allowlist" : "denylist";
-    const models = parseListField(formData.get("modelPolicyModels")).map((model) =>
-      model.toLowerCase()
-    );
-
-    const org = await prisma.organization.findUnique({
-      where: { id: membership.orgId },
-      select: { settings: true },
-    });
-
-    const settings = mergeOrgSettings(org?.settings ?? null, {
-      modelPolicy: { mode, models },
-    });
-
-    await prisma.organization.update({
-      where: { id: membership.orgId },
-      data: { settings },
-    });
-
-    await logAudit({
-      action: "MODEL_POLICY_UPDATED",
-      orgId: membership.orgId,
-      actorId: session.user.id,
-      targetType: "organization",
-      targetId: membership.orgId,
-      metadata: { mode, modelsCount: models.length },
-    });
-
-    revalidatePath("/org");
-  } catch {
-    return;
-  }
-}
-
 async function addSsoDomain(formData: FormData) {
   "use server";
   try {
@@ -706,6 +547,15 @@ export default async function OrgPage() {
     );
   }
 
+  const authorizer = createAuthorizer(session);
+  let actorPermissionKeys: string[] = [];
+  try {
+    const membership = await authorizer.requireOrgMembership(user.orgId);
+    actorPermissionKeys = Array.from(membership.permissionKeys);
+  } catch {
+    actorPermissionKeys = [];
+  }
+
   const org = await prisma.organization.findUnique({
     where: { id: user.orgId },
   });
@@ -727,6 +577,23 @@ export default async function OrgPage() {
     where: { orgId: user.orgId },
     orderBy: { name: "asc" },
   });
+
+  const orgRoles = await prisma.orgRole.findMany({
+    where: { orgId: user.orgId },
+    include: {
+      permissions: {
+        include: {
+          permission: {
+            select: { key: true },
+          },
+        },
+      },
+    },
+    orderBy: [{ isSystem: "desc" }, { name: "asc" }],
+  });
+
+  const inviteRoles = orgRoles.map((role) => ({ id: role.id, name: role.name }));
+  const canManageInvites = actorPermissionKeys.includes(ORG_PERMISSIONS.ORG_INVITE_CREATE);
 
   const costCenterCounts = new Map<string, number>();
   for (const member of members) {
@@ -1070,70 +937,22 @@ export default async function OrgPage() {
           </div>
         )}
 
-        {user.role === "ADMIN" && (
-          <div className="rounded-2xl bg-white/80 border border-white/50 shadow-glass-sm p-6">
-            <h2 className="text-lg font-semibold text-text-main mb-2 font-display">
-              Политики безопасности
-            </h2>
-            <p className="text-xs text-text-secondary mb-4">
-              Настройте DLP и разрешенные модели для всей организации.
-            </p>
-            <div className="grid gap-6 md:grid-cols-2">
-              <form action={updateDlpPolicy} className="space-y-3">
-                <h3 className="text-sm font-semibold text-text-main">DLP</h3>
-                <div className="flex flex-wrap items-center gap-3">
-                  <select
-                    name="dlpEnabled"
-                    defaultValue={dlpPolicy.enabled ? "true" : "false"}
-                    className="rounded-lg border border-gray-200 bg-white/70 px-3 py-2 text-sm"
-                  >
-                    <option value="true">Включено</option>
-                    <option value="false">Выключено</option>
-                  </select>
-                  <select
-                    name="dlpAction"
-                    defaultValue={dlpPolicy.action}
-                    className="rounded-lg border border-gray-200 bg-white/70 px-3 py-2 text-sm"
-                  >
-                    <option value="block">Блокировать</option>
-                    <option value="redact">Редактировать</option>
-                  </select>
-                </div>
-                <textarea
-                  name="dlpPatterns"
-                  rows={6}
-                  className="w-full rounded-lg border border-gray-200 bg-white/70 px-3 py-2 text-xs"
-                  placeholder="Регэксп на каждой строке"
-                  defaultValue={dlpPolicy.patterns.join("\n")}
-                />
-                <button className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-hover">
-                  Сохранить DLP
-                </button>
-              </form>
-              <form action={updateModelPolicy} className="space-y-3">
-                <h3 className="text-sm font-semibold text-text-main">Модельная политика</h3>
-                <select
-                  name="modelPolicyMode"
-                  defaultValue={modelPolicy.mode}
-                  className="rounded-lg border border-gray-200 bg-white/70 px-3 py-2 text-sm"
-                >
-                  <option value="allowlist">Allowlist</option>
-                  <option value="denylist">Denylist</option>
-                </select>
-                <textarea
-                  name="modelPolicyModels"
-                  rows={6}
-                  className="w-full rounded-lg border border-gray-200 bg-white/70 px-3 py-2 text-xs"
-                  placeholder="openai/gpt-4o\nanthropic/claude-3.5-sonnet"
-                  defaultValue={modelPolicy.models.join("\n")}
-                />
-                <button className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-hover">
-                  Сохранить политику
-                </button>
-              </form>
-            </div>
-          </div>
-        )}
+        <QuotaDlpAuditManager
+          actorPermissionKeys={actorPermissionKeys}
+          orgBudget={Number(org?.budget ?? 0)}
+          orgSpent={Number(org?.spent ?? 0)}
+          members={members.map((member) => ({
+            id: member.id,
+            email: member.email,
+            dailyLimit: member.dailyLimit === null ? null : Number(member.dailyLimit),
+            monthlyLimit: member.monthlyLimit === null ? null : Number(member.monthlyLimit),
+            dailySpent: Number(member.dailySpent ?? 0),
+            monthlySpent: Number(member.monthlySpent ?? 0),
+          }))}
+          costCenters={costCenters.map((center) => ({ id: center.id, name: center.name }))}
+          initialDlpPolicy={dlpPolicy}
+          initialModelPolicy={modelPolicy}
+        />
 
         {user.role === "ADMIN" && (
           <div className="rounded-2xl bg-white/80 border border-white/50 shadow-glass-sm p-6">
@@ -1210,32 +1029,34 @@ export default async function OrgPage() {
           </div>
         )}
 
-        {user.role === "ADMIN" && (
-          <div className="rounded-2xl bg-white/80 border border-white/50 shadow-glass-sm p-6">
-            <h2 className="text-lg font-semibold text-text-main mb-2 font-display">
-              Добавить сотрудника
-            </h2>
-            <form action={addMember} className="flex flex-wrap items-end gap-3">
-              <input
-                name="email"
-                type="email"
-                className="w-64 rounded-lg border border-gray-200 bg-white/70 px-3 py-2 text-sm"
-                placeholder="user@company.com"
-              />
-              <select
-                name="role"
-                className="rounded-lg border border-gray-200 bg-white/70 px-3 py-2 text-sm"
-                defaultValue="EMPLOYEE"
-              >
-                <option value="EMPLOYEE">EMPLOYEE</option>
-                <option value="ADMIN">ADMIN</option>
-                <option value="USER">USER</option>
-              </select>
-              <button className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-hover">
-                Добавить
-              </button>
-            </form>
-          </div>
+        <RbacManager
+          roles={orgRoles.map((role) => ({
+            id: role.id,
+            name: role.name,
+            isSystem: role.isSystem,
+            permissionKeys: role.permissions.map((item) => item.permission.key),
+          }))}
+          actorPermissionKeys={actorPermissionKeys}
+          costCenters={costCenters.map((center) => ({
+            id: center.id,
+            name: center.name,
+          }))}
+          policyContext={{
+            dlpEnabled: dlpPolicy.enabled,
+            dlpAction: dlpPolicy.action,
+            modelPolicyMode: modelPolicy.mode,
+            modelModelsCount: modelPolicy.models.length,
+          }}
+        />
+
+        {canManageInvites && (
+          <InviteManager
+            roleOptions={inviteRoles}
+            costCenterOptions={costCenters.map((center) => ({
+              id: center.id,
+              name: center.name,
+            }))}
+          />
         )}
 
         <div className="rounded-2xl bg-white/80 border border-white/50 shadow-glass-sm p-6">

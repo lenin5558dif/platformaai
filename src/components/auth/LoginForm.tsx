@@ -67,10 +67,12 @@ export default function LoginForm({
     initialFeedback?.state ?? "idle"
   );
   const [feedback, setFeedback] = useState<AuthFeedback | null>(initialFeedback);
+  const [telegramUnavailable, setTelegramUnavailable] = useState(false);
   const emailRef = useRef<HTMLInputElement>(null);
 
   const modeText = useMemo(() => getModeText(mode), [mode]);
   const hasAnyMethod = capabilities.email || capabilities.sso || capabilities.telegram;
+  const canUseTelegram = capabilities.telegram && !telegramUnavailable;
 
   useEffect(() => {
     if (!initialFeedback) {
@@ -256,7 +258,7 @@ export default function LoginForm({
           />
         )}
 
-        {capabilities.telegram && (
+        {canUseTelegram && (
           <>
             <div className="my-1 flex items-center gap-3">
               <div className="h-px flex-1 bg-gray-200" />
@@ -265,9 +267,18 @@ export default function LoginForm({
             </div>
             <TelegramLoginButton
               onStarted={() => emitAuthEvent("submit", "telegram")}
-              onError={() => emitAuthEvent("failure", "telegram")}
+              onError={() => {
+                setTelegramUnavailable(true);
+                emitAuthEvent("failure", "telegram");
+              }}
             />
           </>
+        )}
+
+        {capabilities.telegram && telegramUnavailable && (
+          <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            Вход через Telegram временно недоступен в этом окружении. Используйте email или SSO.
+          </p>
         )}
       </div>
     </div>

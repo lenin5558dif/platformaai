@@ -15,9 +15,15 @@ export async function GET() {
   try {
     const session = await requireSession();
     const authorizer = createAuthorizer(session);
-    const membership = await authorizer.requireOrgPermission(
-      ORG_PERMISSIONS.ORG_ROLE_CHANGE
-    );
+    const membership = await authorizer.requireOrgMembership();
+    const canReadRoles =
+      membership.permissionKeys.has(ORG_PERMISSIONS.ORG_ROLE_CHANGE) ||
+      membership.permissionKeys.has(ORG_PERMISSIONS.ORG_AUDIT_READ) ||
+      membership.permissionKeys.has(ORG_PERMISSIONS.ORG_ANALYTICS_READ);
+
+    if (!canReadRoles) {
+      throw new HttpError(403, "FORBIDDEN", "Missing permission to read roles");
+    }
 
     const roles = await prisma.orgRole.findMany({
       where: { orgId: membership.orgId },
