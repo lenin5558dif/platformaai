@@ -6,6 +6,10 @@ const state = vi.hoisted(() => ({
   rateLimitOk: true,
   createdRecord: null as any,
   deletedRecords: [] as any[],
+  userTelegramId: null as string | null,
+  userEmail: "user@example.com",
+  userOrgName: "Acme Org",
+  tokenRecord: null as any,
 }));
 
 const session = {
@@ -18,6 +22,7 @@ const session = {
 const prisma = {
   telegramLinkToken: {
     deleteMany: vi.fn(async () => ({ count: 0 })),
+    findFirst: vi.fn(async () => state.tokenRecord),
     create: vi.fn(async (data: any) => {
       state.createdRecord = {
         id: "token_1",
@@ -25,6 +30,13 @@ const prisma = {
       };
       return state.createdRecord;
     }),
+  },
+  user: {
+    findUnique: vi.fn(async () => ({
+      email: state.userEmail,
+      telegramId: state.userTelegramId,
+      org: { name: state.userOrgName },
+    })),
   },
 } as any;
 
@@ -53,6 +65,10 @@ describe("telegram token route", () => {
     state.authenticated = true;
     state.rateLimitOk = true;
     state.createdRecord = null;
+    state.userTelegramId = null;
+    state.userEmail = "user@example.com";
+    state.userOrgName = "Acme Org";
+    state.tokenRecord = null;
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2025-01-01T00:00:00.000Z"));
     vi.resetModules();
@@ -161,5 +177,69 @@ describe("telegram token route", () => {
       where: { userId: "user_1" },
     });
     expect(prisma.telegramLinkToken.create).toHaveBeenCalled();
+  });
+
+  test("GET returns linked state when telegram is linked", async () => {
+    state.userTelegramId = "123456";
+    const { GET } = await import("../src/app/api/telegram/token/route");
+    const req = new Request("http://localhost/api/telegram/token");
+
+    const res = await GET(req);
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.state).toBe("linked");
+    expect(json.telegramId).toBe("123456");
+    expect(json.maskedEmail).toContain("***");
+  });
+
+  test("GET returns awaiting state when token is active", async () => {
+    state.tokenRecord = {
+      id: "token_1",
+      usedAt: null,
+      expiresAt: new Date("2025-01-01T00:10:00.000Z"),
+    };
+    const { GET } = await import("../src/app/api/telegram/token/route");
+    const req = new Request(`http://localhost/api/telegram/token?token=${mockToken}`);
+
+    const res = await GET(req);
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.state).toBe("awaiting_bot_confirmation");
+  });
+
+  test("GET returns expired error when token is expired", async () => {
+    state.tokenRecord = {
+      id: "token_1",
+      usedAt: null,
+      expiresAt: new Date("2024-12-31T23:59:00.000Z"),
+    };
+    const { GET } = await import("../src/app/api/telegram/token/route");
+    const req = new Request(`http://localhost/api/telegram/token?token=${mockToken}`);
+
+    const res = await GET(req);
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.state).toBe("error");
+    expect(json.code).toBe("TOKEN_EXPIRED");
+  });
+
+  test("GET returns used/conflict code when token is used without linkage", async () => {
+    state.tokenRecord = {
+      id: "token_1",
+      usedAt: new Date("2025-01-01T00:05:00.000Z"),
+      expiresAt: new Date("2025-01-01T00:10:00.000Z"),
+    };
+    const { GET } = await import("../src/app/api/telegram/token/route");
+    const req = new Request(`http://localhost/api/telegram/token?token=${mockToken}`);
+
+    const res = await GET(req);
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.state).toBe("error");
+    expect(json.code).toBe("TOKEN_USED_OR_CONFLICT");
   });
 });
