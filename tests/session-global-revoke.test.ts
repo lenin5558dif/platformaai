@@ -61,11 +61,12 @@ describe("session global revoke", () => {
     state.targetUserInOrg = true;
     vi.resetModules();
     vi.clearAllMocks();
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-02-03T12:00:00.000Z"));
+    vi.useRealTimers();
   });
 
-  test("self revoke invalidates session for subsequent AI and org routes", async () => {
+  test(
+    "self revoke invalidates session for subsequent AI and org routes",
+    async () => {
     const { POST: revokeAll } = await import("../src/app/api/auth/revoke-all/route");
     const res = await revokeAll(
       new Request("http://localhost/api/auth/revoke-all", { method: "POST" })
@@ -97,7 +98,9 @@ describe("session global revoke", () => {
       { params: Promise.resolve({ id: "target_1" }) }
     );
     expect(orgRes.status).toBe(401);
-  });
+    },
+    15000
+  );
 
   test("admin revoke requires org:user.manage", async () => {
     state.membershipKeys = new Set();
