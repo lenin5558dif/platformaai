@@ -113,7 +113,7 @@ describe("session global revoke", () => {
       new Request("http://localhost/api/org/users/target_1/revoke-sessions", {
         method: "POST",
       }),
-      { params: { id: "target_1" } }
+      { params: Promise.resolve({ id: "target_1" }) }
     );
 
     expect(res.status).toBe(403);
@@ -130,7 +130,7 @@ describe("session global revoke", () => {
       new Request("http://localhost/api/org/users/target_1/revoke-sessions", {
         method: "POST",
       }),
-      { params: { id: "target_1" } }
+      { params: Promise.resolve({ id: "target_1" }) }
     );
 
     expect(res.status).toBe(404);
@@ -146,7 +146,7 @@ describe("session global revoke", () => {
         method: "POST",
         headers: { "user-agent": "vitest" },
       }),
-      { params: { id: "target_1" } }
+      { params: Promise.resolve({ id: "target_1" }) }
     );
 
     expect(res.status).toBe(200);
