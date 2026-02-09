@@ -165,7 +165,6 @@ export default function TelegramLinkSection(params: {
       });
       emitTelegramLinkingEvent("create_link", "success");
 
-      setViewState("awaiting_bot_confirmation");
       void checkStatus();
     } catch {
       setViewState("error");

@@ -13,20 +13,27 @@ export default function TelegramLoginButton({
   onError,
 }: TelegramLoginButtonProps) {
   const ref = useRef<HTMLDivElement>(null);
+  const onStartedRef = useRef(onStarted);
+  const onErrorRef = useRef(onError);
   const [isUnavailable, setIsUnavailable] = useState(false);
+
+  useEffect(() => {
+    onStartedRef.current = onStarted;
+    onErrorRef.current = onError;
+  }, [onError, onStarted]);
 
   useEffect(() => {
     const botName = process.env.NEXT_PUBLIC_TELEGRAM_LOGIN_BOT_NAME;
 
     if (!botName) {
       setIsUnavailable(true);
-      onError?.();
+      onErrorRef.current?.();
       return;
     }
 
     (window as typeof window & { onTelegramAuth?: (user: unknown) => void }).onTelegramAuth =
       (user) => {
-        onStarted?.();
+        onStartedRef.current?.();
         void signIn("credentials", {
           data: JSON.stringify(user),
           callbackUrl: "/",
@@ -45,7 +52,7 @@ export default function TelegramLoginButton({
         if (ref.current) {
           ref.current.innerHTML = "";
         }
-        onError?.();
+        onErrorRef.current?.();
       }
     });
 
@@ -60,7 +67,7 @@ export default function TelegramLoginButton({
     script.src = "https://telegram.org/js/telegram-widget.js?22";
     script.onerror = () => {
       setIsUnavailable(true);
-      onError?.();
+      onErrorRef.current?.();
     };
     script.setAttribute("data-telegram-login", botName);
     script.setAttribute("data-size", "large");
@@ -71,8 +78,10 @@ export default function TelegramLoginButton({
 
     return () => {
       observer.disconnect();
+      (window as typeof window & { onTelegramAuth?: (user: unknown) => void }).onTelegramAuth =
+        undefined;
     };
-  }, [onError, onStarted]);
+  }, []);
 
   if (isUnavailable) {
     return null;

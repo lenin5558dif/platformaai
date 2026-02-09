@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { Prisma } from "@prisma/client";
+import { AuditAction, Prisma } from "@prisma/client";
 import { z } from "zod";
 import { createAuthorizer, requireSession, toErrorResponse } from "@/lib/authorize";
 import { ORG_PERMISSIONS } from "@/lib/org-permissions";
@@ -85,10 +85,19 @@ export async function GET(request: Request) {
     }
 
     if (parsed.action) {
+      if (!(Object.values(AuditAction) as string[]).includes(parsed.action)) {
+        return NextResponse.json(
+          {
+            error: "Invalid action filter",
+            code: "INVALID_INPUT",
+          },
+          { status: 400 }
+        );
+      }
       where.action = parsed.action as Prisma.AuditLogWhereInput["action"];
     }
 
-    if (parsed.channel && (parsed.channel === "WEB" || parsed.channel === "TELEGRAM")) {
+    if (parsed.channel) {
       where.channel = parsed.channel as Prisma.AuditLogWhereInput["channel"];
     }
 

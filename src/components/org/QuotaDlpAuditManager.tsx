@@ -201,12 +201,24 @@ export default function QuotaDlpAuditManager({
     setMessage(null);
     emitGovernanceEvent("org-quota-governance-ui", "update-limit", "submit");
     try {
+      const dailyParsed = dailyLimit.trim() ? Number(dailyLimit) : null;
+      const monthlyParsed = monthlyLimit.trim() ? Number(monthlyLimit) : null;
+
+      if (
+        (dailyParsed !== null && !Number.isFinite(dailyParsed)) ||
+        (monthlyParsed !== null && !Number.isFinite(monthlyParsed))
+      ) {
+        setMessage(mapGovernanceError("INVALID_INPUT"));
+        emitGovernanceEvent("org-quota-governance-ui", "update-limit", "failure");
+        return;
+      }
+
       const response = await fetch(`/api/org/users/${memberId}/limits`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          dailyLimit: dailyLimit.trim() ? Number(dailyLimit) : null,
-          monthlyLimit: monthlyLimit.trim() ? Number(monthlyLimit) : null,
+          dailyLimit: dailyParsed,
+          monthlyLimit: monthlyParsed,
         }),
       });
 

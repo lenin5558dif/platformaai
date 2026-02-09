@@ -594,6 +594,12 @@ export default async function OrgPage() {
 
   const inviteRoles = orgRoles.map((role) => ({ id: role.id, name: role.name }));
   const canManageInvites = actorPermissionKeys.includes(ORG_PERMISSIONS.ORG_INVITE_CREATE);
+  const canReadGovernanceLimits =
+    actorPermissionKeys.includes(ORG_PERMISSIONS.ORG_LIMITS_MANAGE) ||
+    actorPermissionKeys.includes(ORG_PERMISSIONS.ORG_AUDIT_READ);
+  const canReadGovernancePolicies =
+    actorPermissionKeys.includes(ORG_PERMISSIONS.ORG_POLICY_UPDATE) ||
+    actorPermissionKeys.includes(ORG_PERMISSIONS.ORG_AUDIT_READ);
 
   const costCenterCounts = new Map<string, number>();
   for (const member of members) {
@@ -939,19 +945,27 @@ export default async function OrgPage() {
 
         <QuotaDlpAuditManager
           actorPermissionKeys={actorPermissionKeys}
-          orgBudget={Number(org?.budget ?? 0)}
-          orgSpent={Number(org?.spent ?? 0)}
-          members={members.map((member) => ({
-            id: member.id,
-            email: member.email,
-            dailyLimit: member.dailyLimit === null ? null : Number(member.dailyLimit),
-            monthlyLimit: member.monthlyLimit === null ? null : Number(member.monthlyLimit),
-            dailySpent: Number(member.dailySpent ?? 0),
-            monthlySpent: Number(member.monthlySpent ?? 0),
-          }))}
+          orgBudget={canReadGovernanceLimits ? Number(org?.budget ?? 0) : 0}
+          orgSpent={canReadGovernanceLimits ? Number(org?.spent ?? 0) : 0}
+          members={
+            canReadGovernanceLimits
+              ? members.map((member) => ({
+                  id: member.id,
+                  email: member.email,
+                  dailyLimit: member.dailyLimit === null ? null : Number(member.dailyLimit),
+                  monthlyLimit: member.monthlyLimit === null ? null : Number(member.monthlyLimit),
+                  dailySpent: Number(member.dailySpent ?? 0),
+                  monthlySpent: Number(member.monthlySpent ?? 0),
+                }))
+              : []
+          }
           costCenters={costCenters.map((center) => ({ id: center.id, name: center.name }))}
-          initialDlpPolicy={dlpPolicy}
-          initialModelPolicy={modelPolicy}
+          initialDlpPolicy={
+            canReadGovernancePolicies ? dlpPolicy : { enabled: false, action: "block", patterns: [] }
+          }
+          initialModelPolicy={
+            canReadGovernancePolicies ? modelPolicy : { mode: "allowlist", models: [] }
+          }
         />
 
         {user.role === "ADMIN" && (

@@ -119,7 +119,7 @@ export default function LoginForm({
         return;
       }
 
-      setStatus("success");
+      setStatus("sent");
       setFeedback({
         state: "sent",
         title: "Ссылка отправлена",
@@ -131,7 +131,6 @@ export default function LoginForm({
       });
       emitAuthEvent("success", "email");
       emitAuthEvent("sent", "email");
-      setStatus("sent");
     } catch {
       const nextFeedback = fallbackMessage();
       setFeedback(nextFeedback);
