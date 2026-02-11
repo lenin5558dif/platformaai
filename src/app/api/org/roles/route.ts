@@ -68,20 +68,21 @@ export async function POST(request: Request) {
     );
 
     const payload = createSchema.parse(await request.json());
+    const permissionKeys = [...new Set(payload.permissionKeys)];
 
     // Validate permission keys exist
-    if (payload.permissionKeys.length > 0) {
+    if (permissionKeys.length > 0) {
       const existingPermissions = await prisma.orgPermission.findMany({
         where: {
           key: {
-            in: payload.permissionKeys,
+            in: permissionKeys,
           },
         },
         select: { key: true },
       });
 
       const existingKeys = new Set(existingPermissions.map((p) => p.key));
-      const invalidKeys = payload.permissionKeys.filter((k) => !existingKeys.has(k));
+      const invalidKeys = permissionKeys.filter((k) => !existingKeys.has(k));
 
       if (invalidKeys.length > 0) {
         throw new HttpError(
@@ -116,11 +117,11 @@ export async function POST(request: Request) {
         },
       });
 
-      if (payload.permissionKeys.length > 0) {
+      if (permissionKeys.length > 0) {
         const permissions = await tx.orgPermission.findMany({
           where: {
             key: {
-              in: payload.permissionKeys,
+              in: permissionKeys,
             },
           },
           select: { id: true, key: true },
@@ -143,7 +144,7 @@ export async function POST(request: Request) {
       actorId: session.user.id,
       targetType: "role",
       targetId: role.id,
-      metadata: { name: payload.name, permissionKeys: payload.permissionKeys },
+      metadata: { name: payload.name, permissionKeys },
     });
 
     return NextResponse.json(
@@ -152,7 +153,7 @@ export async function POST(request: Request) {
           id: role.id,
           name: role.name,
           isSystem: false,
-          permissionKeys: payload.permissionKeys,
+          permissionKeys,
         },
       },
       { status: 201 }
