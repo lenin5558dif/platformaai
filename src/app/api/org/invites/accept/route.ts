@@ -55,7 +55,6 @@ export async function POST(request: Request) {
         metadata: {
           invite: {
             tokenPrefix,
-            tokenHash,
             rateLimited: true,
           },
         },
@@ -151,6 +150,18 @@ export async function POST(request: Request) {
       );
     }
 
+    let safeDefaultCostCenterId: string | null = null;
+    if (invite.defaultCostCenterId) {
+      const costCenter = await prisma.costCenter.findFirst({
+        where: {
+          id: invite.defaultCostCenterId,
+          orgId: invite.orgId,
+        },
+        select: { id: true },
+      });
+      safeDefaultCostCenterId = costCenter?.id ?? null;
+    }
+
     await prisma.$transaction(async (tx) => {
       if (!existingOrgId) {
         await tx.user.update({
@@ -169,13 +180,13 @@ export async function POST(request: Request) {
         },
         update: {
           roleId: invite.roleId,
-          defaultCostCenterId: invite.defaultCostCenterId,
+          defaultCostCenterId: safeDefaultCostCenterId,
         },
         create: {
           orgId: invite.orgId,
           userId: session.user.id,
           roleId: invite.roleId,
-          defaultCostCenterId: invite.defaultCostCenterId,
+          defaultCostCenterId: safeDefaultCostCenterId,
         },
       });
 
