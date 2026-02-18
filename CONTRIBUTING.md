@@ -1,6 +1,6 @@
 # Инструкция для разработчиков
 
-## Важно! Рабочий процесс
+## Рабочий процесс
 
 **НИКОГДА не пушьте напрямую в ветку `main`!**
 
@@ -8,30 +8,44 @@
 
 ## Начало работы
 
-1. Клонируйте репозиторий:
+### 1. Клонируйте репозиторий и переключитесь на develop:
+
 ```bash
 git clone https://github.com/lenin5558dif/platformaai.git
 cd platformaai
-```
-
-2. Переключитесь на ветку develop:
-```bash
 git checkout develop
 ```
 
-3. Установите зависимости:
+### 2. Настройте окружение:
+
 ```bash
-npm install
+cp .env.example .env.local
 ```
 
-4. Запустите сервер для разработки:
+Заполните `.env.local` необходимыми ключами. Обязательные:
+- `POSTGRES_PASSWORD` — пароль для PostgreSQL
+- `PGADMIN_PASSWORD` — пароль для pgAdmin
+- `AUTH_SECRET` — секрет для авторизации
+- `DATABASE_URL` — строка подключения к БД
+
+Для локальной разработки добавьте `AUTH_BYPASS=1` для обхода авторизации.
+
+### 3. Запустите инфраструктуру и проект:
+
 ```bash
+docker compose up -d
+npm install
+npm run prisma:generate
+npm run prisma:migrate
+npm run prisma:seed
 npm run dev
 ```
 
+Приложение доступно на `http://localhost:3000`.
+
 ## Ежедневная работа
 
-### 1. Перед началом работы - получите последние изменения:
+### 1. Перед началом работы — получите последние изменения:
 ```bash
 git checkout develop
 git pull origin develop
@@ -51,34 +65,42 @@ git push origin develop
 - Напишите владельцу репозитория для ревью
 - После одобрения владелец сольет PR
 
-## ❌ НЕ ДЕЛАЙТЕ ТАК:
+## Правила работы с ветками
 
+### НЕ делайте так:
 ```bash
-# НЕ переключайтесь на main
-git checkout main  # ❌ НЕТ!
-
-# НЕ пушьте в main
-git push origin main  # ❌ НЕТ!
-
-# НЕ мержите в main самостоятельно
-git merge develop  # ❌ НЕТ!
+git checkout main          # не переключайтесь на main
+git push origin main       # не пушьте в main
+git merge develop          # не мержите в main самостоятельно
 ```
 
-## ✅ ПРАВИЛЬНО:
-
+### Правильно:
 ```bash
-# Всегда работайте в develop
-git checkout develop  # ✅ ДА!
-git push origin develop  # ✅ ДА!
-
-# Для вливания в main - создайте Pull Request на GitHub
+git checkout develop       # всегда работайте в develop
+git push origin develop    # пушьте только в develop
+# для мержа в main — создайте Pull Request на GitHub
 ```
+
+## Безопасность
+
+- **Не коммитьте** файлы `.env`, `.env.local` и любые файлы с секретами
+- **Не добавляйте** API ключи, пароли и токены в код — используйте `process.env`
+- **Проверяйте** `git diff` перед коммитом на наличие случайных секретов
 
 ## Структура веток
 
-- `main` - стабильная версия (только для владельца)
-- `develop` - разработка (для всех разработчиков)
+- `main` — стабильная версия (только через Pull Request)
+- `develop` — разработка (для всех разработчиков)
+
+## Тесты
+
+Перед пушем рекомендуется запускать тесты:
+
+```bash
+npm test          # unit-тесты
+npm run lint      # линтер
+```
 
 ## Вопросы?
 
-Если возникли вопросы - свяжитесь с владельцем репозитория.
+Если возникли вопросы — свяжитесь с владельцем репозитория.

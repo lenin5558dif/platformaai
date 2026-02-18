@@ -181,6 +181,10 @@ async function backfillOrgMemberships() {
 }
 
 async function main() {
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("Seed script must not run in production!");
+  }
+
   await seedPermissions();
 
   const user = await prisma.user.upsert({

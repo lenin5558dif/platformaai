@@ -205,6 +205,11 @@ async function getBypassSession() {
     return null;
   }
 
+  if (process.env.NODE_ENV === "production") {
+    console.error("[SECURITY] AUTH_BYPASS is enabled in production! Ignoring.");
+    return null;
+  }
+
   const email = process.env.AUTH_BYPASS_EMAIL ?? "dev@platforma.local";
   const role = (process.env.AUTH_BYPASS_ROLE ?? "ADMIN") as UserRole;
   const balance = new Prisma.Decimal(
