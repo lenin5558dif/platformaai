@@ -212,6 +212,41 @@ describe("Org Roles API", () => {
       const response = await POST(request);
       expect(response.status).toBe(409);
     });
+
+    it("deduplicates permission keys to avoid unique conflicts", async () => {
+      mockAuthFn.mockResolvedValue(mockSession);
+      mockPrismaDb.orgMembership.findUnique.mockResolvedValue(mockAdminMembership);
+      mockPrismaDb.orgPermission.findMany.mockResolvedValue([
+        { id: "perm-1", key: ORG_PERMISSIONS.ORG_AUDIT_READ },
+      ]);
+      mockPrismaDb.orgRole.findUnique.mockResolvedValue(null);
+      mockPrismaDb.orgRole.create.mockResolvedValue({
+        id: "new-role-id",
+        name: "Auditor",
+        isSystem: false,
+      });
+      mockPrismaDb.$transaction = vi.fn((fn) => fn(mockPrismaDb));
+
+      const request = new Request("http://localhost/api/org/roles", {
+        method: "POST",
+        body: JSON.stringify({
+          name: "Auditor",
+          permissionKeys: [
+            ORG_PERMISSIONS.ORG_AUDIT_READ,
+            ORG_PERMISSIONS.ORG_AUDIT_READ,
+          ],
+        }),
+      });
+
+      const response = await POST(request);
+      const json = await response.json();
+
+      expect(response.status).toBe(201);
+      expect(json.data.permissionKeys).toEqual([ORG_PERMISSIONS.ORG_AUDIT_READ]);
+      expect(mockPrismaDb.orgRolePermission.createMany).toHaveBeenCalledWith({
+        data: [{ roleId: "new-role-id", permissionId: "perm-1" }],
+      });
+    });
   });
 
   describe("PATCH /api/org/roles/[id]", () => {
