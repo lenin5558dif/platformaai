@@ -24,6 +24,14 @@
 # misc
 .DS_Store
 *.pem
+*.log
+screen.png
+code.html
+front/
+
+# internal docs (not for public)
+Plan Platforma AI.md
+how much is it.md
 
 # debug
 npm-debug.log*
@@ -45,3 +53,5 @@ next-env.d.ts
 .opencode/
 openspec/
 AGENTS.md
+.github/agents/
+.github/prompts/

@@ -8,6 +8,7 @@ declare module "next-auth" {
       role: "USER" | "ADMIN" | "EMPLOYEE";
       orgId: string | null;
       balance: string;
+      emailVerifiedByProvider?: boolean | null;
     } & DefaultSession["user"];
   }
 
@@ -15,5 +16,6 @@ declare module "next-auth" {
     role: "USER" | "ADMIN" | "EMPLOYEE";
     orgId: string | null;
     balance: Prisma.Decimal | string;
+    emailVerifiedByProvider?: boolean | null;
   }
 }

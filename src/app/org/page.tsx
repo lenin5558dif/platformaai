@@ -2,6 +2,9 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
+import { createAuthorizer, requireSession } from "@/lib/authorize";
+import { ORG_PERMISSIONS, SYSTEM_ROLE_NAMES } from "@/lib/org-permissions";
+import { ensureOrgSystemRolesAndPermissions } from "@/lib/org-rbac";
 import {
   getOrgDlpPolicy,
   getOrgModelPolicy,
@@ -32,11 +35,8 @@ function parseListField(value: FormDataEntryValue | null) {
 
 async function createOrganization(formData: FormData) {
   "use server";
-  const session = await auth();
-
-  if (!session?.user?.id) {
-    return;
-  }
+  try {
+    const session = await requireSession();
 
   const name = String(formData.get("name") ?? "").trim();
   const budgetValue = parseOptionalNumber(formData.get("budget"));
@@ -45,83 +45,106 @@ async function createOrganization(formData: FormData) {
     return;
   }
 
-  const existing = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { orgId: true },
-  });
+    const existing = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { orgId: true },
+    });
 
-  if (existing?.orgId) {
+    if (existing?.orgId) {
+      return;
+    }
+
+    const org = await prisma.organization.create({
+      data: {
+        name,
+        ownerId: session.user.id,
+        budget: budgetValue ?? 0,
+      },
+    });
+
+    await prisma.user.update({
+      where: { id: session.user.id },
+      data: { orgId: org.id, role: "ADMIN" },
+    });
+
+    const { rolesByName } = await ensureOrgSystemRolesAndPermissions(org.id);
+    const ownerRole = rolesByName.get(SYSTEM_ROLE_NAMES.OWNER);
+    if (ownerRole) {
+      await prisma.orgMembership.upsert({
+        where: {
+          orgId_userId: {
+            orgId: org.id,
+            userId: session.user.id,
+          },
+        },
+        update: {
+          roleId: ownerRole.id,
+        },
+        create: {
+          orgId: org.id,
+          userId: session.user.id,
+          roleId: ownerRole.id,
+        },
+      });
+    }
+
+    await logAudit({
+      action: "ORG_UPDATED",
+      orgId: org.id,
+      actorId: session.user.id,
+      targetType: "organization",
+      targetId: org.id,
+      metadata: { created: true },
+    });
+
+    revalidatePath("/org");
+  } catch {
     return;
   }
-
-  const org = await prisma.organization.create({
-    data: {
-      name,
-      ownerId: session.user.id,
-      budget: budgetValue ?? 0,
-    },
-  });
-
-  await prisma.user.update({
-    where: { id: session.user.id },
-    data: { orgId: org.id, role: "ADMIN" },
-  });
-
-  await logAudit({
-    action: "ORG_UPDATED",
-    orgId: org.id,
-    actorId: session.user.id,
-    targetType: "organization",
-    targetId: org.id,
-    metadata: { created: true },
-  });
-
-  revalidatePath("/org");
 }
 
 async function updateBudget(formData: FormData) {
   "use server";
-  const session = await auth();
+  try {
+    const session = await requireSession();
+    const authorizer = createAuthorizer(session);
+    const membership = await authorizer.requireOrgPermission(
+      ORG_PERMISSIONS.ORG_BILLING_MANAGE
+    );
 
-  if (!session?.user?.id) {
+    const budgetValue = parseOptionalNumber(formData.get("budget"));
+    if (budgetValue === null) {
+      return;
+    }
+
+    await prisma.organization.update({
+      where: { id: membership.orgId },
+      data: { budget: budgetValue },
+    });
+
+    await logAudit({
+      action: "ORG_UPDATED",
+      orgId: membership.orgId,
+      actorId: session.user.id,
+      targetType: "organization",
+      targetId: membership.orgId,
+      metadata: { budget: budgetValue },
+    });
+
+    revalidatePath("/org");
+  } catch {
     return;
   }
-
-  const budgetValue = parseOptionalNumber(formData.get("budget"));
-
-  const admin = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { orgId: true, role: true },
-  });
-
-  if (!admin?.orgId || admin.role !== "ADMIN" || budgetValue === null) {
-    return;
-  }
-
-  await prisma.organization.update({
-    where: { id: admin.orgId },
-    data: { budget: budgetValue },
-  });
-
-  await logAudit({
-    action: "ORG_UPDATED",
-    orgId: admin.orgId,
-    actorId: session.user.id,
-    targetType: "organization",
-    targetId: admin.orgId,
-    metadata: { budget: budgetValue },
-  });
-
-  revalidatePath("/org");
 }
 
 async function addMember(formData: FormData) {
   "use server";
-  const session = await auth();
-
-  if (!session?.user?.id) {
-    return;
-  }
+  try {
+    const session = await requireSession();
+    const authorizer = createAuthorizer(session);
+    const membership = await authorizer.requireOrgPermission(
+      ORG_PERMISSIONS.ORG_INVITE_CREATE
+    );
 
   const email = String(formData.get("email") ?? "").trim();
   const role = String(formData.get("role") ?? "EMPLOYEE") as
@@ -133,502 +156,489 @@ async function addMember(formData: FormData) {
     return;
   }
 
-  const admin = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { orgId: true, role: true },
-  });
+    const user = await prisma.user.upsert({
+      where: { email },
+      update: { orgId: membership.orgId, role },
+      create: { email, orgId: membership.orgId, role, balance: 0 },
+      select: { id: true, role: true },
+    });
 
-  if (!admin?.orgId || admin.role !== "ADMIN") {
+    const { rolesByName } = await ensureOrgSystemRolesAndPermissions(membership.orgId);
+    const assignedRoleName = role === "ADMIN" ? SYSTEM_ROLE_NAMES.ADMIN : SYSTEM_ROLE_NAMES.MEMBER;
+    const orgRole =
+      rolesByName.get(assignedRoleName) ?? rolesByName.get(SYSTEM_ROLE_NAMES.MEMBER);
+    if (orgRole) {
+      await prisma.orgMembership.upsert({
+        where: {
+          orgId_userId: {
+            orgId: membership.orgId,
+            userId: user.id,
+          },
+        },
+        update: {
+          roleId: orgRole.id,
+        },
+        create: {
+          orgId: membership.orgId,
+          userId: user.id,
+          roleId: orgRole.id,
+        },
+      });
+    }
+
+    await logAudit({
+      action: "USER_INVITED",
+      orgId: membership.orgId,
+      actorId: session.user.id,
+      targetType: "user",
+      targetId: email,
+      metadata: { role: user.role },
+    });
+
+    revalidatePath("/org");
+  } catch {
     return;
   }
-
-  await prisma.user.upsert({
-    where: { email },
-    update: { orgId: admin.orgId, role },
-    create: { email, orgId: admin.orgId, role, balance: 0 },
-  });
-
-  await logAudit({
-    action: "USER_INVITED",
-    orgId: admin.orgId,
-    actorId: session.user.id,
-    targetType: "user",
-    targetId: email,
-    metadata: { role },
-  });
-
-  revalidatePath("/org");
 }
 
 async function updateLimits(userId: string, formData: FormData) {
   "use server";
-  const session = await auth();
+  try {
+    const session = await requireSession();
+    const authorizer = createAuthorizer(session);
+    const membership = await authorizer.requireOrgPermission(
+      ORG_PERMISSIONS.ORG_LIMITS_MANAGE
+    );
 
-  if (!session?.user?.id) {
+    const dailyLimit = parseOptionalNumber(formData.get("dailyLimit"));
+    const monthlyLimit = parseOptionalNumber(formData.get("monthlyLimit"));
+
+    await prisma.user.updateMany({
+      where: { id: userId, orgId: membership.orgId },
+      data: {
+        dailyLimit: dailyLimit ?? undefined,
+        monthlyLimit: monthlyLimit ?? undefined,
+      },
+    });
+
+    await logAudit({
+      action: "USER_UPDATED",
+      orgId: membership.orgId,
+      actorId: session.user.id,
+      targetType: "user",
+      targetId: userId,
+      metadata: { dailyLimit, monthlyLimit },
+    });
+
+    revalidatePath("/org");
+  } catch {
     return;
   }
-
-  const dailyLimit = parseOptionalNumber(formData.get("dailyLimit"));
-  const monthlyLimit = parseOptionalNumber(formData.get("monthlyLimit"));
-
-  const admin = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { orgId: true, role: true },
-  });
-
-  if (!admin?.orgId || admin.role !== "ADMIN") {
-    return;
-  }
-
-  await prisma.user.updateMany({
-    where: { id: userId, orgId: admin.orgId },
-    data: {
-      dailyLimit: dailyLimit ?? undefined,
-      monthlyLimit: monthlyLimit ?? undefined,
-    },
-  });
-
-  await logAudit({
-    action: "USER_UPDATED",
-    orgId: admin.orgId,
-    actorId: session.user.id,
-    targetType: "user",
-    targetId: userId,
-    metadata: { dailyLimit, monthlyLimit },
-  });
-
-  revalidatePath("/org");
 }
 
 async function transferCredits(userId: string, formData: FormData) {
   "use server";
-  const session = await auth();
+  try {
+    const session = await requireSession();
+    const authorizer = createAuthorizer(session);
+    const membership = await authorizer.requireOrgPermission(
+      ORG_PERMISSIONS.ORG_BILLING_MANAGE
+    );
 
-  if (!session?.user?.id) {
-    return;
-  }
-
-  const amount = parseOptionalNumber(formData.get("amount"));
-  if (!amount || amount <= 0) {
-    return;
-  }
-
-  const admin = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { id: true, orgId: true, role: true, balance: true, costCenterId: true },
-  });
-
-  if (!admin?.orgId || admin.role !== "ADMIN") {
-    return;
-  }
-
-  if (Number(admin.balance) < amount) {
-    return;
-  }
-
-  await prisma.$transaction(async (tx) => {
-    const member = await tx.user.findFirst({
-      where: { id: userId, orgId: admin.orgId },
-      select: { id: true, costCenterId: true },
-    });
-
-    if (!member) {
+    const amount = parseOptionalNumber(formData.get("amount"));
+    if (!amount || amount <= 0) {
       return;
     }
 
-    await tx.user.update({
-      where: { id: admin.id },
-      data: { balance: { decrement: amount } },
+    const admin = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { id: true, balance: true, costCenterId: true },
     });
 
-    await tx.user.update({
-      where: { id: member.id },
-      data: { balance: { increment: amount } },
+    if (!admin) {
+      return;
+    }
+
+    if (Number(admin.balance) < amount) {
+      return;
+    }
+
+    await prisma.$transaction(async (tx) => {
+      const member = await tx.user.findFirst({
+        where: { id: userId, orgId: membership.orgId },
+        select: { id: true, costCenterId: true },
+      });
+
+      if (!member) {
+        return;
+      }
+
+      await tx.user.update({
+        where: { id: admin.id },
+        data: { balance: { decrement: amount } },
+      });
+
+      await tx.user.update({
+        where: { id: member.id },
+        data: { balance: { increment: amount } },
+      });
+
+      await tx.transaction.create({
+        data: {
+          userId: admin.id,
+          costCenterId: admin.costCenterId ?? undefined,
+          amount,
+          type: "SPEND",
+          description: `Перевод сотруднику ${member.id}`,
+        },
+      });
+
+      await tx.transaction.create({
+        data: {
+          userId: member.id,
+          costCenterId: member.costCenterId ?? undefined,
+          amount,
+          type: "REFILL",
+          description: "Пополнение от администратора",
+        },
+      });
     });
 
-    await tx.transaction.create({
-      data: {
-        userId: admin.id,
-        costCenterId: admin.costCenterId ?? undefined,
-        amount,
-        type: "SPEND",
-        description: `Перевод сотруднику ${member.id}`,
-      },
+    await logAudit({
+      action: "USER_UPDATED",
+      orgId: membership.orgId,
+      actorId: session.user.id,
+      targetType: "user",
+      targetId: userId,
+      metadata: { transferAmount: amount },
     });
 
-    await tx.transaction.create({
-      data: {
-        userId: member.id,
-        costCenterId: member.costCenterId ?? undefined,
-        amount,
-        type: "REFILL",
-        description: "Пополнение от администратора",
-      },
-    });
-  });
-
-  await logAudit({
-    action: "USER_UPDATED",
-    orgId: admin.orgId,
-    actorId: session.user.id,
-    targetType: "user",
-    targetId: userId,
-    metadata: { transferAmount: amount },
-  });
-
-  revalidatePath("/org");
+    revalidatePath("/org");
+  } catch {
+    return;
+  }
 }
 
 async function createCostCenter(formData: FormData) {
   "use server";
-  const session = await auth();
+  try {
+    const session = await requireSession();
+    const authorizer = createAuthorizer(session);
+    const membership = await authorizer.requireOrgPermission(
+      ORG_PERMISSIONS.ORG_COST_CENTER_MANAGE
+    );
 
-  if (!session?.user?.id) {
+    const name = String(formData.get("name") ?? "").trim();
+    const code = String(formData.get("code") ?? "").trim();
+
+    if (!name) return;
+
+    const costCenter = await prisma.costCenter.create({
+      data: {
+        orgId: membership.orgId,
+        name,
+        code: code || null,
+      },
+    });
+
+    await logAudit({
+      action: "COST_CENTER_CREATED",
+      orgId: membership.orgId,
+      actorId: session.user.id,
+      targetType: "cost_center",
+      targetId: costCenter.id,
+      metadata: { name },
+    });
+
+    revalidatePath("/org");
+  } catch {
     return;
   }
-
-  const name = String(formData.get("name") ?? "").trim();
-  const code = String(formData.get("code") ?? "").trim();
-
-  if (!name) return;
-
-  const admin = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { orgId: true, role: true },
-  });
-
-  if (!admin?.orgId || admin.role !== "ADMIN") {
-    return;
-  }
-
-  const costCenter = await prisma.costCenter.create({
-    data: {
-      orgId: admin.orgId,
-      name,
-      code: code || null,
-    },
-  });
-
-  await logAudit({
-    action: "COST_CENTER_CREATED",
-    orgId: admin.orgId,
-    actorId: session.user.id,
-    targetType: "cost_center",
-    targetId: costCenter.id,
-    metadata: { name },
-  });
-
-  revalidatePath("/org");
 }
 
 async function deleteCostCenter(costCenterId: string) {
   "use server";
-  const session = await auth();
+  try {
+    const session = await requireSession();
+    const authorizer = createAuthorizer(session);
+    const membership = await authorizer.requireOrgPermission(
+      ORG_PERMISSIONS.ORG_COST_CENTER_MANAGE
+    );
 
-  if (!session?.user?.id) {
+    await prisma.costCenter.deleteMany({
+      where: { id: costCenterId, orgId: membership.orgId },
+    });
+
+    await logAudit({
+      action: "COST_CENTER_DELETED",
+      orgId: membership.orgId,
+      actorId: session.user.id,
+      targetType: "cost_center",
+      targetId: costCenterId,
+    });
+
+    revalidatePath("/org");
+  } catch {
     return;
   }
-
-  const admin = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { orgId: true, role: true },
-  });
-
-  if (!admin?.orgId || admin.role !== "ADMIN") {
-    return;
-  }
-
-  await prisma.costCenter.deleteMany({
-    where: { id: costCenterId, orgId: admin.orgId },
-  });
-
-  await logAudit({
-    action: "COST_CENTER_DELETED",
-    orgId: admin.orgId,
-    actorId: session.user.id,
-    targetType: "cost_center",
-    targetId: costCenterId,
-  });
-
-  revalidatePath("/org");
 }
 
 async function assignCostCenter(userId: string, formData: FormData) {
   "use server";
-  const session = await auth();
+  try {
+    const session = await requireSession();
+    const authorizer = createAuthorizer(session);
+    const membership = await authorizer.requireOrgPermission(
+      ORG_PERMISSIONS.ORG_COST_CENTER_MANAGE
+    );
 
-  if (!session?.user?.id) {
+    const value = String(formData.get("costCenterId") ?? "").trim();
+    let costCenterId: string | null = value.length ? value : null;
+
+    if (costCenterId) {
+      const exists = await prisma.costCenter.findFirst({
+        where: { id: costCenterId, orgId: membership.orgId },
+        select: { id: true },
+      });
+      if (!exists) {
+        costCenterId = null;
+      }
+    }
+
+    await prisma.user.updateMany({
+      where: { id: userId, orgId: membership.orgId },
+      data: { costCenterId },
+    });
+
+    await prisma.orgMembership.updateMany({
+      where: { orgId: membership.orgId, userId },
+      data: { defaultCostCenterId: costCenterId },
+    });
+
+    await logAudit({
+      action: "COST_CENTER_ASSIGNED",
+      orgId: membership.orgId,
+      actorId: session.user.id,
+      targetType: "user",
+      targetId: userId,
+      metadata: { costCenterId },
+    });
+
+    revalidatePath("/org");
+  } catch {
     return;
   }
-
-  const admin = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { orgId: true, role: true },
-  });
-
-  if (!admin?.orgId || admin.role !== "ADMIN") {
-    return;
-  }
-
-  const value = String(formData.get("costCenterId") ?? "").trim();
-  const costCenterId = value.length ? value : null;
-
-  await prisma.user.updateMany({
-    where: { id: userId, orgId: admin.orgId },
-    data: { costCenterId },
-  });
-
-  await logAudit({
-    action: "COST_CENTER_ASSIGNED",
-    orgId: admin.orgId,
-    actorId: session.user.id,
-    targetType: "user",
-    targetId: userId,
-    metadata: { costCenterId },
-  });
-
-  revalidatePath("/org");
 }
 
 async function toggleUserActive(userId: string, formData: FormData) {
   "use server";
-  const session = await auth();
+  try {
+    const session = await requireSession();
+    const authorizer = createAuthorizer(session);
+    const membership = await authorizer.requireOrgPermission(
+      ORG_PERMISSIONS.ORG_USER_MANAGE
+    );
 
-  if (!session?.user?.id) {
+    const isActive = String(formData.get("isActive")) === "true";
+
+    await prisma.user.updateMany({
+      where: { id: userId, orgId: membership.orgId },
+      data: { isActive },
+    });
+
+    await logAudit({
+      action: isActive ? "USER_UPDATED" : "USER_DISABLED",
+      orgId: membership.orgId,
+      actorId: session.user.id,
+      targetType: "user",
+      targetId: userId,
+      metadata: { isActive },
+    });
+
+    revalidatePath("/org");
+  } catch {
     return;
   }
-
-  const admin = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { orgId: true, role: true },
-  });
-
-  if (!admin?.orgId || admin.role !== "ADMIN") {
-    return;
-  }
-
-  const isActive = String(formData.get("isActive")) === "true";
-
-  await prisma.user.updateMany({
-    where: { id: userId, orgId: admin.orgId },
-    data: { isActive },
-  });
-
-  await logAudit({
-    action: isActive ? "USER_UPDATED" : "USER_DISABLED",
-    orgId: admin.orgId,
-    actorId: session.user.id,
-    targetType: "user",
-    targetId: userId,
-    metadata: { isActive },
-  });
-
-  revalidatePath("/org");
 }
 
 async function updateDlpPolicy(formData: FormData) {
   "use server";
-  const session = await auth();
+  try {
+    const session = await requireSession();
+    const authorizer = createAuthorizer(session);
+    const membership = await authorizer.requireOrgPermission(
+      ORG_PERMISSIONS.ORG_POLICY_UPDATE
+    );
 
-  if (!session?.user?.id) {
+    const enabled = String(formData.get("dlpEnabled")) === "true";
+    const actionRaw = String(formData.get("dlpAction") ?? "block");
+    const action = actionRaw === "redact" ? "redact" : "block";
+    const patterns = parseListField(formData.get("dlpPatterns"));
+
+    const org = await prisma.organization.findUnique({
+      where: { id: membership.orgId },
+      select: { settings: true },
+    });
+
+    const settings = mergeOrgSettings(org?.settings ?? null, {
+      dlpPolicy: { enabled, action, patterns },
+    });
+
+    await prisma.organization.update({
+      where: { id: membership.orgId },
+      data: { settings },
+    });
+
+    await logAudit({
+      action: "DLP_POLICY_UPDATED",
+      orgId: membership.orgId,
+      actorId: session.user.id,
+      targetType: "organization",
+      targetId: membership.orgId,
+      metadata: { enabled, action, patternsCount: patterns.length },
+    });
+
+    revalidatePath("/org");
+  } catch {
     return;
   }
-
-  const admin = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { orgId: true, role: true },
-  });
-
-  if (!admin?.orgId || admin.role !== "ADMIN") {
-    return;
-  }
-
-  const enabled = String(formData.get("dlpEnabled")) === "true";
-  const actionRaw = String(formData.get("dlpAction") ?? "block");
-  const action = actionRaw === "redact" ? "redact" : "block";
-  const patterns = parseListField(formData.get("dlpPatterns"));
-
-  const org = await prisma.organization.findUnique({
-    where: { id: admin.orgId },
-    select: { settings: true },
-  });
-
-  const settings = mergeOrgSettings(org?.settings ?? null, {
-    dlpPolicy: { enabled, action, patterns },
-  });
-
-  await prisma.organization.update({
-    where: { id: admin.orgId },
-    data: { settings },
-  });
-
-  await logAudit({
-    action: "DLP_POLICY_UPDATED",
-    orgId: admin.orgId,
-    actorId: session.user.id,
-    targetType: "organization",
-    targetId: admin.orgId,
-    metadata: { enabled, action, patternsCount: patterns.length },
-  });
-
-  revalidatePath("/org");
 }
 
 async function updateModelPolicy(formData: FormData) {
   "use server";
-  const session = await auth();
+  try {
+    const session = await requireSession();
+    const authorizer = createAuthorizer(session);
+    const membership = await authorizer.requireOrgPermission(
+      ORG_PERMISSIONS.ORG_POLICY_UPDATE
+    );
 
-  if (!session?.user?.id) {
+    const modeRaw = String(formData.get("modelPolicyMode") ?? "denylist");
+    const mode = modeRaw === "allowlist" ? "allowlist" : "denylist";
+    const models = parseListField(formData.get("modelPolicyModels")).map((model) =>
+      model.toLowerCase()
+    );
+
+    const org = await prisma.organization.findUnique({
+      where: { id: membership.orgId },
+      select: { settings: true },
+    });
+
+    const settings = mergeOrgSettings(org?.settings ?? null, {
+      modelPolicy: { mode, models },
+    });
+
+    await prisma.organization.update({
+      where: { id: membership.orgId },
+      data: { settings },
+    });
+
+    await logAudit({
+      action: "MODEL_POLICY_UPDATED",
+      orgId: membership.orgId,
+      actorId: session.user.id,
+      targetType: "organization",
+      targetId: membership.orgId,
+      metadata: { mode, modelsCount: models.length },
+    });
+
+    revalidatePath("/org");
+  } catch {
     return;
   }
-
-  const admin = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { orgId: true, role: true },
-  });
-
-  if (!admin?.orgId || admin.role !== "ADMIN") {
-    return;
-  }
-
-  const modeRaw = String(formData.get("modelPolicyMode") ?? "denylist");
-  const mode = modeRaw === "allowlist" ? "allowlist" : "denylist";
-  const models = parseListField(formData.get("modelPolicyModels")).map((model) =>
-    model.toLowerCase()
-  );
-
-  const org = await prisma.organization.findUnique({
-    where: { id: admin.orgId },
-    select: { settings: true },
-  });
-
-  const settings = mergeOrgSettings(org?.settings ?? null, {
-    modelPolicy: { mode, models },
-  });
-
-  await prisma.organization.update({
-    where: { id: admin.orgId },
-    data: { settings },
-  });
-
-  await logAudit({
-    action: "MODEL_POLICY_UPDATED",
-    orgId: admin.orgId,
-    actorId: session.user.id,
-    targetType: "organization",
-    targetId: admin.orgId,
-    metadata: { mode, modelsCount: models.length },
-  });
-
-  revalidatePath("/org");
 }
 
 async function addSsoDomain(formData: FormData) {
   "use server";
-  const session = await auth();
+  try {
+    const session = await requireSession();
+    const authorizer = createAuthorizer(session);
+    const membership = await authorizer.requireOrgPermission(
+      ORG_PERMISSIONS.ORG_SETTINGS_UPDATE
+    );
 
-  if (!session?.user?.id) {
+    const rawDomain = String(formData.get("domain") ?? "").trim().toLowerCase();
+    if (!rawDomain) return;
+    const ssoOnly = String(formData.get("ssoOnly")) === "true";
+
+    const domain = await prisma.orgDomain.upsert({
+      where: { domain: rawDomain },
+      update: { orgId: membership.orgId, ssoOnly },
+      create: { orgId: membership.orgId, domain: rawDomain, ssoOnly },
+    });
+
+    await logAudit({
+      action: "SSO_DOMAIN_UPDATED",
+      orgId: membership.orgId,
+      actorId: session.user.id,
+      targetType: "domain",
+      targetId: domain.id,
+      metadata: { domain: rawDomain, ssoOnly },
+    });
+
+    revalidatePath("/org");
+  } catch {
     return;
   }
-
-  const admin = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { orgId: true, role: true },
-  });
-
-  if (!admin?.orgId || admin.role !== "ADMIN") {
-    return;
-  }
-
-  const rawDomain = String(formData.get("domain") ?? "").trim().toLowerCase();
-  if (!rawDomain) return;
-  const ssoOnly = String(formData.get("ssoOnly")) === "true";
-
-  const domain = await prisma.orgDomain.upsert({
-    where: { domain: rawDomain },
-    update: { orgId: admin.orgId, ssoOnly },
-    create: { orgId: admin.orgId, domain: rawDomain, ssoOnly },
-  });
-
-  await logAudit({
-    action: "SSO_DOMAIN_UPDATED",
-    orgId: admin.orgId,
-    actorId: session.user.id,
-    targetType: "domain",
-    targetId: domain.id,
-    metadata: { domain: rawDomain, ssoOnly },
-  });
-
-  revalidatePath("/org");
 }
 
 async function updateSsoDomain(domainId: string, formData: FormData) {
   "use server";
-  const session = await auth();
+  try {
+    const session = await requireSession();
+    const authorizer = createAuthorizer(session);
+    const membership = await authorizer.requireOrgPermission(
+      ORG_PERMISSIONS.ORG_SETTINGS_UPDATE
+    );
 
-  if (!session?.user?.id) {
+    const ssoOnly = String(formData.get("ssoOnly")) === "true";
+
+    await prisma.orgDomain.updateMany({
+      where: { id: domainId, orgId: membership.orgId },
+      data: { ssoOnly },
+    });
+
+    await logAudit({
+      action: "SSO_DOMAIN_UPDATED",
+      orgId: membership.orgId,
+      actorId: session.user.id,
+      targetType: "domain",
+      targetId: domainId,
+      metadata: { ssoOnly },
+    });
+
+    revalidatePath("/org");
+  } catch {
     return;
   }
-
-  const admin = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { orgId: true, role: true },
-  });
-
-  if (!admin?.orgId || admin.role !== "ADMIN") {
-    return;
-  }
-
-  const ssoOnly = String(formData.get("ssoOnly")) === "true";
-
-  await prisma.orgDomain.updateMany({
-    where: { id: domainId, orgId: admin.orgId },
-    data: { ssoOnly },
-  });
-
-  await logAudit({
-    action: "SSO_DOMAIN_UPDATED",
-    orgId: admin.orgId,
-    actorId: session.user.id,
-    targetType: "domain",
-    targetId: domainId,
-    metadata: { ssoOnly },
-  });
-
-  revalidatePath("/org");
 }
 
 async function removeSsoDomain(domainId: string) {
   "use server";
-  const session = await auth();
+  try {
+    const session = await requireSession();
+    const authorizer = createAuthorizer(session);
+    const membership = await authorizer.requireOrgPermission(
+      ORG_PERMISSIONS.ORG_SETTINGS_UPDATE
+    );
 
-  if (!session?.user?.id) {
+    await prisma.orgDomain.deleteMany({
+      where: { id: domainId, orgId: membership.orgId },
+    });
+
+    await logAudit({
+      action: "SSO_DOMAIN_UPDATED",
+      orgId: membership.orgId,
+      actorId: session.user.id,
+      targetType: "domain",
+      targetId: domainId,
+      metadata: { removed: true },
+    });
+
+    revalidatePath("/org");
+  } catch {
     return;
   }
-
-  const admin = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { orgId: true, role: true },
-  });
-
-  if (!admin?.orgId || admin.role !== "ADMIN") {
-    return;
-  }
-
-  await prisma.orgDomain.deleteMany({
-    where: { id: domainId, orgId: admin.orgId },
-  });
-
-  await logAudit({
-    action: "SSO_DOMAIN_UPDATED",
-    orgId: admin.orgId,
-    actorId: session.user.id,
-    targetType: "domain",
-    targetId: domainId,
-    metadata: { removed: true },
-  });
-
-  revalidatePath("/org");
 }
 
 export default async function OrgPage() {

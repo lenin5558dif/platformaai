@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
+import { requireSession, createAuthorizer, toErrorResponse } from "@/lib/authorize";
+import { ORG_PERMISSIONS } from "@/lib/org-permissions";
 
 const schema = z.object({
   userId: z.string().min(1),
@@ -10,31 +11,29 @@ const schema = z.object({
 });
 
 export async function POST(request: Request) {
-  const session = await auth();
-
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const payload = schema.parse(await request.json());
-
-  const admin = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { id: true, role: true, orgId: true, balance: true, costCenterId: true },
-  });
-
-  if (!admin?.orgId || admin.role !== "ADMIN") {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-
-  if (Number(admin.balance) < payload.amount) {
-    return NextResponse.json({ error: "Insufficient balance" }, { status: 409 });
-  }
-
   try {
+    const session = await requireSession(request);
+    const authorizer = createAuthorizer(session);
+    const membership = await authorizer.requireOrgPermission(ORG_PERMISSIONS.ORG_BILLING_MANAGE);
+
+    const payload = schema.parse(await request.json());
+
+    const admin = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { id: true, balance: true, costCenterId: true },
+    });
+
+    if (!admin) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+
+    if (Number(admin.balance) < payload.amount) {
+      return NextResponse.json({ error: "Insufficient balance" }, { status: 409 });
+    }
+
     const result = await prisma.$transaction(async (tx) => {
       const member = await tx.user.findFirst({
-        where: { id: payload.userId, orgId: admin.orgId },
+        where: { id: payload.userId, orgId: membership.orgId },
         select: { id: true, costCenterId: true },
       });
 
@@ -77,7 +76,7 @@ export async function POST(request: Request) {
 
     await logAudit({
       action: "USER_UPDATED",
-      orgId: admin.orgId,
+      orgId: membership.orgId,
       actorId: session.user.id,
       targetType: "user",
       targetId: payload.userId,
@@ -102,6 +101,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    throw error;
+    return toErrorResponse(error);
   }
 }

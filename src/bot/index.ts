@@ -7,13 +7,24 @@ import {
   calculateCreditsFromStt,
   calculateCreditsFromUsage,
 } from "@/lib/pricing";
-import { spendCredits } from "@/lib/billing";
+import { preflightCredits, spendCredits } from "@/lib/billing";
 import { transcribeAudio } from "@/lib/whisper";
 import { logEvent } from "@/lib/telemetry";
-import { getOrgDlpPolicy, getOrgModelPolicy } from "@/lib/org-settings";
-import { evaluateDlp } from "@/lib/dlp";
-import { isModelAllowed } from "@/lib/model-policy";
 import { logAudit } from "@/lib/audit";
+import {
+  checkModelAllowed,
+  authorizeAiRequest,
+  type AuthorizationContext,
+} from "@/lib/ai-authorization";
+import { resolveOrgCostCenterId } from "@/lib/cost-centers";
+import {
+  getTelegramAccessBlockMessage,
+} from "@/lib/telegram-linking";
+import {
+  beginTelegramLink,
+  cancelTelegramLink,
+  confirmTelegramLink,
+} from "@/bot/telegram-linking-flow";
 
 const prisma = new PrismaClient();
 const botToken = process.env.TELEGRAM_BOT_TOKEN;
@@ -281,6 +292,8 @@ function getBillingErrorMessage(error: unknown) {
         return "Превышен месячный лимит.";
       case "ORG_BUDGET_EXCEEDED":
         return "Превышен бюджет организации.";
+      case "COST_CENTER_BUDGET_EXCEEDED":
+        return "Превышен бюджет центра затрат.";
       default:
         return "Не удалось списать кредиты.";
     }
@@ -304,12 +317,47 @@ async function getAuthorizedUser(ctx: Context): Promise<User | null> {
     return null;
   }
 
-  if (user.isActive === false) {
-    await ctx.reply("Ваш аккаунт деактивирован. Обратитесь к администратору.");
+  const block = getTelegramAccessBlockMessage({
+    isActive: user.isActive,
+    globalRevokeCounter: user.globalRevokeCounter,
+  });
+  if (block) {
+    await ctx.reply(block);
     return null;
   }
 
   return user;
+}
+
+async function resolveUserCostCenterId(user: User): Promise<string | undefined> {
+  if (!user.orgId) {
+    return undefined;
+  }
+
+  const membership = await prisma.orgMembership.findUnique({
+    where: {
+      orgId_userId: {
+        orgId: user.orgId,
+        userId: user.id,
+      },
+    },
+    select: { id: true, defaultCostCenterId: true },
+  });
+
+  if (!membership) {
+    return undefined;
+  }
+
+  try {
+    return await resolveOrgCostCenterId({
+      orgId: user.orgId,
+      membershipId: membership.id,
+      defaultCostCenterId: membership.defaultCostCenterId,
+      fallbackCostCenterId: user.costCenterId,
+    });
+  } catch {
+    return undefined;
+  }
 }
 
 async function handleUserPrompt(ctx: Context, user: User, content: string) {
@@ -317,61 +365,40 @@ async function handleUserPrompt(ctx: Context, user: User, content: string) {
   if (!clean) return;
 
   const modelId = await resolveModel(user.id);
+
+  const costCenterId = await resolveUserCostCenterId(user);
+
   const org = user.orgId
     ? await prisma.organization.findUnique({
         where: { id: user.orgId },
         select: { settings: true },
       })
     : null;
-  const modelPolicy = getOrgModelPolicy(org?.settings ?? null);
-  if (!isModelAllowed(modelId, modelPolicy)) {
-    await logAudit({
-      action: "POLICY_BLOCKED",
-      orgId: user.orgId,
-      actorId: user.id,
-      targetType: "model",
-      targetId: modelId,
-      metadata: { source: "telegram" },
-    });
-    await ctx.reply("Выбранная модель запрещена политикой организации.");
-    return;
-  }
 
-  const dlpPolicy = getOrgDlpPolicy(org?.settings ?? null);
-  const dlpOutcome = evaluateDlp(clean, dlpPolicy);
-  if (dlpOutcome.action === "block") {
-    await logAudit({
-      action: "POLICY_BLOCKED",
-      orgId: user.orgId,
-      actorId: user.id,
-      targetType: "dlp",
-      targetId: null,
-      metadata: { source: "telegram", matches: dlpOutcome.matches },
-    });
-    await ctx.reply("Запрос отклонен политикой DLP.");
+  const authCtx: AuthorizationContext = {
+    userId: user.id,
+    orgId: user.orgId,
+    settings: org?.settings ?? null,
+    source: "telegram",
+  };
+
+  const authResult = await authorizeAiRequest(modelId, clean, authCtx);
+  if (!authResult.allowed) {
+    if (authResult.reason === "model_blocked") {
+      await ctx.reply("Выбранная модель запрещена политикой организации.");
+    } else {
+      await ctx.reply("Запрос отклонен политикой DLP.");
+    }
     return;
   }
-  if (dlpOutcome.action === "redact") {
-    await logAudit({
-      action: "POLICY_BLOCKED",
-      orgId: user.orgId,
-      actorId: user.id,
-      targetType: "dlp",
-      targetId: null,
-      metadata: { source: "telegram", action: "redact" },
-    });
-  }
-  const finalContent =
-    dlpOutcome.action === "redact" && dlpOutcome.redactedText
-      ? dlpOutcome.redactedText
-      : clean;
+  const finalContent = authResult.finalContent;
   const chat = await getOrCreateChat(user.id, modelId);
 
   await prisma.message.create({
     data: {
       chatId: chat.id,
       userId: user.id,
-      costCenterId: user.costCenterId ?? undefined,
+      costCenterId,
       role: "USER",
       content: finalContent,
       tokenCount: 0,
@@ -382,6 +409,13 @@ async function handleUserPrompt(ctx: Context, user: User, content: string) {
 
   const history = await fetchChatMessages(chat.id);
   const trimmed = trimMessages(history);
+
+  try {
+    await preflightCredits({ userId: user.id, minAmount: 1 });
+  } catch (error) {
+    await ctx.reply(getBillingErrorMessage(error));
+    return;
+  }
 
   const stopTyping = startTyping(ctx);
   const placeholder = await ctx.reply("⏳ Готовлю ответ...");
@@ -530,6 +564,7 @@ async function handleUserPrompt(ctx: Context, user: User, content: string) {
             userId: user.id,
             amount: creditsResult.credits,
             description: `OpenRouter ${modelId}`,
+            costCenterId,
           });
         }
       } catch (error) {
@@ -548,7 +583,7 @@ async function handleUserPrompt(ctx: Context, user: User, content: string) {
       data: {
         chatId: chat.id,
         userId: user.id,
-        costCenterId: user.costCenterId ?? undefined,
+        costCenterId,
         role: "ASSISTANT",
         content: assistantText,
         tokenCount,
@@ -587,49 +622,17 @@ bot.start(async (ctx) => {
   const [, token] = text.split(" ");
 
   if (token) {
-    await ctx.reply("Токен получен. Идет привязка аккаунта...");
-
-    const record = await prisma.telegramLinkToken.findUnique({
-      where: { token },
-      include: { user: true },
-    });
-
-    if (!record || record.usedAt || record.expiresAt < new Date()) {
-      await ctx.reply("Токен недействителен или истек. Сгенерируйте новый.");
+    const res = await beginTelegramLink({ prisma, token });
+    if (!res.ok) {
+      await ctx.reply(res.message);
       return;
     }
-
-    const telegramId = ctx.from?.id?.toString();
-    if (!telegramId) {
-      await ctx.reply("Не удалось получить Telegram ID.");
-      return;
-    }
-
-    const existing = await prisma.user.findUnique({
-      where: { telegramId },
-      select: { id: true },
-    });
-
-    if (existing && existing.id !== record.userId) {
-      await ctx.reply("Этот Telegram уже привязан к другому аккаунту.");
-      return;
-    }
-
-    await prisma.user.update({
-      where: { id: record.userId },
-      data: { telegramId },
-    });
-
-    await prisma.telegramLinkToken.update({
-      where: { id: record.id },
-      data: { usedAt: new Date() },
-    });
 
     await ctx.reply(
-      "Аккаунт привязан. Выберите модель:",
+      res.prompt.text,
       Markup.inlineKeyboard([
-        Markup.button.callback("GPT-4o", "model:openai/gpt-4o"),
-        Markup.button.callback("Claude 3.5", "model:anthropic/claude-3.5-sonnet"),
+        Markup.button.callback("Подтвердить", res.prompt.confirmData),
+        Markup.button.callback("Отменить", res.prompt.cancelData),
       ])
     );
     return;
@@ -641,30 +644,26 @@ bot.start(async (ctx) => {
 });
 
 bot.action(/model:(.+)/, async (ctx) => {
-  const telegramId = ctx.from?.id?.toString();
-  if (!telegramId) return;
+  const user = await getAuthorizedUser(ctx);
+  if (!user) return;
 
-  const user = await prisma.user.findUnique({
-    where: { telegramId },
-    select: { id: true, orgId: true, org: { select: { settings: true } } },
-  });
-
-  if (!user) {
-    await ctx.reply("Сначала авторизуйтесь через /start <token>.");
-    return;
-  }
+  const org = user.orgId
+    ? await prisma.organization.findUnique({
+        where: { id: user.orgId },
+        select: { settings: true },
+      })
+    : null;
 
   const modelId = ctx.match[1];
-  const modelPolicy = getOrgModelPolicy(user.org?.settings ?? null);
-  if (!isModelAllowed(modelId, modelPolicy)) {
-    await logAudit({
-      action: "POLICY_BLOCKED",
-      orgId: user.orgId,
-      actorId: user.id,
-      targetType: "model",
-      targetId: modelId,
-      metadata: { source: "telegram" },
-    });
+  const authCtx: AuthorizationContext = {
+    userId: user.id,
+    orgId: user.orgId,
+    settings: org?.settings ?? null,
+    source: "telegram",
+  };
+
+  const modelResult = await checkModelAllowed(modelId, authCtx);
+  if (!modelResult.allowed) {
     await ctx.answerCbQuery("Эта модель запрещена политикой организации.", {
       show_alert: true,
     });
@@ -673,6 +672,50 @@ bot.action(/model:(.+)/, async (ctx) => {
 
   await updateSettings(user.id, { telegramModel: modelId });
   await ctx.answerCbQuery(`Модель ${modelId} выбрана`);
+});
+
+bot.action(/^tg_link_confirm:(.+)$/, async (ctx) => {
+  const tokenId = Array.isArray(ctx.match) ? ctx.match[1] : undefined;
+  if (!tokenId) return;
+
+  await ctx.answerCbQuery();
+
+  const telegramId = ctx.from?.id?.toString();
+  if (!telegramId) {
+    await ctx.reply("Не удалось получить Telegram ID.");
+    return;
+  }
+
+  const res = await confirmTelegramLink({
+    prisma,
+    tokenId,
+    telegramId,
+    logAudit,
+  });
+
+  if (!res.ok) {
+    await ctx.reply(res.message);
+    return;
+  }
+
+  await ctx.reply(
+    "Аккаунт привязан. Выберите модель:",
+    Markup.inlineKeyboard([
+      Markup.button.callback("GPT-4o", "model:openai/gpt-4o"),
+      Markup.button.callback("Claude 3.5", "model:anthropic/claude-3.5-sonnet"),
+    ])
+  );
+});
+
+bot.action(/^tg_link_cancel:(.+)$/, async (ctx) => {
+  const tokenId = Array.isArray(ctx.match) ? ctx.match[1] : undefined;
+  if (!tokenId) return;
+
+  await ctx.answerCbQuery();
+
+  await cancelTelegramLink({ prisma, tokenId });
+
+  await ctx.reply("Привязка отменена.");
 });
 
 bot.on("text", async (ctx) => {
@@ -723,10 +766,12 @@ bot.on("voice", async (ctx) => {
 
     if (sttCost.credits > 0) {
       try {
+        const costCenterId = await resolveUserCostCenterId(user);
         await spendCredits({
           userId: user.id,
           amount: sttCost.credits,
           description: `Whisper STT (${voice.duration ?? 0}s)`,
+          costCenterId,
         });
       } catch (error) {
         await logEvent({
