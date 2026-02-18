@@ -75,9 +75,7 @@ When an endpoint returns **429 Too Many Requests**, it includes:
       "email": "user@example.com",
       "roleId": "role_1",
       "tokenPrefix": "abcd1234",
-      "expiresAt": "2026-02-10T12:00:00Z",
-      "acceptUrl": "https://.../api/org/invites/accept?token=...",
-      "token": "..."
+      "expiresAt": "2026-02-10T12:00:00Z"
     }
   }
   ```

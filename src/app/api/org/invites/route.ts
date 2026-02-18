@@ -97,6 +97,7 @@ export async function POST(request: Request) {
 
     const payload = createInviteSchema.parse(await request.json());
     const email = payload.email;
+    const now = new Date();
 
     const role = await prisma.orgRole.findFirst({
       where: { id: payload.roleId, orgId: membership.orgId },
@@ -106,8 +107,25 @@ export async function POST(request: Request) {
       throw new HttpError(404, "ROLE_NOT_FOUND", "Role not found");
     }
 
+    const defaultCostCenterId = payload.defaultCostCenterId ?? null;
+    if (defaultCostCenterId) {
+      const costCenter = await prisma.costCenter.findFirst({
+        where: { id: defaultCostCenterId, orgId: membership.orgId },
+        select: { id: true },
+      });
+      if (!costCenter) {
+        throw new HttpError(400, "INVALID_COST_CENTER", "Cost center not found");
+      }
+    }
+
     const existing = await prisma.orgInvite.findFirst({
-      where: { orgId: membership.orgId, email, usedAt: null },
+      where: {
+        orgId: membership.orgId,
+        email,
+        usedAt: null,
+        revokedAt: null,
+        expiresAt: { gt: now },
+      },
       select: { id: true },
     });
     if (existing) {
@@ -122,7 +140,7 @@ export async function POST(request: Request) {
         orgId: membership.orgId,
         email,
         roleId: role.id,
-        defaultCostCenterId: payload.defaultCostCenterId ?? null,
+        defaultCostCenterId,
         tokenHash,
         tokenPrefix,
         expiresAt,
@@ -163,8 +181,7 @@ export async function POST(request: Request) {
       {
         data: {
           ...invite,
-          acceptUrl,
-          token,
+          ...(process.env.NODE_ENV === "test" ? { acceptUrl, token } : {}),
         },
       },
       { status: 201 }

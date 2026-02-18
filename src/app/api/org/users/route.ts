@@ -5,6 +5,7 @@ import { logAudit } from "@/lib/audit";
 import { createAuthorizer, requireSession, toErrorResponse } from "@/lib/authorize";
 import { ORG_PERMISSIONS, SYSTEM_ROLE_NAMES } from "@/lib/org-permissions";
 import { ensureOrgSystemRolesAndPermissions } from "@/lib/org-rbac";
+import { HttpError } from "@/lib/http-error";
 
 const inviteSchema = z.object({
   email: z.string().email(),
@@ -15,30 +16,62 @@ export async function GET() {
   try {
     const session = await requireSession();
     const authorizer = createAuthorizer(session);
-    const membership = await authorizer.requireOrgPermission(
-      ORG_PERMISSIONS.ORG_USER_MANAGE
-    );
+    const membership = await authorizer.requireOrgMembership();
+    const canReadUsers =
+      membership.permissionKeys.has(ORG_PERMISSIONS.ORG_USER_MANAGE) ||
+      membership.permissionKeys.has(ORG_PERMISSIONS.ORG_ROLE_CHANGE) ||
+      membership.permissionKeys.has(ORG_PERMISSIONS.ORG_AUDIT_READ) ||
+      membership.permissionKeys.has(ORG_PERMISSIONS.ORG_ANALYTICS_READ);
 
-    const users = await prisma.user.findMany({
+    if (!canReadUsers) {
+      throw new HttpError(403, "FORBIDDEN", "Missing permission to read org users");
+    }
+
+    const orgMemberships = await prisma.orgMembership.findMany({
       where: { orgId: membership.orgId },
       orderBy: { createdAt: "asc" },
-      select: {
-        id: true,
-        email: true,
-        role: true,
-        balance: true,
-        dailyLimit: true,
-        monthlyLimit: true,
-        isActive: true,
-        costCenterId: true,
+      include: {
+        role: {
+          include: {
+            permissions: {
+              include: {
+                permission: {
+                  select: { key: true },
+                },
+              },
+            },
+          },
+        },
+        user: {
+          select: {
+            id: true,
+            email: true,
+            role: true,
+            balance: true,
+            dailyLimit: true,
+            monthlyLimit: true,
+            isActive: true,
+            costCenterId: true,
+          },
+        },
       },
     });
 
-    const data = users.map((entry) => ({
-      ...entry,
-      balance: entry.balance.toString(),
-      dailyLimit: entry.dailyLimit?.toString() ?? null,
-      monthlyLimit: entry.monthlyLimit?.toString() ?? null,
+    const data = orgMemberships.map((entry) => ({
+      id: entry.user.id,
+      email: entry.user.email,
+      legacyRole: entry.user.role,
+      balance: entry.user.balance.toString(),
+      dailyLimit: entry.user.dailyLimit?.toString() ?? null,
+      monthlyLimit: entry.user.monthlyLimit?.toString() ?? null,
+      isActive: entry.user.isActive,
+      costCenterId: entry.user.costCenterId,
+      defaultCostCenterId: entry.defaultCostCenterId,
+      role: {
+        id: entry.role.id,
+        name: entry.role.name,
+        permissionKeys: entry.role.permissions.map((item) => item.permission.key),
+      },
     }));
 
     return NextResponse.json({ data });

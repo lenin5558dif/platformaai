@@ -39,6 +39,7 @@ const db = {
   invites: new Map<string, any>(),
   memberships: new Map<string, any>(),
   users: new Map<string, any>(),
+  costCenters: new Map<string, any>(),
 };
 
 let idSeq = 0;
@@ -57,6 +58,16 @@ const prisma = {
       return args.select ? { id: role.id, name: role.name } : role;
     }),
   },
+  costCenter: {
+    findFirst: vi.fn(async (args: any) => {
+      for (const center of db.costCenters.values()) {
+        if (args.where?.id && center.id !== args.where.id) continue;
+        if (args.where?.orgId && center.orgId !== args.where.orgId) continue;
+        return args.select ? { id: center.id } : center;
+      }
+      return null;
+    }),
+  },
   orgInvite: {
     findFirst: vi.fn(async (args: any) => {
       for (const inv of db.invites.values()) {
@@ -66,6 +77,10 @@ const prisma = {
         if (Object.prototype.hasOwnProperty.call(args.where, "usedAt")) {
           if (args.where.usedAt === null && inv.usedAt !== null) continue;
         }
+        if (Object.prototype.hasOwnProperty.call(args.where, "revokedAt")) {
+          if (args.where.revokedAt === null && inv.revokedAt !== null) continue;
+        }
+        if (args.where?.expiresAt?.gt && !(inv.expiresAt > args.where.expiresAt.gt)) continue;
         return args.select ? { id: inv.id } : inv;
       }
       return null;
@@ -223,6 +238,7 @@ describe("org invites routes", () => {
     db.memberships.clear();
     db.users.clear();
     db.roles.clear();
+    db.costCenters.clear();
     idSeq = 0;
     state.authenticated = true;
     state.orgId = "org_1";
@@ -234,6 +250,8 @@ describe("org invites routes", () => {
     state.rateLimitRemaining = 9;
     state.rateLimitResetAt = Date.now() + 3600000;
     db.roles.set("role_1", { id: "role_1", orgId: "org_1", name: "Member" });
+    db.costCenters.set("cc_1", { id: "cc_1", orgId: "org_1", name: "Main" });
+    db.costCenters.set("cc_other", { id: "cc_other", orgId: "org_2", name: "Other" });
     vi.resetModules();
     vi.clearAllMocks();
   });
@@ -281,6 +299,70 @@ describe("org invites routes", () => {
     expect(res2.status).toBe(409);
     const body2 = await jsonResponse(res2);
     expect(body2.code).toBe("INVITE_EXISTS");
+  });
+
+  test("can create new invite after previous was revoked", async () => {
+    const { POST } = await import("../src/app/api/org/invites/route");
+
+    const first = await POST(
+      new Request("http://localhost/api/org/invites", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: "recreate@b.com", roleId: "role_1" }),
+      })
+    );
+    const firstBody = await jsonResponse(first);
+    db.invites.get(firstBody.data.id).revokedAt = new Date();
+
+    const second = await POST(
+      new Request("http://localhost/api/org/invites", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: "recreate@b.com", roleId: "role_1" }),
+      })
+    );
+    expect(second.status).toBe(201);
+  });
+
+  test("can create new invite after previous expired", async () => {
+    const { POST } = await import("../src/app/api/org/invites/route");
+
+    const first = await POST(
+      new Request("http://localhost/api/org/invites", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: "expired@b.com", roleId: "role_1" }),
+      })
+    );
+    const firstBody = await jsonResponse(first);
+    db.invites.get(firstBody.data.id).expiresAt = new Date(Date.now() - 60_000);
+
+    const second = await POST(
+      new Request("http://localhost/api/org/invites", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: "expired@b.com", roleId: "role_1" }),
+      })
+    );
+    expect(second.status).toBe(201);
+  });
+
+  test("create rejects out-of-org defaultCostCenterId", async () => {
+    const { POST } = await import("../src/app/api/org/invites/route");
+    const res = await POST(
+      new Request("http://localhost/api/org/invites", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          email: "cc@b.com",
+          roleId: "role_1",
+          defaultCostCenterId: "cc_other",
+        }),
+      })
+    );
+    expect(res.status).toBe(400);
+    const body = await jsonResponse(res);
+    expect(body.code).toBe("INVALID_COST_CENTER");
   });
 
   test("revoke marks invite revoked and blocks accept", async () => {
@@ -379,6 +461,41 @@ describe("org invites routes", () => {
 
     const membershipKey = `${state.orgId}:${state.userId}`;
     expect(db.memberships.get(membershipKey)).toBeTruthy();
+  });
+
+  test("accept falls back to null when invite defaultCostCenterId is invalid", async () => {
+    const { POST: create } = await import("../src/app/api/org/invites/route");
+    const created = await create(
+      new Request("http://localhost/api/org/invites", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          email: "ccsafe@b.com",
+          roleId: "role_1",
+          defaultCostCenterId: "cc_1",
+        }),
+      })
+    );
+    const createdBody = await jsonResponse(created);
+    const token = createdBody.data.token;
+    const inviteId = createdBody.data.id;
+
+    db.costCenters.delete("cc_1");
+    state.email = "ccsafe@b.com";
+
+    const { POST: accept } = await import("../src/app/api/org/invites/accept/route");
+    const res = await accept(
+      new Request("http://localhost/api/org/invites/accept", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ token }),
+      })
+    );
+
+    expect(res.status).toBe(200);
+    expect(db.invites.get(inviteId)?.usedAt).not.toBeNull();
+    const membershipKey = `${state.orgId}:${state.userId}`;
+    expect(db.memberships.get(membershipKey)?.defaultCostCenterId).toBeNull();
   });
 
   test("resend rotates token (tokenHash/tokenPrefix change)", async () => {
