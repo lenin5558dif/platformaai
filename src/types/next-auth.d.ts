@@ -9,6 +9,7 @@ declare module "next-auth" {
       orgId: string | null;
       balance: string;
       emailVerifiedByProvider?: boolean | null;
+      sessionTokenIssuedAt?: number | null;
     } & DefaultSession["user"];
   }
 
@@ -17,5 +18,15 @@ declare module "next-auth" {
     orgId: string | null;
     balance: Prisma.Decimal | string;
     emailVerifiedByProvider?: boolean | null;
+  }
+}
+
+declare module "next-auth/jwt" {
+  interface JWT {
+    role?: "USER" | "ADMIN" | "EMPLOYEE";
+    orgId?: string | null;
+    balance?: string;
+    emailVerifiedByProvider?: boolean | null;
+    sessionIssuedAt?: number;
   }
 }

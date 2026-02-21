@@ -1,15 +1,15 @@
 import NextAuth from "next-auth";
 import type { Session } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
-import type { EmailConfig, OIDCConfig } from "@auth/core/providers";
+import type { OIDCConfig } from "@auth/core/providers";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { prisma } from "@/lib/db";
-import { sendMagicLink } from "@/lib/unisender";
 import { verifyTelegramLogin, type TelegramAuthPayload } from "@/lib/telegram";
 import { z } from "zod";
 import { Prisma, UserRole } from "@prisma/client";
 import { SYSTEM_ROLE_NAMES } from "@/lib/org-permissions";
 import { ensureOrgSystemRolesAndPermissions } from "@/lib/org-rbac";
+import { compare } from "bcryptjs";
 
 const telegramSchema = z.object({
   id: z.number(),
@@ -19,6 +19,11 @@ const telegramSchema = z.object({
   photo_url: z.string().optional(),
   auth_date: z.number(),
   hash: z.string(),
+});
+
+const credentialsSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(8).max(72),
 });
 
 const ssoProvider: OIDCConfig<Record<string, unknown>> | null =
@@ -38,20 +43,76 @@ const ssoProvider: OIDCConfig<Record<string, unknown>> | null =
 
 const nextAuth = NextAuth({
   adapter: PrismaAdapter(prisma),
-  session: { strategy: "database" },
+  session: { strategy: "jwt" },
   trustHost: true,
   providers: [
-    {
-      id: "email",
-      name: "Email",
-      type: "email",
-      from: process.env.UNISENDER_SENDER_EMAIL,
-      maxAge: 10 * 60,
-      sendVerificationRequest: async ({ identifier, url }) => {
-        await sendMagicLink({ email: identifier, url });
-      },
-    } satisfies EmailConfig,
     CredentialsProvider({
+      id: "credentials",
+      name: "Email and Password",
+      credentials: {
+        email: { label: "Email", type: "email" },
+        password: { label: "Password", type: "password" },
+      },
+      authorize: async (credentials) => {
+        const parsed = credentialsSchema.safeParse({
+          email:
+            typeof credentials?.email === "string"
+              ? credentials.email.trim().toLowerCase()
+              : "",
+          password:
+            typeof credentials?.password === "string" ? credentials.password : "",
+        });
+
+        if (!parsed.success) {
+          return null;
+        }
+
+        const credentialsLookup = {
+          where: { email: parsed.data.email },
+          select: {
+            id: true,
+            email: true,
+            passwordHash: true,
+            role: true,
+            orgId: true,
+            balance: true,
+            isActive: true,
+            emailVerifiedByProvider: true,
+          },
+        } as unknown as Parameters<typeof prisma.user.findUnique>[0];
+
+        const user = (await prisma.user.findUnique(credentialsLookup)) as {
+          id: string;
+          email: string | null;
+          passwordHash: string | null;
+          role: UserRole;
+          orgId: string | null;
+          balance: Prisma.Decimal;
+          isActive: boolean;
+          emailVerifiedByProvider: boolean | null;
+        } | null;
+
+        if (!user || !user.passwordHash || user.isActive === false) {
+          return null;
+        }
+
+        const isValid = await compare(parsed.data.password, user.passwordHash);
+        if (!isValid) {
+          return null;
+        }
+
+        return {
+          id: user.id,
+          email: user.email ?? undefined,
+          role: user.role,
+          orgId: user.orgId,
+          balance: user.balance.toString(),
+          emailVerifiedByProvider: user.emailVerifiedByProvider ?? null,
+        };
+      },
+    }),
+    CredentialsProvider({
+      id: "telegram",
       name: "Telegram",
       credentials: {
         data: { label: "Telegram payload", type: "text" },
@@ -111,7 +172,6 @@ const nextAuth = NextAuth({
   ],
   callbacks: {
     signIn: async ({ user, account, profile }) => {
-      if (!user?.email) return true;
       if (!user?.id) return true;
 
       const dbUser = await prisma.user.findUnique({
@@ -122,6 +182,8 @@ const nextAuth = NextAuth({
       if (dbUser && dbUser.isActive === false) {
         return false;
       }
+
+      if (!user?.email) return true;
 
       const domain = user.email.split("@")[1]?.toLowerCase();
       if (!domain) return true;
@@ -173,7 +235,7 @@ const nextAuth = NextAuth({
         }
       }
 
-      if (account?.type !== "credentials") {
+      if (account?.provider !== "telegram") {
         await prisma.userChannel.upsert({
           where: {
             userId_channel: {
@@ -190,14 +252,15 @@ const nextAuth = NextAuth({
             externalId: user.id,
           },
         });
+      }
 
+      if (account?.provider !== "telegram" && account?.provider !== "credentials") {
         const profileRecord = profile as Record<string, unknown> | null;
         const profileEmailVerified =
           profileRecord && typeof profileRecord["email_verified"] === "boolean"
             ? (profileRecord["email_verified"] as boolean)
             : null;
-        const emailVerifiedByProvider =
-          account?.provider === "email" ? true : profileEmailVerified;
+        const emailVerifiedByProvider = profileEmailVerified;
 
         await prisma.user.update({
           where: { id: user.id },
@@ -207,14 +270,59 @@ const nextAuth = NextAuth({
 
       return true;
     },
-    session: async ({ session, user }) => {
+    jwt: async ({ token, user }) => {
+      if (user) {
+        token.sub = user.id;
+        token.role = user.role;
+        token.orgId = user.orgId;
+        token.balance = String(user.balance);
+        token.emailVerifiedByProvider = user.emailVerifiedByProvider ?? null;
+        token.sessionIssuedAt = Math.floor(Date.now() / 1000);
+      }
+      return token;
+    },
+    session: async ({ session, user, token }) => {
       if (session.user) {
-        session.user.id = user.id;
-        session.user.role = user.role;
-        session.user.orgId = user.orgId;
-        session.user.balance = String(user.balance);
+        const tokenSub = typeof token?.sub === "string" ? token.sub : null;
+        const nextId = user?.id ?? tokenSub;
+        if (nextId) {
+          session.user.id = nextId;
+        }
+
+        const tokenRole =
+          typeof token?.role === "string" &&
+          (token.role === "USER" ||
+            token.role === "ADMIN" ||
+            token.role === "EMPLOYEE")
+            ? token.role
+            : null;
+        session.user.role = user?.role ?? tokenRole ?? "USER";
+
+        const tokenOrgId =
+          typeof token?.orgId === "string" || token?.orgId === null
+            ? token.orgId
+            : null;
+        session.user.orgId = user?.orgId ?? tokenOrgId ?? null;
+
+        const tokenBalance =
+          typeof token?.balance === "string" ? token.balance : null;
+        session.user.balance = String(user?.balance ?? tokenBalance ?? "0");
+
+        const tokenEmailVerified =
+          typeof token?.emailVerifiedByProvider === "boolean" ||
+          token?.emailVerifiedByProvider === null
+            ? token.emailVerifiedByProvider
+            : null;
         session.user.emailVerifiedByProvider =
-          user.emailVerifiedByProvider ?? null;
+          user?.emailVerifiedByProvider ?? tokenEmailVerified ?? null;
+
+        const issuedAt =
+          typeof token?.sessionIssuedAt === "number"
+            ? token.sessionIssuedAt
+            : typeof token?.iat === "number"
+              ? token.iat
+              : null;
+        session.user.sessionTokenIssuedAt = issuedAt;
       }
       return session;
     },
@@ -280,7 +388,13 @@ export async function auth(request?: Request): Promise<Session | null> {
 
   const dbUser = await prisma.user.findUnique({
     where: { id: session.user.id },
-    select: { isActive: true, orgId: true, role: true, emailVerifiedByProvider: true },
+    select: {
+      isActive: true,
+      orgId: true,
+      role: true,
+      emailVerifiedByProvider: true,
+      sessionInvalidatedAt: true,
+    },
   });
 
   if (!dbUser) {
@@ -288,6 +402,14 @@ export async function auth(request?: Request): Promise<Session | null> {
   }
 
   if (dbUser.isActive === false) {
+    return null;
+  }
+
+  if (
+    dbUser.sessionInvalidatedAt &&
+    typeof session.user.sessionTokenIssuedAt === "number" &&
+    session.user.sessionTokenIssuedAt * 1000 <= dbUser.sessionInvalidatedAt.getTime()
+  ) {
     return null;
   }
 

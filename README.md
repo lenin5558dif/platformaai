@@ -30,7 +30,7 @@ A full-featured web application that brings multiple AI models into a single int
 - Cost Centers for expense allocation
 
 **Authentication & Authorization**
-- Email Magic Link (UniSender)
+- Email + Password authentication
 - Telegram OAuth
 - SSO / OIDC for enterprise
 - RBAC with custom roles and permissions
@@ -177,7 +177,7 @@ Required environment variables:
 - Cost Centers для распределения расходов
 
 **Аутентификация и авторизация**
-- Email Magic Link (UniSender)
+- Email + Password аутентификация
 - Telegram OAuth
 - SSO/OIDC для enterprise
 - RBAC с кастомными ролями и permissions

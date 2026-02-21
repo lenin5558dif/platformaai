@@ -106,6 +106,7 @@ export default function ChatApp() {
   const [modelQuery, setModelQuery] = useState("");
   const [isOnline, setIsOnline] = useState(true);
   const [streamingChatId, setStreamingChatId] = useState<string | null>(null);
+  const [hasApiKeyConfigured, setHasApiKeyConfigured] = useState(true);
   const [currentUser, setCurrentUser] = useState<{
     email?: string | null;
     role?: string | null;
@@ -294,7 +295,12 @@ export default function ChatApp() {
   const loadModels = useCallback(async () => {
     try {
       const response = await fetch("/api/models");
-      if (!response.ok) return;
+      if (!response.ok) {
+        if (response.status === 401) {
+          setHasApiKeyConfigured(false);
+        }
+        return;
+      }
       const payload = await response.json();
       const list = payload?.data?.data ?? [];
       const mapped: Model[] = list.map(
@@ -322,6 +328,7 @@ export default function ChatApp() {
         setSelectedModel(preferred);
         setHasLoadedModelPreference(true);
       }
+      setHasApiKeyConfigured(true);
     } catch {
       // ignore
     }
@@ -1262,17 +1269,31 @@ export default function ChatApp() {
 
             <div className="flex items-center gap-2">
               <div className="relative" ref={modelMenuRef}>
-                <div
-                  className="hidden md:flex h-8 items-center justify-center gap-x-2 rounded-lg bg-primary/10 border border-primary/20 pl-2 pr-3 cursor-pointer hover:bg-primary/20 transition-colors"
-                  onClick={() => setModelMenuOpen(!modelMenuOpen)}
-                >
-                  <span className="material-symbols-outlined text-primary text-[18px]">smart_toy</span>
-                  <p className="text-primary text-xs font-bold">
-                    {selectedModelInfo?.name ?? "GPT-4"}
-                  </p>
-                </div>
+                {hasApiKeyConfigured ? (
+                  <div
+                    className="hidden md:flex h-8 items-center justify-center gap-x-2 rounded-lg bg-primary/10 border border-primary/20 pl-2 pr-3 cursor-pointer hover:bg-primary/20 transition-colors"
+                    onClick={() => setModelMenuOpen(!modelMenuOpen)}
+                  >
+                    <span className="material-symbols-outlined text-primary text-[18px]">smart_toy</span>
+                    <p className="text-primary text-xs font-bold">
+                      {selectedModelInfo?.name ?? "GPT-4"}
+                    </p>
+                  </div>
+                ) : (
+                  <Link
+                    href="/settings#api-keys"
+                    className="hidden md:flex h-8 items-center justify-center gap-x-2 rounded-lg bg-amber-50 border border-amber-300 pl-2 pr-3 hover:bg-amber-100 transition-colors"
+                  >
+                    <span className="material-symbols-outlined text-amber-700 text-[18px]">
+                      key
+                    </span>
+                    <p className="text-amber-700 text-xs font-bold">
+                      Добавить API-ключ
+                    </p>
+                  </Link>
+                )}
 
-                {modelMenuOpen && (
+                {hasApiKeyConfigured && modelMenuOpen && (
                   <div className="absolute right-0 top-full z-20 mt-2 w-72 rounded-xl border border-white/60 bg-white/90 p-2 shadow-glass-lg backdrop-blur-md">
                     <div className="px-1 pb-2">
                       <div className="relative">
