@@ -15,6 +15,8 @@ export default function ScimTokenManager() {
   const [name, setName] = useState("");
   const [createdToken, setCreatedToken] = useState<string | null>(null);
   const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
+  const [error, setError] = useState<string | null>(null);
+  const [revokingId, setRevokingId] = useState<string | null>(null);
 
   async function loadTokens() {
     try {
@@ -34,6 +36,7 @@ export default function ScimTokenManager() {
     if (!name.trim()) return;
     setStatus("loading");
     setCreatedToken(null);
+    setError(null);
     try {
       const response = await fetch("/api/scim/tokens", {
         method: "POST",
@@ -41,6 +44,8 @@ export default function ScimTokenManager() {
         body: JSON.stringify({ name: name.trim() }),
       });
       if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        setError(data?.error ?? "Не удалось создать токен.");
         setStatus("error");
         return;
       }
@@ -50,17 +55,31 @@ export default function ScimTokenManager() {
       await loadTokens();
       setStatus("idle");
     } catch {
+      setError("Не удалось создать токен.");
       setStatus("error");
     }
   }
 
   async function revokeToken(id: string) {
-    await fetch("/api/scim/tokens", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
-    });
-    await loadTokens();
+    setRevokingId(id);
+    setError(null);
+    try {
+      const response = await fetch("/api/scim/tokens", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        setError(data?.error ?? "Не удалось отозвать токен.");
+        return;
+      }
+      await loadTokens();
+    } catch {
+      setError("Не удалось отозвать токен.");
+    } finally {
+      setRevokingId(null);
+    }
   }
 
   return (
@@ -95,6 +114,12 @@ export default function ScimTokenManager() {
         </div>
       )}
 
+      {error && (
+        <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          {error}
+        </div>
+      )}
+
       <div className="space-y-2">
         {tokens.length === 0 && (
           <p className="text-xs text-text-secondary">Токены еще не созданы.</p>
@@ -113,9 +138,10 @@ export default function ScimTokenManager() {
             <button
               type="button"
               onClick={() => revokeToken(token.id)}
-              className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-white"
+              className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-white disabled:opacity-60"
+              disabled={revokingId === token.id}
             >
-              Отозвать
+              {revokingId === token.id ? "Отзываем..." : "Отозвать"}
             </button>
           </div>
         ))}

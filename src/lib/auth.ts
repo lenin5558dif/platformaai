@@ -8,6 +8,8 @@ import { sendMagicLink } from "@/lib/unisender";
 import { verifyTelegramLogin, type TelegramAuthPayload } from "@/lib/telegram";
 import { z } from "zod";
 import { Prisma, UserRole } from "@prisma/client";
+import { SYSTEM_ROLE_NAMES } from "@/lib/org-permissions";
+import { ensureOrgSystemRolesAndPermissions } from "@/lib/org-rbac";
 
 const telegramSchema = z.object({
   id: z.number(),
@@ -136,14 +138,39 @@ const nextAuth = NextAuth({
         return "/login?error=SSORequired";
       }
 
-      if (usingSso && dbUser?.orgId !== domainPolicy.orgId) {
-        await prisma.user.update({
-          where: { id: user.id },
-          data: {
-            orgId: domainPolicy.orgId,
-            role: dbUser?.role === "ADMIN" ? "ADMIN" : "EMPLOYEE",
-          },
-        });
+      if (usingSso) {
+        const nextLegacyRole: UserRole = dbUser?.role === "ADMIN" ? "ADMIN" : "EMPLOYEE";
+
+        if (dbUser?.orgId !== domainPolicy.orgId) {
+          await prisma.user.update({
+            where: { id: user.id },
+            data: {
+              orgId: domainPolicy.orgId,
+              role: nextLegacyRole,
+            },
+          });
+        }
+
+        const { rolesByName } = await ensureOrgSystemRolesAndPermissions(domainPolicy.orgId);
+        const roleName =
+          nextLegacyRole === "ADMIN" ? SYSTEM_ROLE_NAMES.ADMIN : SYSTEM_ROLE_NAMES.MEMBER;
+        const orgRole = rolesByName.get(roleName) ?? rolesByName.get(SYSTEM_ROLE_NAMES.MEMBER);
+        if (orgRole) {
+          await prisma.orgMembership.upsert({
+            where: {
+              orgId_userId: {
+                orgId: domainPolicy.orgId,
+                userId: user.id,
+              },
+            },
+            update: { roleId: orgRole.id },
+            create: {
+              orgId: domainPolicy.orgId,
+              userId: user.id,
+              roleId: orgRole.id,
+            },
+          });
+        }
       }
 
       if (account?.type !== "credentials") {
@@ -196,7 +223,6 @@ const nextAuth = NextAuth({
 
 export const handlers = nextAuth.handlers;
 export const signIn = nextAuth.signIn;
-export const signOut = nextAuth.signOut;
 
 const nextAuthAuth = nextAuth.auth;
 

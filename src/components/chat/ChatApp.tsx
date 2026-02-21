@@ -64,6 +64,14 @@ type Model = {
 };
 
 const DEFAULT_MODEL = "openai/gpt-4o";
+const COMPOSER_MAX_HEIGHT = 128;
+
+function resizeComposer(element: HTMLTextAreaElement) {
+  element.style.height = "0px";
+  const nextHeight = Math.min(element.scrollHeight, COMPOSER_MAX_HEIGHT);
+  element.style.height = `${nextHeight}px`;
+  element.style.overflowY = element.scrollHeight > COMPOSER_MAX_HEIGHT ? "auto" : "hidden";
+}
 
 export default function ChatApp() {
   const searchParams = useSearchParams();
@@ -107,7 +115,9 @@ export default function ChatApp() {
   } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const skipNextLoadRef = useRef<string | null>(null);
+  const activeChatIdRef = useRef<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
   const modelMenuRef = useRef<HTMLDivElement>(null);
   const appliedPromptRef = useRef<string | null>(null);
 
@@ -455,6 +465,15 @@ export default function ChatApp() {
   );
 
   useEffect(() => {
+    activeChatIdRef.current = activeChatId;
+  }, [activeChatId]);
+
+  useEffect(() => {
+    if (!composerRef.current) return;
+    resizeComposer(composerRef.current);
+  }, [input]);
+
+  useEffect(() => {
     void loadChats();
     void loadModels();
   }, [loadChats, loadModels]);
@@ -637,11 +656,6 @@ export default function ChatApp() {
 
   async function persistUserMessage(chatId: string, content: string) {
     const tokenCount = estimateTokens(content);
-    const cost = estimateUsdCost({
-      promptTokens: tokenCount,
-      completionTokens: 0,
-      pricing: selectedModelInfo?.pricing,
-    });
 
     const response = await fetch("/api/messages", {
       method: "POST",
@@ -651,7 +665,6 @@ export default function ChatApp() {
         role: "USER",
         content,
         tokenCount,
-        cost,
       }),
     });
 
@@ -667,26 +680,21 @@ export default function ChatApp() {
     ));
     if (!chatId) return;
 
-    setIsUploading(true);
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("chatId", chatId);
-      const response = await fetch("/api/files", {
-        method: "POST",
-        body: formData,
-      });
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        setError(data?.error ?? "Upload failed.");
-        return;
-      }
-      const data = await response.json();
-      if (data?.data) {
-        setAttachments((prev) => [...prev, data.data as Attachment]);
-      }
-    } finally {
-      setIsUploading(false);
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("chatId", chatId);
+    const response = await fetch("/api/files", {
+      method: "POST",
+      body: formData,
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      setError(data?.error ?? "Upload failed.");
+      return;
+    }
+    const data = await response.json();
+    if (data?.data) {
+      setAttachments((prev) => [...prev, data.data as Attachment]);
     }
   }
 
@@ -717,7 +725,7 @@ export default function ChatApp() {
     setIsSending(true);
     setStreamingChatId(chatId);
 
-    if (!activeChatId) {
+    if (!activeChatIdRef.current) {
       skipNextLoadRef.current = chatId;
     }
 
@@ -769,7 +777,7 @@ export default function ChatApp() {
             const delta = parsed?.choices?.[0]?.delta?.content;
             if (delta) {
               setMessages((prev) => {
-                if (activeChatId !== chatId) return prev;
+                if (activeChatIdRef.current !== chatId) return prev;
                 const updated = [...prev];
                 const current = updated[assistantIndex];
                 if (current) {
@@ -790,7 +798,7 @@ export default function ChatApp() {
       setIsSending(false);
       setStreamingChatId(null);
       await loadChats();
-      if (activeChatId === chatId) {
+      if (activeChatIdRef.current === chatId) {
         await loadChatDetails(chatId);
       }
     }
@@ -863,38 +871,6 @@ export default function ChatApp() {
     }
   }
 
-  async function handleContinue() {
-    await sendQuickPrompt("Continue");
-  }
-
-  async function handleRegenerate() {
-    if (isSending || !messages.length) return;
-    const lastUserIndex = [...messages]
-      .map((message, index) => ({ message, index }))
-      .reverse()
-      .find((item) => item.message.role === "user")?.index;
-
-    if (lastUserIndex === undefined) return;
-    const chatId = activeChatId ?? (await ensureChatId("New Chat"));
-    if (!chatId) return;
-
-    const lastUserMessage = messages[lastUserIndex];
-    if (lastUserMessage?.id) {
-      await fetch(`/api/messages/${lastUserMessage.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          content: lastUserMessage.content,
-          rollback: true,
-        }),
-      });
-    }
-
-    const trimmedMessages = messages.slice(0, lastUserIndex + 1);
-    setMessages(trimmedMessages);
-    await runAssistant(chatId, trimmedMessages);
-  }
-
   function startEditMessage(message: ChatMessage) {
     if (!message.id) return;
     setEditingMessageId(message.id);
@@ -913,23 +889,31 @@ export default function ChatApp() {
     const chatId = activeChatId ?? (await ensureChatId("New Chat"));
     if (!chatId) return;
 
-    await fetch(`/api/messages/${editingMessageId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content: editingText.trim(), rollback: true }),
-    });
+    try {
+      const response = await fetch(`/api/messages/${editingMessageId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: editingText.trim(), rollback: true }),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data?.error ?? "Failed to update message.");
+      }
 
-    const updatedMessages = messages
-      .slice(0, index + 1)
-      .map((message) =>
-        message.id === editingMessageId
-          ? { ...message, content: editingText.trim() }
-          : message
-      );
+      const updatedMessages = messages
+        .slice(0, index + 1)
+        .map((message) =>
+          message.id === editingMessageId
+            ? { ...message, content: editingText.trim() }
+            : message
+        );
 
-    setMessages(updatedMessages);
-    cancelEditMessage();
-    await runAssistant(chatId, updatedMessages);
+      setMessages(updatedMessages);
+      cancelEditMessage();
+      await runAssistant(chatId, updatedMessages);
+    } catch (error) {
+      setError(getErrorMessage(error, "Failed to update message."));
+    }
   }
 
   async function handleCopy(text: string) {
@@ -1086,7 +1070,7 @@ export default function ChatApp() {
 
       {detailsOpen && (
         <button
-          className="fixed inset-0 z-30 bg-black/30"
+          className="fixed inset-0 z-30 bg-black/30 md:hidden"
           aria-label="Close details"
           onClick={closeDetails}
           type="button"
@@ -1258,7 +1242,9 @@ export default function ChatApp() {
         </div>
       </aside>
 
-      <main className="flex-1 flex flex-col relative h-full">
+      <main
+        className={`flex-1 flex flex-col relative h-full transition-[padding-right] duration-300 ${detailsOpen ? "md:pr-80" : ""}`}
+      >
         {/* Floating Header */}
         <header className="absolute top-0 left-0 right-0 z-30 px-6 py-4 pointer-events-none">
           <div className="glass-panel rounded-xl px-4 py-3 flex items-center justify-between shadow-lg pointer-events-auto">
@@ -1350,7 +1336,7 @@ export default function ChatApp() {
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto pt-24 pb-40 px-6 md:px-0">
+        <div className="chat-scroll-fade-top flex-1 overflow-y-auto pt-24 pb-40 px-6 md:px-0">
           <div className="max-w-4xl mx-auto flex flex-col gap-6">
             {error && (
               <div className="rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-900">
@@ -1428,9 +1414,9 @@ export default function ChatApp() {
                     { icon: "code", color: "text-blue-500", title: "Write Code", subtitle: "Python sort function", prompt: "Напиши функцию Python для сортировки списка." },
                     { icon: "edit_note", color: "text-green-500", title: "Edit", subtitle: "Check grammar", prompt: "Проверь грамматику в этом тексте." },
                     { icon: "translate", color: "text-purple-500", title: "Translate", subtitle: "To Spanish", prompt: "Переведи это на испанский." }
-                  ].map((item, i) => (
+                  ].map((item) => (
                     <button
-                      key={i}
+                      key={item.title}
                       className="group flex items-start gap-3 p-4 rounded-xl prompt-card-glass text-left"
                       onClick={() => void sendQuickPrompt(item.prompt)}
                     >
@@ -1575,31 +1561,8 @@ export default function ChatApp() {
           </div>
         </div>
 
-        {messages.length > 0 && (
-          <div className="px-4 pb-3 flex justify-center">
-            <div className="w-full max-w-[720px] flex justify-end gap-2">
-              <button
-                className="rounded-full border border-black/10 px-4 py-1.5 text-xs text-text-secondary hover:text-text-primary hover:border-black/20 disabled:opacity-50"
-                type="button"
-                onClick={handleContinue}
-                disabled={isSending}
-              >
-                Continue
-              </button>
-              <button
-                className="rounded-full bg-primary/15 px-4 py-1.5 text-xs font-semibold text-primary hover:bg-primary/25 disabled:opacity-50"
-                type="button"
-                onClick={handleRegenerate}
-                disabled={isSending}
-              >
-                Regenerate
-              </button>
-            </div>
-          </div>
-        )}
-
         {/* Input Area */}
-        <div className="sticky bottom-6 left-0 right-0 px-4 flex justify-center z-40">
+        <div className="sticky bottom-6 left-0 right-0 z-20 flex justify-center px-4">
           <div className="w-full max-w-[720px] glass-input rounded-3xl p-2 flex flex-col gap-2 transition-all focus-within:ring-0 focus-within:shadow-[0_0_0_6px_rgba(212,122,106,0.14)]">
             {attachments.length > 0 && (
               <div className="flex px-3 gap-2 overflow-x-auto py-1">
@@ -1642,19 +1605,28 @@ export default function ChatApp() {
                     chatId = await createChat(fileTitle);
                   }
                   if (!chatId) return;
-                  for (const file of Array.from(files)) {
-                    await handleUpload(file, chatId);
+                  setIsUploading(true);
+                  try {
+                    for (const file of Array.from(files)) {
+                      await handleUpload(file, chatId);
+                    }
+                  } finally {
+                    setIsUploading(false);
+                    e.target.value = "";
                   }
-                  e.target.value = "";
                 }}
               />
 
               <textarea
+                ref={composerRef}
                 className="w-full bg-transparent border-none text-text-primary placeholder-text-secondary focus:ring-0 focus:outline-none focus-visible:outline-none resize-none max-h-32 py-2.5 text-sm md:text-base leading-normal scrollbar-hide"
                 placeholder="Ask anything or paste text..."
                 rows={1}
                 value={input}
-                onChange={(e) => setInput(e.target.value)}
+                onChange={(e) => {
+                  setInput(e.target.value);
+                  resizeComposer(e.target);
+                }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();

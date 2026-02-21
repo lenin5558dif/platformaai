@@ -1,6 +1,36 @@
+"use client";
+
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import AppShell from "@/components/layout/AppShell";
 export default function PricingPage() {
+  const [isYearly, setIsYearly] = useState(false);
+  const [customerType, setCustomerType] = useState<"B2C" | "B2B">("B2C");
+  const [showFullTable, setShowFullTable] = useState(false);
+  const isB2B = customerType === "B2B";
+
+  const plans = useMemo(() => {
+    const price = (monthlyPrice: number) => {
+      if (isYearly) {
+        const discounted = monthlyPrice * 0.8;
+        return {
+          value: discounted.toFixed(monthlyPrice === 0 ? 0 : 2),
+          suffix: "/мес (при оплате за год)",
+        };
+      }
+      return {
+        value: monthlyPrice.toFixed(monthlyPrice === 0 ? 0 : 2),
+        suffix: "/мес",
+      };
+    };
+
+    return {
+      starter: price(0),
+      creator: price(isB2B ? 39 : 29),
+      power: price(isB2B ? 129 : 99),
+    };
+  }, [isB2B, isYearly]);
+
   return (
     <AppShell title="Тарифы" subtitle="Выберите оптимальный план под ваши задачи.">
       <div className="flex w-full flex-col items-center">
@@ -22,7 +52,13 @@ export default function PricingPage() {
                 Ежемесячно
               </span>
               <label className="relative inline-flex cursor-pointer items-center">
-                <input className="peer sr-only" type="checkbox" />
+                <input
+                  className="peer sr-only"
+                  type="checkbox"
+                  checked={isYearly}
+                  onChange={(event) => setIsYearly(event.target.checked)}
+                  aria-label="Переключить биллинг"
+                />
                 <div className="h-6 w-11 rounded-full bg-slate-200 after:absolute after:start-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-gray-300 after:bg-white after:transition-all peer-checked:bg-primary peer-checked:after:translate-x-full peer-checked:after:border-white" />
               </label>
               <span className="text-sm font-medium text-slate-900">
@@ -39,14 +75,24 @@ export default function PricingPage() {
           <div className="w-full max-w-[320px]">
             <div className="flex rounded-xl border border-slate-200 bg-slate-100 p-1">
               <button
-                className="flex-1 rounded-lg bg-white py-2 text-sm font-bold leading-normal text-slate-900 shadow-sm ring-1 ring-black/5"
+                className={`flex-1 rounded-lg py-2 text-sm font-bold leading-normal transition-all ${
+                  !isB2B
+                    ? "bg-white text-slate-900 shadow-sm ring-1 ring-black/5"
+                    : "text-slate-500 hover:text-slate-900"
+                }`}
                 type="button"
+                onClick={() => setCustomerType("B2C")}
               >
                 Individual (B2C)
               </button>
               <button
-                className="flex-1 rounded-lg py-2 text-sm font-bold leading-normal text-slate-500 transition-all hover:text-slate-900"
+                className={`flex-1 rounded-lg py-2 text-sm font-bold leading-normal transition-all ${
+                  isB2B
+                    ? "bg-white text-slate-900 shadow-sm ring-1 ring-black/5"
+                    : "text-slate-500 hover:text-slate-900"
+                }`}
                 type="button"
+                onClick={() => setCustomerType("B2B")}
               >
                 Business (B2B)
               </button>
@@ -67,19 +113,19 @@ export default function PricingPage() {
                   </span>
                 </div>
                 <div className="mt-2 flex items-baseline gap-1 text-slate-900">
-                  <span className="text-4xl font-black tracking-tight">$0</span>
-                  <span className="text-sm font-medium text-slate-500">/мес</span>
+                  <span className="text-4xl font-black tracking-tight">${plans.starter.value}</span>
+                  <span className="text-sm font-medium text-slate-500">{plans.starter.suffix}</span>
                 </div>
                 <p className="mt-1 min-h-[40px] text-sm leading-relaxed text-slate-500">
                   Идеально для ознакомления с open-source моделями.
                 </p>
               </div>
-              <button
-                className="mt-2 h-12 w-full rounded-lg border border-slate-200 bg-white text-sm font-bold tracking-wide text-slate-900 shadow-sm transition-all hover:border-primary hover:text-primary"
-                type="button"
+              <Link
+                className="mt-2 flex h-12 w-full items-center justify-center rounded-lg border border-slate-200 bg-white text-sm font-bold tracking-wide text-slate-900 shadow-sm transition-all hover:border-primary hover:text-primary"
+                href="/login"
               >
                 Попробовать бесплатно
-              </button>
+              </Link>
               <div className="my-1 h-px w-full bg-slate-100" />
               <div className="flex flex-col gap-4">
                 {[
@@ -112,19 +158,19 @@ export default function PricingPage() {
                   </h3>
                 </div>
                 <div className="mt-2 flex items-baseline gap-1 text-slate-900">
-                  <span className="text-5xl font-black tracking-tight">$29</span>
-                  <span className="text-sm font-medium text-slate-500">/мес</span>
+                  <span className="text-5xl font-black tracking-tight">${plans.creator.value}</span>
+                  <span className="text-sm font-medium text-slate-500">{plans.creator.suffix}</span>
                 </div>
                 <p className="mt-1 min-h-[40px] text-sm leading-relaxed text-slate-500">
                   Для профессионалов, использующих лучшие модели.
                 </p>
               </div>
-              <button
-                className="mt-2 h-12 w-full rounded-lg bg-primary text-sm font-bold tracking-wide text-white shadow-lg shadow-primary/30 transition-all hover:bg-primary/90"
-                type="button"
+              <Link
+                className="mt-2 flex h-12 w-full items-center justify-center rounded-lg bg-primary text-sm font-bold tracking-wide text-white shadow-lg shadow-primary/30 transition-all hover:bg-primary/90"
+                href={isB2B ? "/org" : "/login"}
               >
-                Выбрать Creator
-              </button>
+                {isB2B ? "Запросить Creator (B2B)" : "Выбрать Creator"}
+              </Link>
               <div className="my-1 h-px w-full bg-slate-100" />
               <div className="flex flex-col gap-4">
                 {[
@@ -158,19 +204,19 @@ export default function PricingPage() {
                   </span>
                 </div>
                 <div className="mt-2 flex items-baseline gap-1 text-slate-900">
-                  <span className="text-4xl font-black tracking-tight">$99</span>
-                  <span className="text-sm font-medium text-slate-500">/мес</span>
+                  <span className="text-4xl font-black tracking-tight">${plans.power.value}</span>
+                  <span className="text-sm font-medium text-slate-500">{plans.power.suffix}</span>
                 </div>
                 <p className="mt-1 min-h-[40px] text-sm leading-relaxed text-slate-500">
                   Безграничные возможности и API доступ.
                 </p>
               </div>
-              <button
-                className="mt-2 h-12 w-full rounded-lg border border-slate-200 bg-white text-sm font-bold tracking-wide text-slate-900 shadow-sm transition-all hover:border-primary hover:text-primary"
-                type="button"
+              <Link
+                className="mt-2 flex h-12 w-full items-center justify-center rounded-lg border border-slate-200 bg-white text-sm font-bold tracking-wide text-slate-900 shadow-sm transition-all hover:border-primary hover:text-primary"
+                href={isB2B ? "/org" : "/login"}
               >
-                Выбрать Power User
-              </button>
+                {isB2B ? "Связаться по Enterprise" : "Выбрать Power User"}
+              </Link>
               <div className="my-1 h-px w-full bg-slate-100" />
               <div className="flex flex-col gap-4">
                 {[
@@ -210,11 +256,52 @@ export default function PricingPage() {
               <button
                 className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-5 py-3 font-bold text-primary shadow-sm transition-colors hover:text-primary/80 hover:shadow-md"
                 type="button"
+                onClick={() => setShowFullTable((prev) => !prev)}
               >
-                Показать полную таблицу
-                <span className="material-symbols-outlined">expand_more</span>
+                {showFullTable ? "Скрыть таблицу" : "Показать полную таблицу"}
+                <span
+                  className={`material-symbols-outlined transition-transform ${
+                    showFullTable ? "rotate-180" : ""
+                  }`}
+                >
+                  expand_more
+                </span>
               </button>
             </div>
+            {showFullTable && (
+              <div className="mt-6 overflow-x-auto rounded-xl border border-slate-200 bg-white">
+                <table className="min-w-full text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-200 bg-slate-50">
+                      <th className="px-4 py-3 font-semibold text-slate-700">Возможность</th>
+                      <th className="px-4 py-3 font-semibold text-slate-700">Starter</th>
+                      <th className="px-4 py-3 font-semibold text-slate-700">Creator</th>
+                      <th className="px-4 py-3 font-semibold text-slate-700">Power User</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr className="border-b border-slate-100">
+                      <td className="px-4 py-3">Токены в месяц</td>
+                      <td className="px-4 py-3">50 запросов/день</td>
+                      <td className="px-4 py-3">1M</td>
+                      <td className="px-4 py-3">Безлимит*</td>
+                    </tr>
+                    <tr className="border-b border-slate-100">
+                      <td className="px-4 py-3">Топовые модели</td>
+                      <td className="px-4 py-3">Нет</td>
+                      <td className="px-4 py-3">Да</td>
+                      <td className="px-4 py-3">Да</td>
+                    </tr>
+                    <tr>
+                      <td className="px-4 py-3">API доступ</td>
+                      <td className="px-4 py-3">Нет</td>
+                      <td className="px-4 py-3">Ограниченно</td>
+                      <td className="px-4 py-3">Полный</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </section>
 
@@ -342,13 +429,15 @@ export default function PricingPage() {
             <div className="mt-2 flex gap-4">
               <a
                 className="text-slate-400 transition-colors hover:text-primary"
-                href="#"
+                href="https://platform.openai.com/docs/overview"
+                target="_blank"
+                rel="noreferrer"
               >
                 <span className="material-symbols-outlined">public</span>
               </a>
               <a
                 className="text-slate-400 transition-colors hover:text-primary"
-                href="#"
+                href="mailto:support@platforma.ai"
               >
                 <span className="material-symbols-outlined">mail</span>
               </a>
@@ -373,13 +462,15 @@ export default function PricingPage() {
               </Link>
               <a
                 className="text-sm text-slate-500 transition-colors hover:text-primary"
-                href="#"
+                href="/pricing#faq"
               >
                 Changelog
               </a>
               <a
                 className="text-sm text-slate-500 transition-colors hover:text-primary"
-                href="#"
+                href="https://platform.openai.com/docs/overview"
+                target="_blank"
+                rel="noreferrer"
               >
                 Документация
               </a>
@@ -390,25 +481,25 @@ export default function PricingPage() {
               </h4>
               <a
                 className="text-sm text-slate-500 transition-colors hover:text-primary"
-                href="#"
+                href="/org"
               >
                 О нас
               </a>
               <a
                 className="text-sm text-slate-500 transition-colors hover:text-primary"
-                href="#"
+                href="/timeline"
               >
                 Блог
               </a>
               <a
                 className="text-sm text-slate-500 transition-colors hover:text-primary"
-                href="#"
+                href="/org"
               >
                 Карьера
               </a>
               <a
                 className="text-sm text-slate-500 transition-colors hover:text-primary"
-                href="#"
+                href="mailto:support@platforma.ai"
               >
                 Контакты
               </a>
@@ -419,19 +510,19 @@ export default function PricingPage() {
               </h4>
               <a
                 className="text-sm text-slate-500 transition-colors hover:text-primary"
-                href="#"
+                href="/settings"
               >
                 Приватность
               </a>
               <a
                 className="text-sm text-slate-500 transition-colors hover:text-primary"
-                href="#"
+                href="/settings"
               >
                 Условия
               </a>
               <a
                 className="text-sm text-slate-500 transition-colors hover:text-primary"
-                href="#"
+                href="/settings"
               >
                 Cookie
               </a>

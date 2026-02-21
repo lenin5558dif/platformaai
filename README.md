@@ -140,6 +140,7 @@ Required environment variables:
 ### Security
 
 - AUTH_BYPASS is automatically disabled in production (`NODE_ENV` guard)
+- Keep `AUTH_BYPASS=0` in staging and production-like environments
 - Seed script is protected from running in production
 - All secrets via environment variables (never in code)
 - DLP filtering of PII in AI requests
@@ -286,6 +287,7 @@ npm run dev                   # http://localhost:3000
 ### Безопасность
 
 - AUTH_BYPASS автоматически блокируется в production (`NODE_ENV` guard)
+- Держите `AUTH_BYPASS=0` на staging и в production-подобных окружениях
 - Seed script защищен от запуска в production
 - Все секреты через environment variables (не в коде)
 - DLP-фильтрация PII в AI-запросах

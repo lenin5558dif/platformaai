@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getSettingsObject } from "@/lib/user-settings";
 import TopUpForm from "@/components/billing/TopUpForm";
+import TransactionsTable from "@/components/billing/TransactionsTable";
 
 export const dynamic = "force-dynamic";
 
@@ -60,7 +61,7 @@ export default async function BillingPage() {
     prisma.transaction.findMany({
       where: { userId: session.user.id },
       orderBy: { createdAt: "desc" },
-      take: 10,
+      take: 100,
     }),
   ]);
 
@@ -97,6 +98,13 @@ export default async function BillingPage() {
     typeof orgSettings.taxId === "string" ? orgSettings.taxId : "";
   const orgAddress =
     typeof orgSettings.address === "string" ? orgSettings.address : "";
+  const serializedTransactions = transactions.map((transaction) => ({
+    id: transaction.id,
+    createdAt: transaction.createdAt.toISOString(),
+    description: transaction.description,
+    amount: transaction.amount.toString(),
+    type: transaction.type,
+  }));
 
   return (
     <AppShell
@@ -131,12 +139,15 @@ export default async function BillingPage() {
                     </p>
                   </div>
                   <div className="flex gap-3">
-                    <button className="flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-900 shadow-sm transition-colors hover:bg-slate-50">
+                    <Link
+                      className="flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-900 shadow-sm transition-colors hover:bg-slate-50"
+                      href="#payment-history"
+                    >
                       <span className="material-symbols-outlined text-[18px] text-slate-500">
                         description
                       </span>
                       Инвойсы
-                    </button>
+                    </Link>
                   </div>
                 </div>
               </div>
@@ -174,12 +185,18 @@ export default async function BillingPage() {
                       </p>
                     </div>
                     <div className="flex min-w-[160px] flex-col gap-3">
-                      <button className="w-full rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white shadow-sm transition-all hover:bg-primary/90">
+                      <Link
+                        className="w-full rounded-lg bg-primary px-4 py-2 text-center text-sm font-medium text-white shadow-sm transition-all hover:bg-primary/90"
+                        href="/pricing"
+                      >
                         Сменить тариф
-                      </button>
-                      <button className="w-full rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-500 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-600">
+                      </Link>
+                      <a
+                        className="w-full rounded-lg border border-slate-200 bg-white px-4 py-2 text-center text-sm font-medium text-slate-500 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-600"
+                        href="mailto:support@platforma.ai?subject=Cancel%20subscription"
+                      >
                         Отменить
-                      </button>
+                      </a>
                     </div>
                   </div>
                 </div>
@@ -334,101 +351,7 @@ export default async function BillingPage() {
                 )}
               </div>
 
-              <div className="flex flex-col gap-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-display text-lg font-bold text-slate-900">
-                    История платежей
-                  </h3>
-                  <button className="flex items-center gap-1 text-sm text-slate-500 transition-colors hover:text-slate-900">
-                    <span className="material-symbols-outlined text-[18px]">
-                      filter_list
-                    </span>
-                    Фильтр
-                  </button>
-                </div>
-                <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm">
-                      <thead>
-                        <tr className="border-b border-slate-200 bg-slate-50/80">
-                          <th className="whitespace-nowrap px-6 py-3 text-xs font-medium uppercase tracking-wide text-slate-500">
-                            Дата
-                          </th>
-                          <th className="whitespace-nowrap px-6 py-3 text-xs font-medium uppercase tracking-wide text-slate-500">
-                            Описание
-                          </th>
-                          <th className="whitespace-nowrap px-6 py-3 text-xs font-medium uppercase tracking-wide text-slate-500">
-                            Сумма
-                          </th>
-                          <th className="whitespace-nowrap px-6 py-3 text-xs font-medium uppercase tracking-wide text-slate-500">
-                            Статус
-                          </th>
-                          <th className="whitespace-nowrap px-6 py-3 text-right text-xs font-medium uppercase tracking-wide text-slate-500">
-                            Инвойс
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-200">
-                        {transactions.length === 0 && (
-                          <tr>
-                            <td
-                              className="px-6 py-6 text-center text-sm text-slate-500"
-                              colSpan={5}
-                            >
-                              История платежей появится после первых операций.
-                            </td>
-                          </tr>
-                        )}
-                        {transactions.map((tx) => {
-                          const amount = Number(tx.amount ?? 0);
-                          const isRefill = tx.type === "REFILL";
-                          return (
-                            <tr key={tx.id} className="group transition-colors hover:bg-slate-50">
-                              <td className="whitespace-nowrap px-6 py-4 text-slate-900">
-                                {tx.createdAt.toLocaleDateString("ru-RU", {
-                                  day: "2-digit",
-                                  month: "short",
-                                  year: "numeric",
-                                })}
-                              </td>
-                              <td className="whitespace-nowrap px-6 py-4 font-medium text-slate-900">
-                                {tx.description}
-                              </td>
-                              <td className="whitespace-nowrap px-6 py-4 text-slate-900">
-                                {isRefill ? "+" : "-"}
-                                {formatCredits(amount)}
-                              </td>
-                              <td className="whitespace-nowrap px-6 py-4">
-                                <span
-                                  className={`inline-flex items-center rounded border px-2 py-0.5 text-xs font-medium ${
-                                    isRefill
-                                      ? "border-green-200 bg-green-50 text-green-700"
-                                      : "border-amber-200 bg-amber-50 text-amber-700"
-                                  }`}
-                                >
-                                  {isRefill ? "Оплачено" : "Списание"}
-                                </span>
-                              </td>
-                              <td className="whitespace-nowrap px-6 py-4 text-right">
-                                <button className="rounded p-1 text-slate-400 transition-colors hover:bg-primary/5 hover:text-primary">
-                                  <span className="material-symbols-outlined text-[20px]">
-                                    download
-                                  </span>
-                                </button>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                  <div className="flex justify-center border-t border-slate-200 bg-slate-50/50 px-6 py-3">
-                    <button className="text-sm font-medium text-primary transition-colors hover:text-primary/80 hover:underline">
-                      Показать больше
-                    </button>
-                  </div>
-                </div>
-              </div>
+              <TransactionsTable transactions={serializedTransactions} />
             </div>
       </AppShell>
   );

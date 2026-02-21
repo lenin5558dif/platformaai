@@ -223,3 +223,8 @@ body::after {
   text-decoration-thickness: 1px;
   text-underline-offset: 2px;
 }
+
+.chat-scroll-fade-top {
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, black 56px, black 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, black 56px, black 100%);
+}

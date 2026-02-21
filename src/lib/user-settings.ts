@@ -38,12 +38,6 @@ export function getUserTone(settings: Prisma.JsonValue) {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
-export function getUserOnboarded(settings: Prisma.JsonValue) {
-  const data = getSettingsObject(settings);
-  const value = data.onboarded;
-  return typeof value === "boolean" ? value : false;
-}
-
 export function mergeSettings(
   settings: Prisma.JsonValue,
   patch: Record<string, unknown>

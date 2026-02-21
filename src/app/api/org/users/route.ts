@@ -89,16 +89,33 @@ export async function POST(request: Request) {
     );
 
     const payload = inviteSchema.parse(await request.json());
-    const user = await prisma.user.upsert({
+    const existingUser = await prisma.user.findUnique({
       where: { email: payload.email },
-      update: { orgId: membership.orgId, role: payload.role ?? "EMPLOYEE" },
-      create: {
-        email: payload.email,
-        orgId: membership.orgId,
-        role: payload.role ?? "EMPLOYEE",
-        balance: 0,
-      },
+      select: { id: true, orgId: true, role: true },
     });
+
+    if (existingUser?.orgId && existingUser.orgId !== membership.orgId) {
+      throw new HttpError(
+        409,
+        "USER_ORG_CONFLICT",
+        "User already belongs to a different organization"
+      );
+    }
+
+    const nextLegacyRole = payload.role ?? existingUser?.role ?? "EMPLOYEE";
+    const user = existingUser
+      ? await prisma.user.update({
+          where: { id: existingUser.id },
+          data: { orgId: membership.orgId, role: nextLegacyRole },
+        })
+      : await prisma.user.create({
+          data: {
+            email: payload.email,
+            orgId: membership.orgId,
+            role: nextLegacyRole,
+            balance: 0,
+          },
+        });
 
     // Ensure the invited user has an org membership entry for RBAC enforcement.
     const { rolesByName } = await ensureOrgSystemRolesAndPermissions(membership.orgId);

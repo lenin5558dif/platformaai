@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import { HttpError } from "@/lib/http-error";
 import { requireSession, toErrorResponse } from "@/lib/authorize";
+import { SYSTEM_ROLE_NAMES } from "@/lib/org-permissions";
 import {
   hashInviteToken,
   inviteTokenPrefix,
@@ -16,6 +17,13 @@ import {
   getRateLimitHeaders,
   getRetryAfterHeader,
 } from "@/lib/rate-limit";
+
+function toLegacyRole(roleName: string) {
+  if (roleName === SYSTEM_ROLE_NAMES.ADMIN || roleName === SYSTEM_ROLE_NAMES.OWNER) {
+    return "ADMIN" as const;
+  }
+  return "EMPLOYEE" as const;
+}
 
 const acceptSchema = z.object({
   token: z.string().min(1),
@@ -87,6 +95,9 @@ export async function POST(request: Request) {
         email: true,
         roleId: true,
         defaultCostCenterId: true,
+        role: {
+          select: { name: true },
+        },
         tokenHash: true,
         expiresAt: true,
         usedAt: true,
@@ -163,13 +174,14 @@ export async function POST(request: Request) {
     }
 
     await prisma.$transaction(async (tx) => {
-      if (!existingOrgId) {
-        await tx.user.update({
-          where: { id: session.user.id },
-          data: { orgId: invite.orgId },
-          select: { id: true },
-        });
-      }
+      const nextLegacyRole = toLegacyRole(invite.role.name);
+      await tx.user.update({
+        where: { id: session.user.id },
+        data: !existingOrgId
+          ? { orgId: invite.orgId, role: nextLegacyRole }
+          : { role: nextLegacyRole },
+        select: { id: true },
+      });
 
       await tx.orgMembership.upsert({
         where: {
