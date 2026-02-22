@@ -1,3 +1,5 @@
+import { upstashCommand, upstashPipeline } from "@/lib/upstash-redis";
+
 type RateEntry = {
   count: number;
   resetAt: number;
@@ -18,7 +20,7 @@ if (!globalStore.rateLimitStore) {
   globalStore.rateLimitStore = store;
 }
 
-export function checkRateLimit(params: {
+function checkRateLimitInMemory(params: {
   key: string;
   limit: number;
   windowMs: number;
@@ -38,6 +40,71 @@ export function checkRateLimit(params: {
   entry.count += 1;
   store.set(params.key, entry);
   return { ok: true, remaining: params.limit - entry.count, resetAt: entry.resetAt };
+}
+
+function toFiniteNumber(value: unknown) {
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string"
+        ? Number(value)
+        : Number.NaN;
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+async function checkRateLimitInRedis(params: {
+  key: string;
+  limit: number;
+  windowMs: number;
+}): Promise<RateLimitResult | undefined> {
+  const redisKey = `rl:${params.key}`;
+  const result = await upstashPipeline([
+    ["INCR", redisKey],
+    ["PEXPIRE", redisKey, params.windowMs, "NX"],
+    ["PTTL", redisKey],
+  ]);
+
+  if (!result) {
+    return undefined;
+  }
+
+  const count = toFiniteNumber(result[0]);
+  let ttlMs = toFiniteNumber(result[2]);
+
+  if (!count || count < 1) {
+    throw new Error("Redis rate-limit returned invalid counter");
+  }
+
+  if (ttlMs === null || ttlMs <= 0) {
+    await upstashCommand(["PEXPIRE", redisKey, params.windowMs]);
+    ttlMs = params.windowMs;
+  }
+
+  const resetAt = Date.now() + ttlMs;
+  const remaining = Math.max(0, params.limit - count);
+
+  if (count > params.limit) {
+    return { ok: false, remaining: 0, resetAt };
+  }
+
+  return { ok: true, remaining, resetAt };
+}
+
+export async function checkRateLimit(params: {
+  key: string;
+  limit: number;
+  windowMs: number;
+}): Promise<RateLimitResult> {
+  try {
+    const redisResult = await checkRateLimitInRedis(params);
+    if (redisResult) {
+      return redisResult;
+    }
+  } catch {
+    // Fallback to process-local limiter if Redis is unavailable.
+  }
+
+  return checkRateLimitInMemory(params);
 }
 
 export function getRateLimitHeaders(params: {

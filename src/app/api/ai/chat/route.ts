@@ -13,6 +13,7 @@ import {
   type AiQuotaHold,
 } from "@/lib/billing";
 import { mapBillingError } from "@/lib/billing-errors";
+import { fetchWithTimeout, isFetchTimeoutError } from "@/lib/fetch-timeout";
 import {
   estimateChatPromptTokens,
   estimateUpperBoundCredits,
@@ -40,6 +41,8 @@ import {
 import { updateChatSummary } from "@/lib/summary";
 import { requestSchema } from "@/lib/chat-request-schema";
 
+const OPENROUTER_CHAT_TIMEOUT_MS = 30_000;
+
 export async function POST(request: Request) {
   const session = await auth();
 
@@ -51,7 +54,7 @@ export async function POST(request: Request) {
   }
   const userId = session.user.id;
 
-  const rate = checkRateLimit({
+  const rate = await checkRateLimit({
     key: `ai:${session.user.id}`,
     limit: 30,
     windowMs: 60 * 1000,
@@ -179,26 +182,46 @@ export async function POST(request: Request) {
     body.fallbackModels ?? [],
     modelPolicy
   );
-  const candidateModelIds = [body.model, ...rawAllowedFallbacks];
-  const freeModelIds = new Set(
-    await filterFreeOpenRouterModelIds(candidateModelIds)
-  );
   const hasPaidAccess = Number(user.balance ?? 0) > 0;
-  const requestedModelIsFree = freeModelIds.has(body.model);
+  let allowedFallbacks = rawAllowedFallbacks;
+  let modelsToTry = [body.model, ...allowedFallbacks];
+  let reserveEstimateModelId = body.model;
+  let requiresPaidBilling = true;
 
-  if (!hasPaidAccess && !requestedModelIsFree) {
-    return NextResponse.json({ error: "Insufficient balance" }, { status: 402 });
+  if (!hasPaidAccess) {
+    const candidateModelIds = [body.model, ...rawAllowedFallbacks];
+    let freeModelIds: Set<string>;
+
+    try {
+      freeModelIds = new Set(await filterFreeOpenRouterModelIds(candidateModelIds));
+    } catch (error) {
+      await logEvent({
+        type: "AI_ERROR",
+        userId: session.user.id,
+        chatId: body.chatId,
+        modelId: body.model,
+        message:
+          error instanceof Error
+            ? `Free model lookup failed: ${error.message}`
+            : "Free model lookup failed",
+      });
+      return NextResponse.json(
+        { error: "OpenRouter models error" },
+        { status: 503 }
+      );
+    }
+
+    const requestedModelIsFree = freeModelIds.has(body.model);
+
+    if (!requestedModelIsFree) {
+      return NextResponse.json({ error: "Insufficient balance" }, { status: 402 });
+    }
+
+    allowedFallbacks = rawAllowedFallbacks.filter((modelId) => freeModelIds.has(modelId));
+    modelsToTry = [body.model, ...allowedFallbacks];
+    reserveEstimateModelId = body.model;
+    requiresPaidBilling = false;
   }
-
-  const allowedFallbacks = hasPaidAccess
-    ? rawAllowedFallbacks
-    : rawAllowedFallbacks.filter((modelId) => freeModelIds.has(modelId));
-  const modelsToTry = [body.model, ...allowedFallbacks];
-  const reserveEstimateModelId =
-    modelsToTry.find((modelId) => !freeModelIds.has(modelId)) ?? body.model;
-  const requiresPaidBilling = modelsToTry.some(
-    (modelId) => !freeModelIds.has(modelId)
-  );
 
   const personalization = buildPersonalizationSystemPrompt(
     user?.settings ?? null
@@ -388,7 +411,7 @@ export async function POST(request: Request) {
       })
     : null;
 
-  const cached = cacheKey ? getCachedResponse(cacheKey) : null;
+  const cached = cacheKey ? await getCachedResponse(cacheKey) : null;
   if (cached) {
     let creditsResult = { credits: 0 };
     try {
@@ -481,7 +504,7 @@ export async function POST(request: Request) {
   try {
     for (const modelId of modelsToTry) {
       usedModel = modelId;
-      response = await fetch(`${baseUrl}/chat/completions`, {
+      response = await fetchWithTimeout(`${baseUrl}/chat/completions`, {
         method: "POST",
         headers: requestHeaders,
         body: JSON.stringify({
@@ -492,6 +515,8 @@ export async function POST(request: Request) {
           stream: body.stream ?? true,
           stream_options: { include_usage: true },
         }),
+        timeoutMs: OPENROUTER_CHAT_TIMEOUT_MS,
+        timeoutLabel: "OpenRouter chat completion",
       });
 
       if (response.ok) {
@@ -514,7 +539,10 @@ export async function POST(request: Request) {
       modelId: usedModel,
       message,
     });
-    return NextResponse.json({ error: "OpenRouter error" }, { status: 502 });
+    return NextResponse.json(
+      { error: isFetchTimeoutError(error) ? "OpenRouter timeout" : "OpenRouter error" },
+      { status: isFetchTimeoutError(error) ? 504 : 502 }
+    );
   }
 
   if (!response || !response.ok) {
@@ -550,9 +578,9 @@ export async function POST(request: Request) {
     if (!assistantContent.trim() && modelsToTry.length > 1) {
       const fallback = modelsToTry.find((modelId) => modelId !== usedModel);
       if (fallback) {
-        const fallbackResponse = await fetch(
-          `${baseUrl}/chat/completions`,
-          {
+        let fallbackResponse: Response | null = null;
+        try {
+          fallbackResponse = await fetchWithTimeout(`${baseUrl}/chat/completions`, {
             method: "POST",
             headers: requestHeaders,
             body: JSON.stringify({
@@ -562,10 +590,14 @@ export async function POST(request: Request) {
               max_tokens: body.max_tokens,
               stream: false,
             }),
-          }
-        );
+            timeoutMs: OPENROUTER_CHAT_TIMEOUT_MS,
+            timeoutLabel: "OpenRouter chat fallback",
+          });
+        } catch {
+          fallbackResponse = null;
+        }
 
-        if (fallbackResponse.ok) {
+        if (fallbackResponse?.ok) {
           usedModel = fallback;
           data = await fallbackResponse.json();
           usage = data?.usage;
@@ -636,7 +668,7 @@ export async function POST(request: Request) {
         temperature: body.temperature,
         max_tokens: body.max_tokens,
       });
-      setCachedResponse(finalCacheKey, {
+      await setCachedResponse(finalCacheKey, {
         content: assistantContent,
         usage,
         modelId: usedModel,
@@ -731,7 +763,7 @@ export async function POST(request: Request) {
         temperature: body.temperature,
         max_tokens: body.max_tokens,
       });
-      setCachedResponse(finalCacheKey, {
+      await setCachedResponse(finalCacheKey, {
         content: assistantText,
         usage: usage ?? undefined,
         modelId: usedModel,
@@ -782,9 +814,9 @@ export async function POST(request: Request) {
         if (!assistantText.trim() && !sentAny && modelsToTry.length > 1) {
           const fallback = modelsToTry.find((modelId) => modelId !== usedModel);
           if (fallback) {
-            const fallbackResponse = await fetch(
-              `${baseUrl}/chat/completions`,
-              {
+            let fallbackResponse: Response | null = null;
+            try {
+              fallbackResponse = await fetchWithTimeout(`${baseUrl}/chat/completions`, {
                 method: "POST",
                 headers: requestHeaders,
                 body: JSON.stringify({
@@ -794,10 +826,14 @@ export async function POST(request: Request) {
                   max_tokens: body.max_tokens,
                   stream: false,
                 }),
-              }
-            );
+                timeoutMs: OPENROUTER_CHAT_TIMEOUT_MS,
+                timeoutLabel: "OpenRouter chat stream fallback",
+              });
+            } catch {
+              fallbackResponse = null;
+            }
 
-            if (fallbackResponse.ok) {
+            if (fallbackResponse?.ok) {
               const fallbackData = await fallbackResponse.json();
               const fallbackText =
                 fallbackData?.choices?.[0]?.message?.content ?? "";

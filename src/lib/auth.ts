@@ -10,6 +10,8 @@ import { Prisma, UserRole } from "@prisma/client";
 import { SYSTEM_ROLE_NAMES } from "@/lib/org-permissions";
 import { ensureOrgSystemRolesAndPermissions } from "@/lib/org-rbac";
 import { compare } from "bcryptjs";
+import { checkRateLimit } from "@/lib/rate-limit";
+import { getClientIp } from "@/lib/request-ip";
 
 const telegramSchema = z.object({
   id: z.number(),
@@ -25,6 +27,11 @@ const credentialsSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8).max(72),
 });
+
+const LOGIN_IP_LIMIT = 30;
+const LOGIN_IP_WINDOW_MS = 5 * 60 * 1000;
+const LOGIN_IDENTITY_LIMIT = 10;
+const LOGIN_IDENTITY_WINDOW_MS = 10 * 60 * 1000;
 
 const ssoProvider: OIDCConfig<Record<string, unknown>> | null =
   process.env.SSO_ISSUER &&
@@ -53,7 +60,18 @@ const nextAuth = NextAuth({
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
       },
-      authorize: async (credentials) => {
+      authorize: async (credentials, request) => {
+        const clientIp = getClientIp(request);
+
+        const ipRate = await checkRateLimit({
+          key: `auth:login:ip:${clientIp}`,
+          limit: LOGIN_IP_LIMIT,
+          windowMs: LOGIN_IP_WINDOW_MS,
+        });
+        if (!ipRate.ok) {
+          return null;
+        }
+
         const parsed = credentialsSchema.safeParse({
           email:
             typeof credentials?.email === "string"
@@ -64,6 +82,15 @@ const nextAuth = NextAuth({
         });
 
         if (!parsed.success) {
+          return null;
+        }
+
+        const identityRate = await checkRateLimit({
+          key: `auth:login:identity:${clientIp}:${parsed.data.email}`,
+          limit: LOGIN_IDENTITY_LIMIT,
+          windowMs: LOGIN_IDENTITY_WINDOW_MS,
+        });
+        if (!identityRate.ok) {
           return null;
         }
 

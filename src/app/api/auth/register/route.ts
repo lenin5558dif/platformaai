@@ -3,6 +3,12 @@ import { Prisma } from "@prisma/client";
 import { hash } from "bcryptjs";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
+import {
+  checkRateLimit,
+  getRateLimitHeaders,
+  getRetryAfterHeader,
+} from "@/lib/rate-limit";
+import { getClientIp } from "@/lib/request-ip";
 import { getSettingsObject } from "@/lib/user-settings";
 
 const registerSchema = z
@@ -22,7 +28,51 @@ const registerSchema = z
     }
   });
 
+const REGISTER_IP_LIMIT = 10;
+const REGISTER_IP_WINDOW_MS = 10 * 60 * 1000;
+const REGISTER_EMAIL_LIMIT = 5;
+const REGISTER_EMAIL_WINDOW_MS = 60 * 60 * 1000;
+
+function buildRegisterRateLimitedResponse(params: {
+  limit: number;
+  remaining: number;
+  resetAt: number;
+}) {
+  return NextResponse.json(
+    {
+      error: "RATE_LIMITED",
+      message: "Too many registration attempts. Please try again later.",
+    },
+    {
+      status: 429,
+      headers: {
+        ...getRateLimitHeaders({
+          limit: params.limit,
+          remaining: params.remaining,
+          resetAt: params.resetAt,
+        }),
+        ...getRetryAfterHeader(params.resetAt),
+      },
+    }
+  );
+}
+
 export async function POST(request: Request) {
+  const clientIp = getClientIp(request);
+  const ipRate = await checkRateLimit({
+    key: `auth:register:ip:${clientIp}`,
+    limit: REGISTER_IP_LIMIT,
+    windowMs: REGISTER_IP_WINDOW_MS,
+  });
+
+  if (!ipRate.ok) {
+    return buildRegisterRateLimitedResponse({
+      limit: REGISTER_IP_LIMIT,
+      remaining: ipRate.remaining,
+      resetAt: ipRate.resetAt,
+    });
+  }
+
   let payload: unknown;
   try {
     payload = await request.json();
@@ -47,13 +97,27 @@ export async function POST(request: Request) {
 
   const nickname = parsed.data.nickname.trim();
   const email = parsed.data.email.trim().toLowerCase();
+  const emailRate = await checkRateLimit({
+    key: `auth:register:email:${email}`,
+    limit: REGISTER_EMAIL_LIMIT,
+    windowMs: REGISTER_EMAIL_WINDOW_MS,
+  });
+
+  if (!emailRate.ok) {
+    return buildRegisterRateLimitedResponse({
+      limit: REGISTER_EMAIL_LIMIT,
+      remaining: emailRate.remaining,
+      resetAt: emailRate.resetAt,
+    });
+  }
+
   const passwordHash = await hash(parsed.data.password, 12);
   const createData = {
     email,
     passwordHash,
     isActive: true,
     role: "USER",
-    emailVerifiedByProvider: true,
+    emailVerifiedByProvider: null,
     settings: {
       profileFirstName: nickname,
       onboarded: false,
@@ -86,7 +150,7 @@ export async function POST(request: Request) {
           data: {
             passwordHash,
             isActive: true,
-            emailVerifiedByProvider: true,
+            emailVerifiedByProvider: null,
             settings: {
               ...existingSettings,
               profileFirstName: existingSettings.profileFirstName ?? nickname,

@@ -65,6 +65,13 @@ type Model = {
 
 const DEFAULT_MODEL = "openai/gpt-4o";
 const COMPOSER_MAX_HEIGHT = 128;
+const AUTO_SCROLL_BOTTOM_THRESHOLD_PX = 120;
+
+function isNearBottom(element: HTMLElement, threshold = AUTO_SCROLL_BOTTOM_THRESHOLD_PX) {
+  const distanceToBottom =
+    element.scrollHeight - element.scrollTop - element.clientHeight;
+  return distanceToBottom <= threshold;
+}
 
 function resizeComposer(element: HTMLTextAreaElement) {
   element.style.height = "0px";
@@ -98,6 +105,7 @@ export default function ChatApp() {
     useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [modelFilter, setModelFilter] = useState<
@@ -117,6 +125,8 @@ export default function ChatApp() {
     image?: string | null;
   } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
+  const shouldAutoScrollRef = useRef(true);
   const skipNextLoadRef = useRef<string | null>(null);
   const activeChatIdRef = useRef<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -671,6 +681,11 @@ export default function ChatApp() {
       return;
     }
 
+    // Keep local streaming/placeholder UI intact while the current chat is receiving SSE chunks.
+    if (isSending && streamingChatId === activeChatId) {
+      return;
+    }
+
     void loadChatDetails(activeChatId);
   }, [activeChatId, loadChatDetails, isSending, streamingChatId]);
 
@@ -682,7 +697,13 @@ export default function ChatApp() {
 
   useEffect(() => {
     if (isSending) {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+      const container = chatScrollRef.current;
+      if (container) {
+        if (!shouldAutoScrollRef.current) return;
+        container.scrollTop = container.scrollHeight;
+        return;
+      }
+      messagesEndRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
     }
   }, [messages, isSending]);
 
@@ -758,6 +779,7 @@ export default function ChatApp() {
   async function handleDescribeAttachment(attachment: Attachment) {
     if (!activeChatId) return;
     if (!attachment.mimeType.startsWith("image/")) return;
+    shouldAutoScrollRef.current = true;
     setIsSending(true);
     try {
       const response = await fetch("/api/ai/image", {
@@ -778,6 +800,7 @@ export default function ChatApp() {
 
   async function runAssistant(chatId: string, messageList: ChatMessage[]) {
     const assistantIndex = messageList.length;
+    shouldAutoScrollRef.current = true;
     setMessages([...messageList, { role: "assistant", content: "" }]);
     setIsSending(true);
     setStreamingChatId(chatId);
@@ -874,6 +897,7 @@ export default function ChatApp() {
 
     setError(null);
     setInput("");
+    shouldAutoScrollRef.current = true;
 
     const chatId = await ensureChatId(text.slice(0, 40) || "New Chat");
     if (!chatId) {
@@ -905,6 +929,7 @@ export default function ChatApp() {
   async function sendQuickPrompt(text: string) {
     if (!text.trim() || isSending) return;
     setError(null);
+    shouldAutoScrollRef.current = true;
     const chatId = await ensureChatId(text.slice(0, 40) || "New Chat");
     if (!chatId) return;
     const nextMessages: ChatMessage[] = [
@@ -980,6 +1005,14 @@ export default function ChatApp() {
   const closeSidebar = () => {
     setIsSidebarOpen(false);
   };
+  const toggleDesktopSidebar = () => {
+    setIsSidebarCollapsed((prev) => !prev);
+  };
+  const handleChatScroll = useCallback(() => {
+    const container = chatScrollRef.current;
+    if (!container) return;
+    shouldAutoScrollRef.current = isNearBottom(container);
+  }, []);
   const closeDetails = () => {
     setDetailsOpen(false);
   };
@@ -995,18 +1028,41 @@ export default function ChatApp() {
         />
       )}
       <aside
-        className={`fixed inset-y-0 left-0 z-40 flex w-72 flex-col glass-panel border-r-0 border-r-black/5 h-full transition-all duration-300 transform md:static md:z-20 md:translate-x-0 ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"
+        className={`fixed inset-y-0 left-0 z-40 flex h-full w-72 flex-col glass-panel border-r-0 border-r-black/5 transition-all duration-300 transform md:static md:z-20 md:translate-x-0 ${isSidebarCollapsed ? "md:w-20" : "md:w-72"} ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"
           }`}
       >
-        <div className="p-6 pb-2">
-          <div className="flex flex-col gap-1 mb-8">
-            <h1 className="text-text-primary text-xl font-bold tracking-tight">
-              Platforma<span className="text-primary">AI</span>
-            </h1>
-            <p className="text-text-secondary text-xs font-normal">Unified LLM Aggregator</p>
+        <div className={`${isSidebarCollapsed ? "p-4 pb-2" : "p-6 pb-2"}`}>
+          <div className={`mb-6 flex items-start ${isSidebarCollapsed ? "justify-center gap-2" : "justify-between gap-3"}`}>
+            <div className={`flex min-w-0 flex-col gap-1 ${isSidebarCollapsed ? "items-center" : ""}`}>
+              <h1 className={`text-text-primary font-bold tracking-tight ${isSidebarCollapsed ? "text-base" : "text-xl"}`}>
+                {isSidebarCollapsed ? (
+                  <>
+                    P<span className="text-primary">A</span>
+                  </>
+                ) : (
+                  <>
+                    Platforma<span className="text-primary">AI</span>
+                  </>
+                )}
+              </h1>
+              {!isSidebarCollapsed && (
+                <p className="text-text-secondary text-xs font-normal">Unified LLM Aggregator</p>
+              )}
+            </div>
+            <button
+              className="flex size-8 shrink-0 items-center justify-center rounded-lg text-text-secondary hover:text-text-primary hover:bg-black/5"
+              onClick={toggleDesktopSidebar}
+              type="button"
+              aria-label={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              title={isSidebarCollapsed ? "Expand" : "Collapse"}
+            >
+              <span className="material-symbols-outlined text-[18px]">
+                {isSidebarCollapsed ? "right_panel_open" : "left_panel_close"}
+              </span>
+            </button>
           </div>
           <button
-            className="w-full flex items-center justify-center gap-2 bg-primary hover:bg-primary/90 text-white p-3 rounded-lg transition-colors shadow-[0_0_15px_rgba(212,122,106,0.2)] group mb-6"
+            className={`w-full flex items-center justify-center bg-primary hover:bg-primary/90 text-white rounded-lg transition-colors shadow-[0_0_15px_rgba(212,122,106,0.2)] group mb-4 ${isSidebarCollapsed ? "p-2.5" : "gap-2 p-3"}`}
             onClick={() => {
               closeSidebar();
               setIsDraft(true);
@@ -1019,44 +1075,65 @@ export default function ChatApp() {
             <span className="material-symbols-outlined text-[20px] group-hover:scale-110 transition-transform">
               add
             </span>
-            <span className="text-sm font-bold">New Chat</span>
+            {!isSidebarCollapsed && <span className="text-sm font-bold">New Chat</span>}
           </button>
 
-          <div className="mb-5">
-            <div className="relative">
-              <span className="material-symbols-outlined text-[16px] text-text-secondary absolute left-3 top-1/2 -translate-y-1/2">
-                search
-              </span>
-              <input
-                className="w-full rounded-lg border border-black/10 bg-white/70 pl-9 pr-9 py-2 text-xs text-text-primary placeholder:text-text-secondary focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                placeholder="Search chats..."
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-              />
-              {searchQuery.trim() && (
-                <button
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text-primary"
-                  type="button"
-                  onClick={() => setSearchQuery("")}
-                >
-                  <span className="material-symbols-outlined text-[16px]">
-                    close
-                  </span>
-                </button>
-              )}
+          {isSidebarCollapsed ? (
+            <div className="mb-4 flex justify-center">
+              <button
+                className="hidden md:flex size-10 items-center justify-center rounded-lg border border-black/10 bg-white/70 text-text-secondary hover:text-text-primary hover:bg-white"
+                type="button"
+                title="Expand and search"
+                aria-label="Expand and search"
+                onClick={() => setIsSidebarCollapsed(false)}
+              >
+                <span className="material-symbols-outlined text-[18px]">search</span>
+              </button>
             </div>
-          </div>
+          ) : (
+            <>
+              <div className="mb-5">
+                <div className="relative">
+                  <span className="material-symbols-outlined text-[16px] text-text-secondary absolute left-3 top-1/2 -translate-y-1/2">
+                    search
+                  </span>
+                  <input
+                    className="w-full rounded-lg border border-black/10 bg-white/70 pl-9 pr-9 py-2 text-xs text-text-primary placeholder:text-text-secondary focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                    placeholder="Search chats..."
+                    value={searchQuery}
+                    onChange={(event) => setSearchQuery(event.target.value)}
+                  />
+                  {searchQuery.trim() && (
+                    <button
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text-primary"
+                      type="button"
+                      onClick={() => setSearchQuery("")}
+                    >
+                      <span className="material-symbols-outlined text-[16px]">
+                        close
+                      </span>
+                    </button>
+                  )}
+                </div>
+              </div>
 
-          <div className="text-xs font-medium text-text-secondary/70 uppercase tracking-wider mb-3 px-2">Recent Sessions</div>
+              <div className="text-xs font-medium text-text-secondary/70 uppercase tracking-wider mb-3 px-2">
+                Recent Sessions
+              </div>
+            </>
+          )}
         </div>
 
-        <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-2 scrollbar-hide">
+        <div
+          className={`flex-1 overflow-y-auto pb-4 space-y-2 scrollbar-hide ${isSidebarCollapsed ? "px-2" : "px-4"}`}
+        >
           {chatGroups.map((group) => (
             <div key={group.label}>
               {group.items.map((chat) => (
                 <div
                   key={chat.id}
-                  className={`flex items-center gap-3 px-3 py-3 rounded-lg cursor-pointer transition-colors group ${chat.id === activeChatId
+                  title={isSidebarCollapsed ? chat.title : undefined}
+                  className={`flex items-center rounded-lg cursor-pointer transition-colors group ${isSidebarCollapsed ? "justify-center px-2 py-2.5" : "gap-3 px-3 py-3"} ${chat.id === activeChatId
                     ? "bg-primary/10 border border-primary/20"
                     : "hover:bg-black/5"
                     }`}
@@ -1070,56 +1147,62 @@ export default function ChatApp() {
                     }`}>
                     {chat.source === "TELEGRAM" ? "send" : "chat_bubble"}
                   </span>
-                  <div className="flex flex-col overflow-hidden flex-1 min-w-0">
-                    <p className={`text-sm font-medium truncate ${chat.id === activeChatId ? "text-text-primary" : "text-text-primary group-hover:text-text-primary"
-                      }`}>
-                      {chat.title}
-                    </p>
-                    <p className="text-text-secondary text-[10px] truncate">
-                      {new Date(chat.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button
-                      className={`size-7 flex items-center justify-center rounded-md ${chat.pinned ? "bg-primary/10 text-primary" : "text-text-secondary hover:text-text-primary hover:bg-black/5"}`}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        void handleTogglePin(chat);
-                      }}
-                      type="button"
-                      title={chat.pinned ? "Unpin" : "Pin"}
-                    >
-                      <span className="material-symbols-outlined text-[16px]">push_pin</span>
-                    </button>
-                    <button
-                      className={`size-7 flex items-center justify-center rounded-md ${chat.isFavorite ? "bg-amber-100 text-amber-600" : "text-text-secondary hover:text-text-primary hover:bg-black/5"}`}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        void handleToggleFavorite(chat);
-                      }}
-                      type="button"
-                      title={chat.isFavorite ? "Unfavorite" : "Favorite"}
-                    >
-                      <span className="material-symbols-outlined text-[16px]">star</span>
-                    </button>
-                    <button
-                      className="size-7 flex items-center justify-center rounded-md text-text-secondary hover:text-red-600 hover:bg-red-50"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        void handleDeleteChat(chat.id);
-                      }}
-                      type="button"
-                      title="Delete"
-                    >
-                      <span className="material-symbols-outlined text-[16px]">delete</span>
-                    </button>
-                  </div>
+                  {!isSidebarCollapsed && (
+                    <>
+                      <div className="flex flex-col overflow-hidden flex-1 min-w-0">
+                        <p className={`text-sm font-medium truncate ${chat.id === activeChatId ? "text-text-primary" : "text-text-primary group-hover:text-text-primary"
+                          }`}>
+                          {chat.title}
+                        </p>
+                        <p className="text-text-secondary text-[10px] truncate">
+                          {new Date(chat.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          className={`size-7 flex items-center justify-center rounded-md ${chat.pinned ? "bg-primary/10 text-primary" : "text-text-secondary hover:text-text-primary hover:bg-black/5"}`}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void handleTogglePin(chat);
+                          }}
+                          type="button"
+                          title={chat.pinned ? "Unpin" : "Pin"}
+                        >
+                          <span className="material-symbols-outlined text-[16px]">push_pin</span>
+                        </button>
+                        <button
+                          className={`size-7 flex items-center justify-center rounded-md ${chat.isFavorite ? "bg-amber-100 text-amber-600" : "text-text-secondary hover:text-text-primary hover:bg-black/5"}`}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void handleToggleFavorite(chat);
+                          }}
+                          type="button"
+                          title={chat.isFavorite ? "Unfavorite" : "Favorite"}
+                        >
+                          <span className="material-symbols-outlined text-[16px]">star</span>
+                        </button>
+                        <button
+                          className="size-7 flex items-center justify-center rounded-md text-text-secondary hover:text-red-600 hover:bg-red-50"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void handleDeleteChat(chat.id);
+                          }}
+                          type="button"
+                          title="Delete"
+                        >
+                          <span className="material-symbols-outlined text-[16px]">delete</span>
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
               ))}
             </div>
           ))}
           {!filteredChats.length && (
-            <div className="px-3 text-xs text-text-secondary">No recent sessions.</div>
+            <div className={`text-xs text-text-secondary ${isSidebarCollapsed ? "px-1 text-center" : "px-3"}`}>
+              {isSidebarCollapsed ? "—" : "No recent sessions."}
+            </div>
           )}
         </div>
 
@@ -1409,7 +1492,11 @@ export default function ChatApp() {
           </div>
         </header>
 
-        <div className="chat-scroll-fade-top flex-1 overflow-y-auto pt-24 pb-40 px-6 md:px-0">
+        <div
+          ref={chatScrollRef}
+          onScroll={handleChatScroll}
+          className="chat-scroll-fade-top flex-1 overflow-y-auto pt-24 pb-10 md:pb-12 px-6 md:px-0"
+        >
           <div className="max-w-4xl mx-auto flex flex-col gap-6">
             {error && (
               <div className="rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-900">
@@ -1512,6 +1599,10 @@ export default function ChatApp() {
                     typeof message.tokenCount === "number"
                       ? message.tokenCount
                       : estimateTokens(message.content);
+                  const isStreamingAssistant =
+                    isAI && isSending && index === messages.length - 1;
+                  const showThinkingPanel =
+                    isStreamingAssistant && !message.content.trim();
                 return (
                   <div key={message.id || index} className={`flex items-start gap-4 ${isAI ? 'pr-4' : 'pl-4 justify-end'} group`}>
                     {isAI && (
@@ -1538,13 +1629,42 @@ export default function ChatApp() {
 
                         <div className="relative z-10">
                           {isAI ? (
-                            <ReactMarkdown
-                              remarkPlugins={[remarkGfm]}
-                              rehypePlugins={[rehypeHighlight]}
-                              className="chat-markdown"
-                            >
-                              {message.content || ""}
-                            </ReactMarkdown>
+                            showThinkingPanel ? (
+                              <div className="flex items-center gap-3 rounded-2xl border border-primary/20 bg-white/50 px-3 py-2">
+                                <span className="material-symbols-outlined text-primary text-[18px] animate-pulse">
+                                  psychology
+                                </span>
+                                <div className="flex flex-col gap-0.5">
+                                  <span className="text-sm font-semibold text-text-primary">
+                                    Думает над ответом...
+                                  </span>
+                                  <span className="text-[11px] text-text-secondary">
+                                    Печатает по мере генерации
+                                  </span>
+                                </div>
+                                <div className="ml-auto flex items-center gap-1" aria-hidden>
+                                  <span className="size-1.5 rounded-full bg-primary/60 animate-bounce [animation-delay:-0.2s]" />
+                                  <span className="size-1.5 rounded-full bg-primary/60 animate-bounce [animation-delay:-0.1s]" />
+                                  <span className="size-1.5 rounded-full bg-primary/60 animate-bounce" />
+                                </div>
+                              </div>
+                            ) : (
+                              <div>
+                                <ReactMarkdown
+                                  remarkPlugins={[remarkGfm]}
+                                  rehypePlugins={[rehypeHighlight]}
+                                  className="chat-markdown"
+                                >
+                                  {message.content || ""}
+                                </ReactMarkdown>
+                                {isStreamingAssistant && (
+                                  <span
+                                    className="mt-1 inline-block h-4 w-1 rounded-full bg-primary/70 animate-pulse"
+                                    aria-hidden
+                                  />
+                                )}
+                              </div>
+                            )
                           ) : (
                             <>
                               {isEditing ? (
@@ -1578,12 +1698,9 @@ export default function ChatApp() {
                               )}
                             </>
                           )}
-                          {isAI && isSending && index === messages.length - 1 && !message.content && (
-                            <span className="animate-pulse">Thinking...</span>
-                          )}
                         </div>
 
-                        {isAI && (
+                        {isAI && !showThinkingPanel && (
                           <div className="mt-4 pt-4 border-t border-black/5 flex flex-wrap gap-2">
                             <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/5 border border-black/10">
                               <span className="material-symbols-outlined text-primary text-[14px]">token</span>

@@ -46,7 +46,7 @@ export async function POST(request: Request) {
 
     // Rate limit: 5 attempts per 15 minutes per token (anti-bruteforce)
     const acceptRateLimitKey = `invite:accept:${tokenHash}`;
-    const acceptRateLimit = checkRateLimit({
+    const acceptRateLimit = await checkRateLimit({
       key: acceptRateLimitKey,
       limit: 5,
       windowMs: 15 * 60 * 1000,

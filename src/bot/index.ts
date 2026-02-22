@@ -2,6 +2,7 @@ import "dotenv/config";
 import { Telegraf, Markup, type Context } from "telegraf";
 import { PrismaClient, Prisma, type User } from "@prisma/client";
 import { getOpenRouterBaseUrl, getOpenRouterHeaders } from "@/lib/openrouter";
+import { fetchWithTimeout } from "@/lib/fetch-timeout";
 import { trimMessages, type ChatMessage } from "@/lib/context";
 import {
   calculateCreditsFromStt,
@@ -38,6 +39,7 @@ const DEFAULT_MODEL = "openai/gpt-4o";
 const bot = new Telegraf(botToken);
 
 const TELEGRAM_MESSAGE_LIMIT = 4000;
+const OPENROUTER_BOT_TIMEOUT_MS = 30_000;
 
 function escapeHtml(text: string) {
   return text
@@ -433,7 +435,7 @@ async function handleUserPrompt(ctx: Context, user: User, content: string) {
   });
 
   try {
-    const response = await fetch(`${getOpenRouterBaseUrl()}/chat/completions`, {
+    const response = await fetchWithTimeout(`${getOpenRouterBaseUrl()}/chat/completions`, {
       method: "POST",
       headers: getOpenRouterHeaders(),
       body: JSON.stringify({
@@ -442,6 +444,8 @@ async function handleUserPrompt(ctx: Context, user: User, content: string) {
         stream: true,
         stream_options: { include_usage: true },
       }),
+      timeoutMs: OPENROUTER_BOT_TIMEOUT_MS,
+      timeoutLabel: "OpenRouter telegram chat completion",
     });
 
     if (!response.ok) {

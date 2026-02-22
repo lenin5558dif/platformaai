@@ -113,7 +113,7 @@ describe("auth register route", () => {
       data: {
         passwordHash: "hashed:password1",
         isActive: true,
-        emailVerifiedByProvider: true,
+        emailVerifiedByProvider: null,
         settings: {
           profileFirstName: "legacy",
           onboarded: false,
@@ -152,7 +152,7 @@ describe("auth register route", () => {
         passwordHash: "hashed:password1",
         isActive: true,
         role: "USER",
-        emailVerifiedByProvider: true,
+        emailVerifiedByProvider: null,
         settings: {
           profileFirstName: "nickname",
           onboarded: false,

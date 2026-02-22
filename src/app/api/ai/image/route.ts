@@ -22,6 +22,9 @@ import {
 import { findOwnedChat } from "@/lib/chat-ownership";
 import { resolveOrgCostCenterId } from "@/lib/cost-centers";
 import { HttpError } from "@/lib/http-error";
+import { fetchWithTimeout, isFetchTimeoutError } from "@/lib/fetch-timeout";
+
+const OPENROUTER_IMAGE_TIMEOUT_MS = 45_000;
 
 const requestSchema = z.object({
   attachmentId: z.string().min(1),
@@ -208,23 +211,33 @@ export async function POST(request: Request) {
   const base64 = buffer.toString("base64");
   const imageUrl = `data:${attachment.mimeType};base64,${base64}`;
 
-  const response = await fetch(`${getOpenRouterBaseUrl()}/chat/completions`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      model: modelId,
-      messages: [
-        {
-          role: "user",
-          content: [
-            { type: "text", text: safePrompt },
-            { type: "image_url", image_url: { url: imageUrl } },
-          ],
-        },
-      ],
-      stream: false,
-    }),
-  });
+  let response: Response;
+  try {
+    response = await fetchWithTimeout(`${getOpenRouterBaseUrl()}/chat/completions`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        model: modelId,
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: safePrompt },
+              { type: "image_url", image_url: { url: imageUrl } },
+            ],
+          },
+        ],
+        stream: false,
+      }),
+      timeoutMs: OPENROUTER_IMAGE_TIMEOUT_MS,
+      timeoutLabel: "OpenRouter image description",
+    });
+  } catch (error) {
+    await releaseAiQuotaHold({ hold: quotaHold });
+    const message = isFetchTimeoutError(error) ? "OpenRouter timeout" : "OpenRouter error";
+    const status = isFetchTimeoutError(error) ? 504 : 502;
+    return NextResponse.json({ error: message }, { status });
+  }
 
   if (!response.ok) {
     await releaseAiQuotaHold({ hold: quotaHold });

@@ -1,4 +1,5 @@
 import { getOpenRouterBaseUrl, getOpenRouterHeaders } from "@/lib/openrouter";
+import { fetchWithTimeout } from "@/lib/fetch-timeout";
 
 export type OpenRouterModel = {
   id: string;
@@ -45,6 +46,7 @@ type ModelsCache = {
 };
 
 const CACHE_TTL_MS = 10 * 60 * 1000;
+const OPENROUTER_MODELS_TIMEOUT_MS = 12_000;
 const globalCache = globalThis as unknown as {
   openRouterModels?: ModelsCache;
   openRouterModelsByKey?: Map<string, ModelsCache>;
@@ -71,9 +73,11 @@ export async function fetchModels(params?: {
     return cached.data;
   }
 
-  const response = await fetch(`${getOpenRouterBaseUrl()}/models`, {
+  const response = await fetchWithTimeout(`${getOpenRouterBaseUrl()}/models`, {
     headers: getOpenRouterHeaders(apiKey),
     cache: "no-store",
+    timeoutMs: OPENROUTER_MODELS_TIMEOUT_MS,
+    timeoutLabel: "OpenRouter models",
   });
 
   if (!response.ok) {
