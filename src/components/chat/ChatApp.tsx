@@ -106,7 +106,9 @@ export default function ChatApp() {
   const [modelQuery, setModelQuery] = useState("");
   const [isOnline, setIsOnline] = useState(true);
   const [streamingChatId, setStreamingChatId] = useState<string | null>(null);
-  const [hasApiKeyConfigured, setHasApiKeyConfigured] = useState(true);
+  const [apiKeyState, setApiKeyState] = useState<"ok" | "missing" | "invalid">(
+    "ok"
+  );
   const [currentUser, setCurrentUser] = useState<{
     email?: string | null;
     role?: string | null;
@@ -199,13 +201,25 @@ export default function ChatApp() {
 
   const errorHint = useMemo(() => {
     if (!error) return null;
-    if (error.toLowerCase().includes("unauthorized")) {
+    const lower = error.toLowerCase();
+    if (
+      lower === "unauthorized" ||
+      lower.includes("auth_unauthorized") ||
+      lower.includes("сессия истекла")
+    ) {
+      return "Sign in again.";
+    }
+    if (
+      lower.includes("openrouter") ||
+      lower.includes("api key") ||
+      lower.includes("неверный ключ")
+    ) {
       return "Check OpenRouter API key.";
     }
-    if (error.toLowerCase().includes("openrouter")) {
+    if (lower.includes("openrouter")) {
       return "Try another model or try again later.";
     }
-    if (error.toLowerCase().includes("balance")) {
+    if (lower.includes("balance")) {
       return "Top up balance or switch to free model.";
     }
     return "Check connection and try again.";
@@ -214,8 +228,19 @@ export default function ChatApp() {
   const errorCta = useMemo(() => {
     if (!error) return null;
     const lower = error.toLowerCase();
-    if (lower.includes("unauthorized")) {
-      return { href: "/settings#api-keys", label: "Add Key" };
+    if (
+      lower === "unauthorized" ||
+      lower.includes("auth_unauthorized") ||
+      lower.includes("сессия истекла")
+    ) {
+      return { href: "/login", label: "Sign In" };
+    }
+    if (
+      lower.includes("openrouter") ||
+      lower.includes("api key") ||
+      lower.includes("неверный ключ")
+    ) {
+      return { href: "/settings#api-keys", label: "Check Key" };
     }
     if (lower.includes("balance")) {
       return { href: "/billing", label: "Top Up" };
@@ -296,9 +321,34 @@ export default function ChatApp() {
     try {
       const response = await fetch("/api/models");
       if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        const errorCode =
+          typeof data?.code === "string" ? data.code : undefined;
+        const errorMessage =
+          typeof data?.error === "string" ? data.error : "Model request error.";
+
         if (response.status === 401) {
-          setHasApiKeyConfigured(false);
+          if (
+            errorCode === "OPENROUTER_KEY_MISSING" ||
+            errorMessage.includes("OPENROUTER_API_KEY")
+          ) {
+            setApiKeyState("missing");
+            return;
+          }
+
+          if (errorCode === "OPENROUTER_KEY_INVALID") {
+            setApiKeyState("invalid");
+            setError((prev) => prev ?? "OpenRouter: неверный ключ. Проверьте ключ в настройках.");
+            return;
+          }
+
+          if (errorCode === "AUTH_UNAUTHORIZED" || errorMessage === "Unauthorized") {
+            setApiKeyState("ok");
+            setError((prev) => prev ?? "Сессия истекла. Войдите снова.");
+            return;
+          }
         }
+        setApiKeyState("ok");
         return;
       }
       const payload = await response.json();
@@ -328,7 +378,7 @@ export default function ChatApp() {
         setSelectedModel(preferred);
         setHasLoadedModelPreference(true);
       }
-      setHasApiKeyConfigured(true);
+      setApiKeyState("ok");
     } catch {
       // ignore
     }
@@ -1269,7 +1319,7 @@ export default function ChatApp() {
 
             <div className="flex items-center gap-2">
               <div className="relative" ref={modelMenuRef}>
-                {hasApiKeyConfigured ? (
+                {apiKeyState === "ok" ? (
                   <div
                     className="hidden md:flex h-8 items-center justify-center gap-x-2 rounded-lg bg-primary/10 border border-primary/20 pl-2 pr-3 cursor-pointer hover:bg-primary/20 transition-colors"
                     onClick={() => setModelMenuOpen(!modelMenuOpen)}
@@ -1288,12 +1338,14 @@ export default function ChatApp() {
                       key
                     </span>
                     <p className="text-amber-700 text-xs font-bold">
-                      Добавить API-ключ
+                      {apiKeyState === "invalid"
+                        ? "Проверь API-ключ"
+                        : "Добавить API-ключ"}
                     </p>
                   </Link>
                 )}
 
-                {hasApiKeyConfigured && modelMenuOpen && (
+                {apiKeyState === "ok" && modelMenuOpen && (
                   <div className="absolute right-0 top-full z-20 mt-2 w-72 rounded-xl border border-white/60 bg-white/90 p-2 shadow-glass-lg backdrop-blur-md">
                     <div className="px-1 pb-2">
                       <div className="relative">

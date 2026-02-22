@@ -56,3 +56,5 @@ openspec/
 AGENTS.md
 .github/agents/
 .github/prompts/
+
+codebase/

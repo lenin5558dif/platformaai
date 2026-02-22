@@ -10,6 +10,35 @@ export type OpenRouterModel = {
   };
 };
 
+function hasFreeModelSuffix(modelId: string) {
+  return modelId.toLowerCase().endsWith(":free");
+}
+
+function parsePricingValue(value?: string) {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+export function isOpenRouterModelFree(
+  model: Pick<OpenRouterModel, "id" | "pricing">
+) {
+  if (hasFreeModelSuffix(model.id)) return true;
+
+  const prompt = parsePricingValue(model.pricing?.prompt);
+  const completion = parsePricingValue(model.pricing?.completion);
+
+  if (prompt === null && completion === null) {
+    return false;
+  }
+
+  return (prompt ?? 0) <= 0 && (completion ?? 0) <= 0;
+}
+
+export function filterFreeOpenRouterModels(models: OpenRouterModel[]) {
+  return models.filter(isOpenRouterModelFree);
+}
+
 type ModelsCache = {
   data: OpenRouterModel[];
   fetchedAt: number;
@@ -70,4 +99,20 @@ export async function getModelPricing(modelId: string, apiKey?: string) {
   const model = models.find((entry) => entry.id === modelId);
 
   return model?.pricing ?? null;
+}
+
+export async function filterFreeOpenRouterModelIds(
+  modelIds: string[],
+  apiKey?: string
+) {
+  if (!modelIds.length) return [];
+
+  const models = await fetchModels({ apiKey });
+  const freeModelIds = new Set(
+    filterFreeOpenRouterModels(models).map((model) => model.id)
+  );
+
+  return modelIds.filter(
+    (modelId) => freeModelIds.has(modelId) || hasFreeModelSuffix(modelId)
+  );
 }

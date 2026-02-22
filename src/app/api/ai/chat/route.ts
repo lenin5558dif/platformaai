@@ -19,11 +19,11 @@ import {
 } from "@/lib/quota-estimation";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { logEvent } from "@/lib/telemetry";
-import { getUserOpenRouterKey } from "@/lib/user-settings";
 import { buildPersonalizationSystemPrompt } from "@/lib/personalization";
 import { searchWeb } from "@/lib/search";
 import { checkModeration } from "@/lib/moderation";
 import { getOrgDlpPolicy, getOrgModelPolicy } from "@/lib/org-settings";
+import { filterFreeOpenRouterModelIds } from "@/lib/models";
 import {
   validateModelPolicy,
   filterFallbackModels,
@@ -41,10 +41,13 @@ import { updateChatSummary } from "@/lib/summary";
 import { requestSchema } from "@/lib/chat-request-schema";
 
 export async function POST(request: Request) {
-  const session = await auth(request);
+  const session = await auth();
 
   if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json(
+      { error: "Сессия истекла. Войдите снова.", code: "AUTH_UNAUTHORIZED" },
+      { status: 401 }
+    );
   }
   const userId = session.user.id;
 
@@ -61,10 +64,6 @@ export async function POST(request: Request) {
     );
   }
 
-  const allowUserKey =
-    process.env.AUTH_BYPASS === "1" ||
-    process.env.ALLOW_USER_OPENROUTER_KEYS === "1";
-
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
     select: {
@@ -75,8 +74,8 @@ export async function POST(request: Request) {
     },
   });
 
-  if (!user || Number(user.balance) <= 0) {
-    return NextResponse.json({ error: "Insufficient balance" }, { status: 402 });
+  if (!user) {
+    return NextResponse.json({ error: "User not found" }, { status: 404 });
   }
 
   const org = user.orgId
@@ -176,9 +175,29 @@ export async function POST(request: Request) {
     );
   }
 
-  const allowedFallbacks = filterFallbackModels(
+  const rawAllowedFallbacks = filterFallbackModels(
     body.fallbackModels ?? [],
     modelPolicy
+  );
+  const candidateModelIds = [body.model, ...rawAllowedFallbacks];
+  const freeModelIds = new Set(
+    await filterFreeOpenRouterModelIds(candidateModelIds)
+  );
+  const hasPaidAccess = Number(user.balance ?? 0) > 0;
+  const requestedModelIsFree = freeModelIds.has(body.model);
+
+  if (!hasPaidAccess && !requestedModelIsFree) {
+    return NextResponse.json({ error: "Insufficient balance" }, { status: 402 });
+  }
+
+  const allowedFallbacks = hasPaidAccess
+    ? rawAllowedFallbacks
+    : rawAllowedFallbacks.filter((modelId) => freeModelIds.has(modelId));
+  const modelsToTry = [body.model, ...allowedFallbacks];
+  const reserveEstimateModelId =
+    modelsToTry.find((modelId) => !freeModelIds.has(modelId)) ?? body.model;
+  const requiresPaidBilling = modelsToTry.some(
+    (modelId) => !freeModelIds.has(modelId)
   );
 
   const personalization = buildPersonalizationSystemPrompt(
@@ -288,43 +307,40 @@ export async function POST(request: Request) {
 
   const trimmedMessages = trimMessages(enrichedMessages, body.contextLength);
 
-  const userKey = allowUserKey
-    ? getUserOpenRouterKey(user?.settings ?? null)
-    : undefined;
-
   const idempotencyKey = crypto.randomUUID();
   let quotaHold: AiQuotaHold | null = null;
 
-  try {
-    const promptTokensEstimate = estimateChatPromptTokens(trimmedMessages);
-    const estimatedCredits = await estimateUpperBoundCredits({
-      modelId: body.model,
-      promptTokensEstimate,
-      maxTokens: body.max_tokens,
-      apiKey: userKey,
-    });
-
-    const reserveAmount = Math.max(1, estimatedCredits);
-    quotaHold = await reserveAiQuotaHold({
-      userId: session.user.id,
-      amount: reserveAmount,
-      idempotencyKey,
-      costCenterId,
-    });
-
-    if (!quotaHold) {
-      await preflightCredits({
-        userId: session.user.id,
-        minAmount: reserveAmount,
+  if (requiresPaidBilling) {
+    try {
+      const promptTokensEstimate = estimateChatPromptTokens(trimmedMessages);
+      const estimatedCredits = await estimateUpperBoundCredits({
+        modelId: reserveEstimateModelId,
+        promptTokensEstimate,
+        maxTokens: body.max_tokens,
       });
+
+      const reserveAmount = Math.max(1, estimatedCredits);
+      quotaHold = await reserveAiQuotaHold({
+        userId: session.user.id,
+        amount: reserveAmount,
+        idempotencyKey,
+        costCenterId,
+      });
+
+      if (!quotaHold) {
+        await preflightCredits({
+          userId: session.user.id,
+          minAmount: reserveAmount,
+        });
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "BILLING_ERROR";
+      const mapped = mapBillingError(message);
+      if (mapped) {
+        return NextResponse.json({ error: mapped.error }, { status: mapped.status });
+      }
+      return NextResponse.json({ error: "Billing error" }, { status: 500 });
     }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "BILLING_ERROR";
-    const mapped = mapBillingError(message);
-    if (mapped) {
-      return NextResponse.json({ error: mapped.error }, { status: mapped.status });
-    }
-    return NextResponse.json({ error: "Billing error" }, { status: 500 });
   }
 
   await logEvent({
@@ -342,7 +358,7 @@ export async function POST(request: Request) {
   let requestHeaders: Record<string, string>;
 
   try {
-    requestHeaders = getOpenRouterHeaders(userKey);
+    requestHeaders = getOpenRouterHeaders();
   } catch (error) {
     const message = error instanceof Error ? error.message : "Missing config";
     await releaseAiQuotaHold({ hold: quotaHold });
@@ -381,7 +397,6 @@ export async function POST(request: Request) {
           modelId: cached.modelId,
           promptTokens: cached.usage.prompt_tokens ?? 0,
           completionTokens: cached.usage.completion_tokens ?? 0,
-          apiKey: userKey,
         });
       }
 
@@ -429,7 +444,6 @@ export async function POST(request: Request) {
     void updateChatSummary({
       chatId,
       userId: session.user.id,
-      apiKey: userKey,
     });
 
     if (!body.stream) {
@@ -461,7 +475,6 @@ export async function POST(request: Request) {
     });
   }
 
-  const modelsToTry = [body.model, ...allowedFallbacks];
   let response: Response | null = null;
   let usedModel = body.model;
 
@@ -510,9 +523,7 @@ export async function POST(request: Request) {
     const status = response?.status ?? 502;
     let message = "OpenRouter error";
     if (status === 401) {
-      message = userKey
-        ? "OpenRouter: неверный ключ. Проверьте ключ в настройках."
-        : "OpenRouter: ключ из .env.local недействителен или отсутствует.";
+      message = "OpenRouter: ключ из .env.local недействителен или отсутствует.";
     }
     await logEvent({
       type: "AI_ERROR",
@@ -572,7 +583,6 @@ export async function POST(request: Request) {
           modelId: usedModel,
           promptTokens: usage.prompt_tokens ?? 0,
           completionTokens: usage.completion_tokens ?? 0,
-          apiKey: userKey,
         });
 
         if (creditsResult.credits > 0) {
@@ -665,7 +675,6 @@ export async function POST(request: Request) {
           modelId: usedModel,
           promptTokens: usage.prompt_tokens ?? 0,
           completionTokens: usage.completion_tokens ?? 0,
-          apiKey: userKey,
         });
 
         if (creditsResult.credits > 0) {
@@ -712,7 +721,6 @@ export async function POST(request: Request) {
     void updateChatSummary({
       chatId,
       userId,
-      apiKey: userKey,
     });
 
     if (useCache && assistantText.trim()) {

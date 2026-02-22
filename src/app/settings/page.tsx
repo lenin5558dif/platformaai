@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import AppShell from "@/components/layout/AppShell";
 import { revalidatePath } from "next/cache";
-import { auth } from "@/lib/auth";
+import { auth, signOut as authSignOut } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import {
   getSettingsObject,
@@ -25,14 +25,17 @@ async function updateOpenRouterKey(formData: FormData) {
     return;
   }
 
-  const allowUserKey =
-    process.env.AUTH_BYPASS === "1" ||
-    process.env.ALLOW_USER_OPENROUTER_KEYS === "1";
+  const allowUserKey = false;
   if (!allowUserKey) {
     return;
   }
 
-  const apiKey = String(formData.get("openrouterApiKey") ?? "").trim();
+  // Users often paste a full Authorization header value (`Bearer ...`).
+  // Store only the raw token and drop accidental whitespace/newlines.
+  const apiKey = String(formData.get("openrouterApiKey") ?? "")
+    .trim()
+    .replace(/^Bearer\s+/i, "")
+    .replace(/\s+/g, "");
 
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
@@ -181,6 +184,11 @@ async function deleteAccount(formData: FormData) {
   redirect("/login?deleted=1");
 }
 
+async function logout() {
+  "use server";
+  await authSignOut({ redirectTo: "/login" });
+}
+
 export default async function SettingsPage({
   searchParams,
 }: {
@@ -215,9 +223,7 @@ export default async function SettingsPage({
   const userTone = getUserTone(user?.settings ?? null) ?? "";
   const assistantInstructions =
     getUserAssistantInstructions(user?.settings ?? null) ?? "";
-  const allowUserKey =
-    process.env.AUTH_BYPASS === "1" ||
-    process.env.ALLOW_USER_OPENROUTER_KEYS === "1";
+  const allowUserKey = false;
 
   const firstName =
     typeof settings.profileFirstName === "string" ? settings.profileFirstName : "";
@@ -241,6 +247,7 @@ export default async function SettingsPage({
         displayName,
         planName,
       }}
+      showPlatformNav
     >
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 pb-10">
         <div className="mb-2 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
@@ -252,12 +259,14 @@ export default async function SettingsPage({
               Управляйте личной информацией и основными предпочтениями.
             </p>
           </div>
-          <Link
-            className="rounded-full border border-slate-200 bg-white/80 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-white"
-            href="/"
-          >
-            В чат
-          </Link>
+          <form action={logout}>
+            <button
+              type="submit"
+              className="rounded-full border border-slate-200 bg-white/80 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-white"
+            >
+              Выйти из аккаунта
+            </button>
+          </form>
         </div>
 
           <form id="profile-form" action={updateProfileSettings} className="space-y-6">
@@ -487,7 +496,7 @@ export default async function SettingsPage({
               <p className="mt-1 text-xs text-slate-500">
                 {allowUserKey
                   ? "Ключ хранится в настройках пользователя и используется для запросов в чате."
-                  : "Сейчас используется ключ из .env. Чтобы включить пользовательские ключи, установите ALLOW_USER_OPENROUTER_KEYS=1."}
+                  : "Сейчас используется ключ платформы из .env. Пользовательские ключи OpenRouter отключены."}
               </p>
             </div>
             <div className="p-8">
