@@ -36,7 +36,7 @@ async function ensureOrgPermission(key: string, description?: string) {
   return prisma.orgPermission.create({ data: { key, description } });
 }
 
-export async function ensureOrgPermissions() {
+async function ensureOrgPermissions() {
   await ensureOrgPermission(ORG_PERMISSIONS.ORG_SETTINGS_UPDATE, "Update organization settings");
   await ensureOrgPermission(ORG_PERMISSIONS.ORG_USER_MANAGE, "Manage organization users");
   await ensureOrgPermission(ORG_PERMISSIONS.ORG_INVITE_CREATE, "Create invites");

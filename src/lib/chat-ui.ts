@@ -3,18 +3,18 @@ export type ModelPricing = {
   completion?: string;
 };
 
-export type ModelInfo = {
+type ModelInfo = {
   id: string;
   pricing?: ModelPricing;
   contextLength?: number;
 };
 
-export type ChatListItem = {
+type ChatListItem = {
   updatedAt: string;
   pinned?: boolean;
 };
 
-export type ChatGroup<T extends ChatListItem> = {
+type ChatGroup<T extends ChatListItem> = {
   label: string;
   items: T[];
 };

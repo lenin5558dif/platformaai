@@ -5,7 +5,7 @@ type RateEntry = {
   resetAt: number;
 };
 
-export type RateLimitResult = {
+type RateLimitResult = {
   ok: boolean;
   remaining: number;
   resetAt: number;

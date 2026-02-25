@@ -21,10 +21,6 @@ function getUpstashRedisConfig() {
   };
 }
 
-export function isUpstashRedisConfigured() {
-  return Boolean(getUpstashRedisConfig());
-}
-
 export async function upstashPipeline(
   commands: Array<Array<string | number>>
 ): Promise<unknown[] | undefined> {

@@ -1,9 +1,9 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
-import { trimMessages } from "../src/lib/context";
+import { trimMessages, type ChatMessage } from "../src/lib/context";
 
 test("trimMessages keeps system messages and trims oldest dialogue", () => {
-  const messages = [
+  const messages: ChatMessage[] = [
     { role: "system", content: "sys" },
     { role: "user", content: "1234" },
     { role: "assistant", content: "1234" },
@@ -19,7 +19,7 @@ test("trimMessages keeps system messages and trims oldest dialogue", () => {
 });
 
 test("trimMessages returns all messages when under limit", () => {
-  const messages = [
+  const messages: ChatMessage[] = [
     { role: "system", content: "sys" },
     { role: "user", content: "1234" },
     { role: "assistant", content: "1234" },

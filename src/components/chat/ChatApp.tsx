@@ -90,16 +90,13 @@ export default function ChatApp() {
   const [models, setModels] = useState<Model[]>([]);
   const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL);
   const [error, setError] = useState<string | null>(null);
-  const [sourceFilter, setSourceFilter] = useState<"ALL" | "WEB" | "TELEGRAM">(
-    "ALL"
-  );
+  const [sourceFilter] = useState<"ALL" | "WEB" | "TELEGRAM">("ALL");
   const [searchQuery, setSearchQuery] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [isUploading, setIsUploading] = useState(false);
-  const [useWebSearch, setUseWebSearch] = useState(false);
+  const [useWebSearch] = useState(false);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState("");
-  const [tagInput, setTagInput] = useState("");
   const [isDraft, setIsDraft] = useState(false);
   const [hasLoadedModelPreference, setHasLoadedModelPreference] =
     useState(false);
@@ -107,7 +104,6 @@ export default function ChatApp() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
-  const [detailsOpen, setDetailsOpen] = useState(false);
   const [modelFilter, setModelFilter] = useState<
     "all" | "cheap" | "fast" | "long"
   >("all");
@@ -253,7 +249,7 @@ export default function ChatApp() {
       return { href: "/settings#api-keys", label: "Check Key" };
     }
     if (lower.includes("balance")) {
-      return { href: "/billing", label: "Top Up" };
+      return { href: "/settings", label: "Open Settings" };
     }
     return null;
   }, [error]);
@@ -488,49 +484,6 @@ export default function ChatApp() {
     [updateChatMeta]
   );
 
-  const handleUpdateTags = useCallback(
-    async (chatId: string, tags: string[]) => {
-      await updateChatMeta(chatId, { tags });
-    },
-    [updateChatMeta]
-  );
-
-  const handleShareChat = useCallback(async (chatId: string) => {
-    const response = await fetch(`/api/chats/${chatId}/share`, {
-      method: "POST",
-    });
-
-    if (!response.ok) return;
-    const data = await response.json();
-    const url = data?.data?.url;
-    if (url) {
-      await navigator.clipboard.writeText(url);
-      alert("Link copied.");
-    }
-  }, []);
-
-  const handleAddTag = useCallback(() => {
-    if (!activeChat) return;
-    const nextTag = tagInput.trim();
-    if (!nextTag) return;
-    const nextTags = Array.from(
-      new Set([...(activeChat.tags ?? []), nextTag])
-    );
-    void handleUpdateTags(activeChat.id, nextTags);
-    setTagInput("");
-  }, [activeChat, handleUpdateTags, tagInput]);
-
-  const handleRemoveTag = useCallback(
-    (tag: string) => {
-      if (!activeChat) return;
-      const nextTags = (activeChat.tags ?? []).filter(
-        (entry) => entry !== tag
-      );
-      void handleUpdateTags(activeChat.id, nextTags);
-    },
-    [activeChat, handleUpdateTags]
-  );
-
   useEffect(() => {
     activeChatIdRef.current = activeChatId;
   }, [activeChatId]);
@@ -583,19 +536,6 @@ export default function ChatApp() {
       document.removeEventListener("keydown", handleKey);
     };
   }, [modelMenuOpen]);
-
-  useEffect(() => {
-    if (!detailsOpen) return;
-    function handleKey(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        setDetailsOpen(false);
-      }
-    }
-    document.addEventListener("keydown", handleKey);
-    return () => {
-      document.removeEventListener("keydown", handleKey);
-    };
-  }, [detailsOpen]);
 
   useEffect(() => {
     async function loadProfile() {
@@ -1013,9 +953,6 @@ export default function ChatApp() {
     if (!container) return;
     shouldAutoScrollRef.current = isNearBottom(container);
   }, []);
-  const closeDetails = () => {
-    setDetailsOpen(false);
-  };
 
   return (
     <div className="relative z-10 flex h-screen w-full text-text-main overflow-hidden font-display">
@@ -1206,184 +1143,67 @@ export default function ChatApp() {
           )}
         </div>
 
-      </aside>
-
-      {detailsOpen && (
-        <button
-          className="fixed inset-0 z-30 bg-black/30 md:hidden"
-          aria-label="Close details"
-          onClick={closeDetails}
-          type="button"
-        />
-      )}
-      <aside
-        className={`fixed inset-y-0 right-0 z-40 flex w-80 max-w-[85vw] flex-col glass-panel border-l border-black/5 h-full transition-all duration-300 transform ${detailsOpen ? "translate-x-0" : "translate-x-full"
-          }`}
-      >
-        <div className="p-5 border-b border-black/10 flex items-center justify-between">
-          <h3 className="text-text-primary text-base font-bold">Details</h3>
-          <button
-            className="size-8 flex items-center justify-center rounded-lg text-text-secondary hover:text-text-primary hover:bg-black/5"
-            onClick={closeDetails}
-            type="button"
-            aria-label="Close details"
-          >
-            <span className="material-symbols-outlined text-[20px]">close</span>
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-5 space-y-6">
-          <div>
-            <div className="text-xs uppercase tracking-wide text-text-secondary/70 mb-2">
-              Actions
-            </div>
-            <div className="flex gap-2">
-              <button
-                className="flex-1 rounded-lg border border-black/10 px-3 py-2 text-xs font-semibold text-text-primary hover:bg-black/5 disabled:opacity-50"
-                onClick={() => activeChatId && handleShareChat(activeChatId)}
-                disabled={!activeChatId}
-                type="button"
+        <div className={`border-t border-black/10 ${isSidebarCollapsed ? "p-2" : "p-4 pt-3"}`}>
+          {isSidebarCollapsed ? (
+            <div className="flex flex-col items-center gap-2">
+              <div
+                className="size-10 rounded-full bg-gray-300 ring-2 ring-black/10 flex items-center justify-center text-text-secondary font-bold"
+                style={
+                  currentUser?.image
+                    ? { backgroundImage: `url(${currentUser.image})`, backgroundSize: "cover" }
+                    : undefined
+                }
+                title={currentUser?.displayName || "User"}
               >
-                Share
-              </button>
+                {!currentUser?.image && (currentUser?.displayName?.[0] || "U")}
+              </div>
               <Link
                 href="/settings"
-                className="flex-1 rounded-lg border border-black/10 px-3 py-2 text-center text-xs font-semibold text-text-primary hover:bg-black/5"
+                className="flex size-8 items-center justify-center rounded-lg text-text-secondary hover:bg-black/5 hover:text-text-primary"
+                onClick={closeSidebar}
+                aria-label="Settings"
+                title="Settings"
               >
-                Settings
+                <span className="material-symbols-outlined text-[18px]">settings</span>
               </Link>
             </div>
-          </div>
-
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-medium text-text-primary">Web search</p>
-              <p className="text-xs text-text-secondary">
-                Добавлять результаты в подсказку
-              </p>
-            </div>
-            <button
-              className={`material-symbols-outlined text-[26px] ${useWebSearch ? "text-primary" : "text-text-secondary"}`}
-              onClick={() => setUseWebSearch((prev) => !prev)}
-              aria-pressed={useWebSearch}
-              type="button"
-            >
-              {useWebSearch ? "toggle_on" : "toggle_off"}
-            </button>
-          </div>
-
-          <div>
-            <div className="text-xs uppercase tracking-wide text-text-secondary/70 mb-2">
-              Источники чатов
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              {(["ALL", "WEB", "TELEGRAM"] as const).map((option) => (
-                <button
-                  key={option}
-                  className={`w-full px-3 py-2 text-xs rounded-lg border transition-colors ${sourceFilter === option
-                    ? "bg-primary/10 text-primary border-primary/30"
-                    : "bg-black/5 text-text-secondary border-black/5 hover:text-text-primary"
-                    }`}
-                  onClick={() => setSourceFilter(option)}
-                  type="button"
-                >
-                  {option === "ALL" ? "Все" : option === "WEB" ? "Web" : "Telegram"}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {activeChat && (
-            <div>
-              <div className="text-xs uppercase tracking-wide text-text-secondary/70 mb-2">
-                Tags
+          ) : (
+            <div className="flex items-center gap-3 rounded-lg border border-black/10 bg-black/5 px-3 py-2">
+              <div
+                className="size-9 rounded-full bg-gray-300 ring-2 ring-black/10 flex items-center justify-center text-text-secondary font-bold"
+                style={
+                  currentUser?.image
+                    ? { backgroundImage: `url(${currentUser.image})`, backgroundSize: "cover" }
+                    : undefined
+                }
+              >
+                {!currentUser?.image && (currentUser?.displayName?.[0] || "U")}
               </div>
-              <div className="flex flex-wrap gap-1">
-                {(activeChat.tags ?? []).length === 0 && (
-                  <span className="text-[11px] text-text-secondary/80">
-                    No tags yet.
-                  </span>
-                )}
-                {(activeChat.tags ?? []).map((tag) => (
-                  <button
-                    key={tag}
-                    className="flex items-center gap-1 rounded-full bg-black/5 px-2 py-0.5 text-[10px] text-text-secondary hover:bg-black/10"
-                    type="button"
-                    onClick={() => handleRemoveTag(tag)}
-                    title="Remove tag"
-                  >
-                    {tag}
-                    <span className="material-symbols-outlined text-[12px]">close</span>
-                  </button>
-                ))}
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-text-primary">
+                  {currentUser?.displayName || "User"}
+                </p>
+                <p className="truncate text-xs text-text-secondary">
+                  {currentUser?.planName || "Pro Plan"}
+                </p>
               </div>
-              <div className="mt-2 flex gap-2">
-                <input
-                  className="flex-1 rounded-md border border-black/10 bg-white/80 px-2 py-1 text-xs text-text-primary placeholder:text-text-secondary focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                  placeholder="Add tag"
-                  value={tagInput}
-                  onChange={(event) => setTagInput(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      handleAddTag();
-                    }
-                  }}
-                />
-                <button
-                  className="rounded-md bg-primary/15 px-2 text-[10px] font-semibold text-primary hover:bg-primary/25"
-                  type="button"
-                  onClick={handleAddTag}
-                >
-                  Add
-                </button>
-              </div>
+              <Link
+                href="/settings"
+                className="flex size-8 items-center justify-center rounded-lg text-text-secondary hover:bg-black/5 hover:text-text-primary"
+                onClick={closeSidebar}
+                aria-label="Settings"
+                title="Settings"
+              >
+                <span className="material-symbols-outlined text-[20px]">settings</span>
+              </Link>
             </div>
           )}
-
-          <div>
-            <div className="text-xs uppercase tracking-wide text-text-secondary/70 mb-2">
-              Usage
-            </div>
-            <div className="flex justify-between items-center text-xs">
-              <span className="text-text-secondary">Tokens (This Month)</span>
-              <span className="text-primary font-bold">84%</span>
-            </div>
-            <div className="w-full bg-black/10 rounded-full h-1.5 mt-2">
-              <div
-                className="bg-primary h-1.5 rounded-full shadow-[0_0_10px_rgba(212,122,106,0.2)]"
-                style={{ width: "84%" }}
-              />
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3 rounded-lg border border-black/10 bg-black/5 px-3 py-2">
-            <div
-              className="size-8 rounded-full bg-gray-300 ring-2 ring-black/10 flex items-center justify-center text-text-secondary font-bold"
-              style={{ backgroundImage: `url(${currentUser?.image})`, backgroundSize: "cover" }}
-            >
-              {!currentUser?.image && (currentUser?.displayName?.[0] || "U")}
-            </div>
-            <div className="flex flex-col">
-              <span className="text-sm font-medium text-text-primary">
-                {currentUser?.displayName || "User"}
-              </span>
-              <span className="text-xs text-text-secondary">
-                {currentUser?.planName || "Pro Plan"}
-              </span>
-            </div>
-            <Link
-              href="/settings"
-              className="ml-auto text-text-secondary hover:text-text-primary"
-            >
-              <span className="material-symbols-outlined text-[20px]">settings</span>
-            </Link>
-          </div>
         </div>
+
       </aside>
 
       <main
-        className={`flex-1 flex flex-col relative h-full transition-[padding-right] duration-300 ${detailsOpen ? "md:pr-80" : ""}`}
+        className="flex-1 flex flex-col relative h-full"
       >
         {/* Floating Header */}
         <header className="absolute top-0 left-0 right-0 z-30 px-6 py-4 pointer-events-none">
@@ -1480,14 +1300,6 @@ export default function ChatApp() {
                 )}
               </div>
 
-              <button
-                className="size-8 flex items-center justify-center rounded-lg hover:bg-black/10 text-text-secondary hover:text-text-primary transition-colors"
-                onClick={() => setDetailsOpen(true)}
-                aria-label="Open details"
-                type="button"
-              >
-                <span className="material-symbols-outlined text-[20px]">info</span>
-              </button>
             </div>
           </div>
         </header>

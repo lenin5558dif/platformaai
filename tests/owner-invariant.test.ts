@@ -80,7 +80,7 @@ describe("Owner invariant", () => {
       method: "DELETE",
     });
 
-    const res = await DELETE(req, { params: { id: "u2" } });
+    const res = await DELETE(req, { params: Promise.resolve({ id: "u2" }) });
     expect(res.status).toBe(409);
   });
 });

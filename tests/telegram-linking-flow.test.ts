@@ -68,7 +68,7 @@ describe("telegram linking flow", () => {
 
   test("confirmTelegramLink links and emits audit", async () => {
     const prisma = makePrisma();
-    const logAudit = vi.fn(async () => undefined);
+    const logAudit = vi.fn(async (_args: any) => undefined);
 
     const res = await confirmTelegramLink({
       prisma,
@@ -84,7 +84,7 @@ describe("telegram linking flow", () => {
       data: { telegramId: "123", globalRevokeCounter: 0 },
     });
     expect(logAudit).toHaveBeenCalled();
-    const call = logAudit.mock.calls[0]?.[0];
+    const call = logAudit.mock.calls[0]?.[0] as any;
     expect(call?.action).toBe("TELEGRAM_LINKED");
     expect(call?.metadata?.telegram?.action).toBe("link");
   });
@@ -92,7 +92,7 @@ describe("telegram linking flow", () => {
   test("confirmTelegramLink rejects if telegram already linked to other user", async () => {
     state.existingTelegramUserId = "other_user";
     const prisma = makePrisma();
-    const logAudit = vi.fn(async () => undefined);
+    const logAudit = vi.fn(async (_args: any) => undefined);
 
     const res = await confirmTelegramLink({
       prisma,

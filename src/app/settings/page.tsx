@@ -247,7 +247,7 @@ export default async function SettingsPage({
         displayName,
         planName,
       }}
-      showPlatformNav
+      showSidebar={false}
     >
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 pb-10">
         <div className="mb-2 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">

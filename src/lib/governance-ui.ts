@@ -1,4 +1,4 @@
-export type GovernanceStatus = "ok" | "warning" | "blocked" | "unknown";
+type GovernanceStatus = "ok" | "warning" | "blocked" | "unknown";
 
 export type GovernanceUiMessage = {
   tone: "info" | "success" | "warning" | "error";
@@ -6,7 +6,7 @@ export type GovernanceUiMessage = {
   message: string;
 };
 
-export type GovernanceApiErrorCode =
+type GovernanceApiErrorCode =
   | "FORBIDDEN"
   | "UNAUTHORIZED"
   | "RATE_LIMITED"

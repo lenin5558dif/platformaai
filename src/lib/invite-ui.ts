@@ -1,4 +1,4 @@
-export type InviteApiErrorCode =
+type InviteApiErrorCode =
   | "RATE_LIMITED"
   | "INVITE_EXISTS"
   | "INVITE_EXPIRED"
@@ -32,7 +32,7 @@ export type InviteListItem = {
   };
 };
 
-export type InviteActionResult = {
+type InviteActionResult = {
   ok: boolean;
   code?: InviteApiErrorCode;
   message?: string;

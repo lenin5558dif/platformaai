@@ -30,7 +30,7 @@ function getCacheStore() {
   return globalCache.aiResponseCache;
 }
 
-export type CacheKeyPayload = {
+type CacheKeyPayload = {
   userId: string;
   model: string;
   messages: unknown;

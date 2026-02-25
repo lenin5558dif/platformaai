@@ -1,6 +1,6 @@
 import { ORG_PERMISSIONS, type OrgPermissionKey } from "@/lib/org-permissions";
 
-export type RbacApiErrorCode =
+type RbacApiErrorCode =
   | "FORBIDDEN"
   | "LAST_OWNER"
   | "NOT_FOUND"
@@ -41,7 +41,7 @@ export type RbacMemberView = {
   } | null;
 };
 
-export type PermissionGroup = {
+type PermissionGroup = {
   id: string;
   label: string;
   permissions: OrgPermissionKey[];

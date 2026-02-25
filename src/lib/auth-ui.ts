@@ -14,7 +14,7 @@ export type AuthCapabilities = {
   telegram: boolean;
 };
 
-export type MappedAuthError = {
+type MappedAuthError = {
   state: AuthViewState;
   title: string;
   message: string;

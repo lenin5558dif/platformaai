@@ -1,4 +1,4 @@
-export type BillingErrorResponse = {
+type BillingErrorResponse = {
   status: number;
   error: string;
 };

@@ -1,7 +1,7 @@
 import { getOpenRouterBaseUrl, getOpenRouterHeaders } from "@/lib/openrouter";
 import { fetchWithTimeout } from "@/lib/fetch-timeout";
 
-export type OpenRouterModel = {
+type OpenRouterModel = {
   id: string;
   name: string;
   context_length?: number;
@@ -21,7 +21,7 @@ function parsePricingValue(value?: string) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-export function isOpenRouterModelFree(
+function isOpenRouterModelFree(
   model: Pick<OpenRouterModel, "id" | "pricing">
 ) {
   if (hasFreeModelSuffix(model.id)) return true;

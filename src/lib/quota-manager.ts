@@ -11,29 +11,29 @@ export const DEFAULT_MAX_TOKENS = 4000;
 // and can be cleaned up by a scheduled job.
 export const DEFAULT_RESERVATION_TTL_MS = 15 * 60 * 1000;
 
-export type QuotaScope = PrismaQuotaScope;
+type QuotaScope = PrismaQuotaScope;
 
-export type QuotaPeriodKind = "day" | "month" | "all_time";
+type QuotaPeriodKind = "day" | "month" | "all_time";
 
-export type QuotaPeriod = {
+type QuotaPeriod = {
   kind: QuotaPeriodKind;
   start: Date;
   end: Date;
   key: string;
 };
 
-export type QuotaSubject = {
+type QuotaSubject = {
   scope: QuotaScope;
   // For USER/COST_CENTER scopes: the entity id. For ORG scope: the orgId.
   subjectId: string;
 };
 
-export type QuotaChain = {
+type QuotaChain = {
   orgId: string;
   subjects: QuotaSubject[];
 };
 
-export type QuotaReserveRequest = {
+type QuotaReserveRequest = {
   chain: QuotaChain;
   period: QuotaPeriod;
   amount: number;
@@ -45,7 +45,7 @@ export type QuotaReserveRequest = {
   bucketStateBySubject?: Record<string, { limit?: number; spent?: number }>;
 };
 
-export type QuotaReservationRef = {
+type QuotaReservationRef = {
   id: string;
   scope: QuotaScope;
   subjectId: string;
@@ -145,13 +145,13 @@ export function periodFromKey(periodKey: string): QuotaPeriod {
   throw new Error("INVALID_PERIOD_KEY");
 }
 
-export type QuotaUtilization = {
+type QuotaUtilization = {
   limit: number;
   spent: number;
   reserved: number;
 };
 
-export type QuotaEvaluateResult =
+type QuotaEvaluateResult =
   | { allowed: true; remaining: number; utilization: QuotaUtilization }
   | { allowed: false; reason: "LIMIT_EXCEEDED"; utilization: QuotaUtilization };
 

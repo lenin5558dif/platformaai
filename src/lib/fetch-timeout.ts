@@ -1,4 +1,4 @@
-export class FetchTimeoutError extends Error {
+class FetchTimeoutError extends Error {
   readonly timeoutMs: number;
   readonly requestLabel: string;
 
@@ -10,7 +10,7 @@ export class FetchTimeoutError extends Error {
   }
 }
 
-export type FetchWithTimeoutInit = RequestInit & {
+type FetchWithTimeoutInit = RequestInit & {
   timeoutMs?: number;
   timeoutLabel?: string;
 };
