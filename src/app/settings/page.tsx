@@ -235,7 +235,8 @@ export default async function SettingsPage({
     typeof settings.profilePhone === "string" ? settings.profilePhone : "";
 
   const displayName = [firstName, lastName].filter(Boolean).join(" ");
-  const planName = typeof settings.planName === "string" ? settings.planName : "Pro Plan";
+  const planName =
+    typeof settings.planName === "string" ? settings.planName : "Тариф Pro";
 
   return (
     <AppShell
@@ -353,7 +354,7 @@ export default async function SettingsPage({
                         defaultValue={headline}
                         className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition-all placeholder:text-gray-400 focus:border-primary focus:ring-2 focus:ring-primary/10"
                         type="text"
-                        placeholder="Например: Product Manager"
+                        placeholder="Например: менеджер продукта"
                       />
                       <p className="mt-1 text-xs text-slate-500">
                         Отображается в публичном профиле и командах.

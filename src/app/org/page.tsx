@@ -852,7 +852,7 @@ export default async function OrgPage() {
             </div>
             <div>
               <h3 className="text-sm font-semibold text-text-main mb-3">
-                Cost centers
+                Центры затрат
               </h3>
               <div className="space-y-3">
                 {topCostCenters.length === 0 && (
@@ -889,7 +889,7 @@ export default async function OrgPage() {
         {user.role === "ADMIN" && (
           <div className="rounded-2xl bg-white/80 border border-white/50 shadow-glass-sm p-6">
             <h2 className="text-lg font-semibold text-text-main mb-2 font-display">
-              Cost centers
+              Центры затрат
             </h2>
             <p className="text-xs text-text-secondary mb-4">
               Группируйте расходы по отделам или проектам.
@@ -980,7 +980,7 @@ export default async function OrgPage() {
                   <input
                     name="domain"
                     className="w-52 rounded-lg border border-gray-200 bg-white/70 px-3 py-2 text-sm"
-                    placeholder="company.com"
+                    placeholder="company.ru"
                   />
                   <select
                     name="ssoOnly"

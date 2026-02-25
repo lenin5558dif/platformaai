@@ -244,7 +244,7 @@ export default function TelegramLinkSection(params: {
 
       {deepLink ? (
         <div className="mb-3 text-xs text-text-main">
-          <span className="font-medium">Deep link:</span>{" "}
+          <span className="font-medium">Ссылка:</span>{" "}
           <a className="text-primary underline" href={deepLink}>
             {deepLink}
           </a>

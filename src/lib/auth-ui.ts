@@ -46,7 +46,7 @@ export function getModeText(mode: AuthMode) {
     return {
       title: "Создание аккаунта PlatformaAI",
       subtitle:
-        "Заполните nickname, email и пароль. После регистрации можно сразу войти в чат.",
+        "Заполните никнейм, email и пароль. После регистрации можно сразу войти в чат.",
       emailAction: "Создать аккаунт",
       ssoAction: "Зарегистрироваться через SSO",
     };

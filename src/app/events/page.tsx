@@ -183,7 +183,7 @@ export default async function EventsPage({
                   )}
                   {event.chatId && (
                     <span className="rounded-full bg-white px-2 py-0.5 border border-gray-200">
-                      chat: {event.chatId}
+                      чат: {event.chatId}
                     </span>
                   )}
                   {event.modelId && (

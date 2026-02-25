@@ -50,27 +50,27 @@ type PermissionGroup = {
 export const RBAC_PERMISSION_GROUPS: PermissionGroup[] = [
   {
     id: "invite",
-    label: "Invite",
+    label: "Приглашения",
     permissions: [ORG_PERMISSIONS.ORG_INVITE_CREATE, ORG_PERMISSIONS.ORG_INVITE_REVOKE],
   },
   {
     id: "role-change",
-    label: "Role Change",
+    label: "Смена роли",
     permissions: [ORG_PERMISSIONS.ORG_ROLE_CHANGE],
   },
   {
     id: "billing",
-    label: "Billing",
+    label: "Биллинг",
     permissions: [ORG_PERMISSIONS.ORG_BILLING_MANAGE, ORG_PERMISSIONS.ORG_BILLING_REFILL],
   },
   {
     id: "policy",
-    label: "Policy",
+    label: "Политики",
     permissions: [ORG_PERMISSIONS.ORG_POLICY_UPDATE],
   },
   {
     id: "analytics",
-    label: "Analytics",
+    label: "Аналитика",
     permissions: [ORG_PERMISSIONS.ORG_ANALYTICS_READ, ORG_PERMISSIONS.ORG_AUDIT_READ],
   },
 ];

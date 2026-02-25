@@ -91,7 +91,7 @@ export default function ScimTokenManager() {
             value={name}
             onChange={(event) => setName(event.target.value)}
             className="mt-2 w-full rounded-lg border border-gray-200 bg-white/70 px-3 py-2 text-sm"
-            placeholder="Okta / Azure"
+            placeholder="Например: Okta / Azure"
           />
         </div>
         <button
