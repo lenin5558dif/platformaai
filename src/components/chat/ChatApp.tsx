@@ -64,6 +64,21 @@ type Model = {
 };
 
 const DEFAULT_MODEL = "openai/gpt-4o";
+const COMPOSER_MAX_HEIGHT = 128;
+const AUTO_SCROLL_BOTTOM_THRESHOLD_PX = 120;
+
+function isNearBottom(element: HTMLElement, threshold = AUTO_SCROLL_BOTTOM_THRESHOLD_PX) {
+  const distanceToBottom =
+    element.scrollHeight - element.scrollTop - element.clientHeight;
+  return distanceToBottom <= threshold;
+}
+
+function resizeComposer(element: HTMLTextAreaElement) {
+  element.style.height = "0px";
+  const nextHeight = Math.min(element.scrollHeight, COMPOSER_MAX_HEIGHT);
+  element.style.height = `${nextHeight}px`;
+  element.style.overflowY = element.scrollHeight > COMPOSER_MAX_HEIGHT ? "auto" : "hidden";
+}
 
 export default function ChatApp() {
   const searchParams = useSearchParams();
@@ -90,6 +105,7 @@ export default function ChatApp() {
     useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [modelFilter, setModelFilter] = useState<
@@ -98,6 +114,9 @@ export default function ChatApp() {
   const [modelQuery, setModelQuery] = useState("");
   const [isOnline, setIsOnline] = useState(true);
   const [streamingChatId, setStreamingChatId] = useState<string | null>(null);
+  const [apiKeyState, setApiKeyState] = useState<"ok" | "missing" | "invalid">(
+    "ok"
+  );
   const [currentUser, setCurrentUser] = useState<{
     email?: string | null;
     role?: string | null;
@@ -106,8 +125,12 @@ export default function ChatApp() {
     image?: string | null;
   } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
+  const shouldAutoScrollRef = useRef(true);
   const skipNextLoadRef = useRef<string | null>(null);
+  const activeChatIdRef = useRef<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
   const modelMenuRef = useRef<HTMLDivElement>(null);
   const appliedPromptRef = useRef<string | null>(null);
 
@@ -188,13 +211,25 @@ export default function ChatApp() {
 
   const errorHint = useMemo(() => {
     if (!error) return null;
-    if (error.toLowerCase().includes("unauthorized")) {
+    const lower = error.toLowerCase();
+    if (
+      lower === "unauthorized" ||
+      lower.includes("auth_unauthorized") ||
+      lower.includes("сессия истекла")
+    ) {
+      return "Sign in again.";
+    }
+    if (
+      lower.includes("openrouter") ||
+      lower.includes("api key") ||
+      lower.includes("неверный ключ")
+    ) {
       return "Check OpenRouter API key.";
     }
-    if (error.toLowerCase().includes("openrouter")) {
+    if (lower.includes("openrouter")) {
       return "Try another model or try again later.";
     }
-    if (error.toLowerCase().includes("balance")) {
+    if (lower.includes("balance")) {
       return "Top up balance or switch to free model.";
     }
     return "Check connection and try again.";
@@ -203,8 +238,19 @@ export default function ChatApp() {
   const errorCta = useMemo(() => {
     if (!error) return null;
     const lower = error.toLowerCase();
-    if (lower.includes("unauthorized")) {
-      return { href: "/settings#api-keys", label: "Add Key" };
+    if (
+      lower === "unauthorized" ||
+      lower.includes("auth_unauthorized") ||
+      lower.includes("сессия истекла")
+    ) {
+      return { href: "/login", label: "Sign In" };
+    }
+    if (
+      lower.includes("openrouter") ||
+      lower.includes("api key") ||
+      lower.includes("неверный ключ")
+    ) {
+      return { href: "/settings#api-keys", label: "Check Key" };
     }
     if (lower.includes("balance")) {
       return { href: "/billing", label: "Top Up" };
@@ -284,7 +330,37 @@ export default function ChatApp() {
   const loadModels = useCallback(async () => {
     try {
       const response = await fetch("/api/models");
-      if (!response.ok) return;
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        const errorCode =
+          typeof data?.code === "string" ? data.code : undefined;
+        const errorMessage =
+          typeof data?.error === "string" ? data.error : "Model request error.";
+
+        if (response.status === 401) {
+          if (
+            errorCode === "OPENROUTER_KEY_MISSING" ||
+            errorMessage.includes("OPENROUTER_API_KEY")
+          ) {
+            setApiKeyState("missing");
+            return;
+          }
+
+          if (errorCode === "OPENROUTER_KEY_INVALID") {
+            setApiKeyState("invalid");
+            setError((prev) => prev ?? "OpenRouter: неверный ключ. Проверьте ключ в настройках.");
+            return;
+          }
+
+          if (errorCode === "AUTH_UNAUTHORIZED" || errorMessage === "Unauthorized") {
+            setApiKeyState("ok");
+            setError((prev) => prev ?? "Сессия истекла. Войдите снова.");
+            return;
+          }
+        }
+        setApiKeyState("ok");
+        return;
+      }
       const payload = await response.json();
       const list = payload?.data?.data ?? [];
       const mapped: Model[] = list.map(
@@ -312,6 +388,7 @@ export default function ChatApp() {
         setSelectedModel(preferred);
         setHasLoadedModelPreference(true);
       }
+      setApiKeyState("ok");
     } catch {
       // ignore
     }
@@ -455,6 +532,15 @@ export default function ChatApp() {
   );
 
   useEffect(() => {
+    activeChatIdRef.current = activeChatId;
+  }, [activeChatId]);
+
+  useEffect(() => {
+    if (!composerRef.current) return;
+    resizeComposer(composerRef.current);
+  }, [input]);
+
+  useEffect(() => {
     void loadChats();
     void loadModels();
   }, [loadChats, loadModels]);
@@ -595,6 +681,11 @@ export default function ChatApp() {
       return;
     }
 
+    // Keep local streaming/placeholder UI intact while the current chat is receiving SSE chunks.
+    if (isSending && streamingChatId === activeChatId) {
+      return;
+    }
+
     void loadChatDetails(activeChatId);
   }, [activeChatId, loadChatDetails, isSending, streamingChatId]);
 
@@ -606,7 +697,13 @@ export default function ChatApp() {
 
   useEffect(() => {
     if (isSending) {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+      const container = chatScrollRef.current;
+      if (container) {
+        if (!shouldAutoScrollRef.current) return;
+        container.scrollTop = container.scrollHeight;
+        return;
+      }
+      messagesEndRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
     }
   }, [messages, isSending]);
 
@@ -637,11 +734,6 @@ export default function ChatApp() {
 
   async function persistUserMessage(chatId: string, content: string) {
     const tokenCount = estimateTokens(content);
-    const cost = estimateUsdCost({
-      promptTokens: tokenCount,
-      completionTokens: 0,
-      pricing: selectedModelInfo?.pricing,
-    });
 
     const response = await fetch("/api/messages", {
       method: "POST",
@@ -651,7 +743,6 @@ export default function ChatApp() {
         role: "USER",
         content,
         tokenCount,
-        cost,
       }),
     });
 
@@ -667,32 +758,28 @@ export default function ChatApp() {
     ));
     if (!chatId) return;
 
-    setIsUploading(true);
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("chatId", chatId);
-      const response = await fetch("/api/files", {
-        method: "POST",
-        body: formData,
-      });
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        setError(data?.error ?? "Upload failed.");
-        return;
-      }
-      const data = await response.json();
-      if (data?.data) {
-        setAttachments((prev) => [...prev, data.data as Attachment]);
-      }
-    } finally {
-      setIsUploading(false);
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("chatId", chatId);
+    const response = await fetch("/api/files", {
+      method: "POST",
+      body: formData,
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      setError(data?.error ?? "Upload failed.");
+      return;
+    }
+    const data = await response.json();
+    if (data?.data) {
+      setAttachments((prev) => [...prev, data.data as Attachment]);
     }
   }
 
   async function handleDescribeAttachment(attachment: Attachment) {
     if (!activeChatId) return;
     if (!attachment.mimeType.startsWith("image/")) return;
+    shouldAutoScrollRef.current = true;
     setIsSending(true);
     try {
       const response = await fetch("/api/ai/image", {
@@ -713,11 +800,12 @@ export default function ChatApp() {
 
   async function runAssistant(chatId: string, messageList: ChatMessage[]) {
     const assistantIndex = messageList.length;
+    shouldAutoScrollRef.current = true;
     setMessages([...messageList, { role: "assistant", content: "" }]);
     setIsSending(true);
     setStreamingChatId(chatId);
 
-    if (!activeChatId) {
+    if (!activeChatIdRef.current) {
       skipNextLoadRef.current = chatId;
     }
 
@@ -769,7 +857,7 @@ export default function ChatApp() {
             const delta = parsed?.choices?.[0]?.delta?.content;
             if (delta) {
               setMessages((prev) => {
-                if (activeChatId !== chatId) return prev;
+                if (activeChatIdRef.current !== chatId) return prev;
                 const updated = [...prev];
                 const current = updated[assistantIndex];
                 if (current) {
@@ -790,7 +878,7 @@ export default function ChatApp() {
       setIsSending(false);
       setStreamingChatId(null);
       await loadChats();
-      if (activeChatId === chatId) {
+      if (activeChatIdRef.current === chatId) {
         await loadChatDetails(chatId);
       }
     }
@@ -809,6 +897,7 @@ export default function ChatApp() {
 
     setError(null);
     setInput("");
+    shouldAutoScrollRef.current = true;
 
     const chatId = await ensureChatId(text.slice(0, 40) || "New Chat");
     if (!chatId) {
@@ -840,6 +929,7 @@ export default function ChatApp() {
   async function sendQuickPrompt(text: string) {
     if (!text.trim() || isSending) return;
     setError(null);
+    shouldAutoScrollRef.current = true;
     const chatId = await ensureChatId(text.slice(0, 40) || "New Chat");
     if (!chatId) return;
     const nextMessages: ChatMessage[] = [
@@ -863,38 +953,6 @@ export default function ChatApp() {
     }
   }
 
-  async function handleContinue() {
-    await sendQuickPrompt("Continue");
-  }
-
-  async function handleRegenerate() {
-    if (isSending || !messages.length) return;
-    const lastUserIndex = [...messages]
-      .map((message, index) => ({ message, index }))
-      .reverse()
-      .find((item) => item.message.role === "user")?.index;
-
-    if (lastUserIndex === undefined) return;
-    const chatId = activeChatId ?? (await ensureChatId("New Chat"));
-    if (!chatId) return;
-
-    const lastUserMessage = messages[lastUserIndex];
-    if (lastUserMessage?.id) {
-      await fetch(`/api/messages/${lastUserMessage.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          content: lastUserMessage.content,
-          rollback: true,
-        }),
-      });
-    }
-
-    const trimmedMessages = messages.slice(0, lastUserIndex + 1);
-    setMessages(trimmedMessages);
-    await runAssistant(chatId, trimmedMessages);
-  }
-
   function startEditMessage(message: ChatMessage) {
     if (!message.id) return;
     setEditingMessageId(message.id);
@@ -913,23 +971,31 @@ export default function ChatApp() {
     const chatId = activeChatId ?? (await ensureChatId("New Chat"));
     if (!chatId) return;
 
-    await fetch(`/api/messages/${editingMessageId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content: editingText.trim(), rollback: true }),
-    });
+    try {
+      const response = await fetch(`/api/messages/${editingMessageId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: editingText.trim(), rollback: true }),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data?.error ?? "Failed to update message.");
+      }
 
-    const updatedMessages = messages
-      .slice(0, index + 1)
-      .map((message) =>
-        message.id === editingMessageId
-          ? { ...message, content: editingText.trim() }
-          : message
-      );
+      const updatedMessages = messages
+        .slice(0, index + 1)
+        .map((message) =>
+          message.id === editingMessageId
+            ? { ...message, content: editingText.trim() }
+            : message
+        );
 
-    setMessages(updatedMessages);
-    cancelEditMessage();
-    await runAssistant(chatId, updatedMessages);
+      setMessages(updatedMessages);
+      cancelEditMessage();
+      await runAssistant(chatId, updatedMessages);
+    } catch (error) {
+      setError(getErrorMessage(error, "Failed to update message."));
+    }
   }
 
   async function handleCopy(text: string) {
@@ -939,6 +1005,14 @@ export default function ChatApp() {
   const closeSidebar = () => {
     setIsSidebarOpen(false);
   };
+  const toggleDesktopSidebar = () => {
+    setIsSidebarCollapsed((prev) => !prev);
+  };
+  const handleChatScroll = useCallback(() => {
+    const container = chatScrollRef.current;
+    if (!container) return;
+    shouldAutoScrollRef.current = isNearBottom(container);
+  }, []);
   const closeDetails = () => {
     setDetailsOpen(false);
   };
@@ -954,18 +1028,41 @@ export default function ChatApp() {
         />
       )}
       <aside
-        className={`fixed inset-y-0 left-0 z-40 flex w-72 flex-col glass-panel border-r-0 border-r-black/5 h-full transition-all duration-300 transform md:static md:z-20 md:translate-x-0 ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"
+        className={`fixed inset-y-0 left-0 z-40 flex h-full w-72 flex-col glass-panel border-r-0 border-r-black/5 transition-all duration-300 transform md:static md:z-20 md:translate-x-0 ${isSidebarCollapsed ? "md:w-20" : "md:w-72"} ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"
           }`}
       >
-        <div className="p-6 pb-2">
-          <div className="flex flex-col gap-1 mb-8">
-            <h1 className="text-text-primary text-xl font-bold tracking-tight">
-              Platforma<span className="text-primary">AI</span>
-            </h1>
-            <p className="text-text-secondary text-xs font-normal">Unified LLM Aggregator</p>
+        <div className={`${isSidebarCollapsed ? "p-4 pb-2" : "p-6 pb-2"}`}>
+          <div className={`mb-6 flex items-start ${isSidebarCollapsed ? "justify-center gap-2" : "justify-between gap-3"}`}>
+            <div className={`flex min-w-0 flex-col gap-1 ${isSidebarCollapsed ? "items-center" : ""}`}>
+              <h1 className={`text-text-primary font-bold tracking-tight ${isSidebarCollapsed ? "text-base" : "text-xl"}`}>
+                {isSidebarCollapsed ? (
+                  <>
+                    P<span className="text-primary">A</span>
+                  </>
+                ) : (
+                  <>
+                    Platforma<span className="text-primary">AI</span>
+                  </>
+                )}
+              </h1>
+              {!isSidebarCollapsed && (
+                <p className="text-text-secondary text-xs font-normal">Unified LLM Aggregator</p>
+              )}
+            </div>
+            <button
+              className="flex size-8 shrink-0 items-center justify-center rounded-lg text-text-secondary hover:text-text-primary hover:bg-black/5"
+              onClick={toggleDesktopSidebar}
+              type="button"
+              aria-label={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              title={isSidebarCollapsed ? "Expand" : "Collapse"}
+            >
+              <span className="material-symbols-outlined text-[18px]">
+                {isSidebarCollapsed ? "right_panel_open" : "left_panel_close"}
+              </span>
+            </button>
           </div>
           <button
-            className="w-full flex items-center justify-center gap-2 bg-primary hover:bg-primary/90 text-white p-3 rounded-lg transition-colors shadow-[0_0_15px_rgba(212,122,106,0.2)] group mb-6"
+            className={`w-full flex items-center justify-center bg-primary hover:bg-primary/90 text-white rounded-lg transition-colors shadow-[0_0_15px_rgba(212,122,106,0.2)] group mb-4 ${isSidebarCollapsed ? "p-2.5" : "gap-2 p-3"}`}
             onClick={() => {
               closeSidebar();
               setIsDraft(true);
@@ -978,44 +1075,65 @@ export default function ChatApp() {
             <span className="material-symbols-outlined text-[20px] group-hover:scale-110 transition-transform">
               add
             </span>
-            <span className="text-sm font-bold">New Chat</span>
+            {!isSidebarCollapsed && <span className="text-sm font-bold">New Chat</span>}
           </button>
 
-          <div className="mb-5">
-            <div className="relative">
-              <span className="material-symbols-outlined text-[16px] text-text-secondary absolute left-3 top-1/2 -translate-y-1/2">
-                search
-              </span>
-              <input
-                className="w-full rounded-lg border border-black/10 bg-white/70 pl-9 pr-9 py-2 text-xs text-text-primary placeholder:text-text-secondary focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                placeholder="Search chats..."
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-              />
-              {searchQuery.trim() && (
-                <button
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text-primary"
-                  type="button"
-                  onClick={() => setSearchQuery("")}
-                >
-                  <span className="material-symbols-outlined text-[16px]">
-                    close
-                  </span>
-                </button>
-              )}
+          {isSidebarCollapsed ? (
+            <div className="mb-4 flex justify-center">
+              <button
+                className="hidden md:flex size-10 items-center justify-center rounded-lg border border-black/10 bg-white/70 text-text-secondary hover:text-text-primary hover:bg-white"
+                type="button"
+                title="Expand and search"
+                aria-label="Expand and search"
+                onClick={() => setIsSidebarCollapsed(false)}
+              >
+                <span className="material-symbols-outlined text-[18px]">search</span>
+              </button>
             </div>
-          </div>
+          ) : (
+            <>
+              <div className="mb-5">
+                <div className="relative">
+                  <span className="material-symbols-outlined text-[16px] text-text-secondary absolute left-3 top-1/2 -translate-y-1/2">
+                    search
+                  </span>
+                  <input
+                    className="w-full rounded-lg border border-black/10 bg-white/70 pl-9 pr-9 py-2 text-xs text-text-primary placeholder:text-text-secondary focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                    placeholder="Search chats..."
+                    value={searchQuery}
+                    onChange={(event) => setSearchQuery(event.target.value)}
+                  />
+                  {searchQuery.trim() && (
+                    <button
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text-primary"
+                      type="button"
+                      onClick={() => setSearchQuery("")}
+                    >
+                      <span className="material-symbols-outlined text-[16px]">
+                        close
+                      </span>
+                    </button>
+                  )}
+                </div>
+              </div>
 
-          <div className="text-xs font-medium text-text-secondary/70 uppercase tracking-wider mb-3 px-2">Recent Sessions</div>
+              <div className="text-xs font-medium text-text-secondary/70 uppercase tracking-wider mb-3 px-2">
+                Recent Sessions
+              </div>
+            </>
+          )}
         </div>
 
-        <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-2 scrollbar-hide">
+        <div
+          className={`flex-1 overflow-y-auto pb-4 space-y-2 scrollbar-hide ${isSidebarCollapsed ? "px-2" : "px-4"}`}
+        >
           {chatGroups.map((group) => (
             <div key={group.label}>
               {group.items.map((chat) => (
                 <div
                   key={chat.id}
-                  className={`flex items-center gap-3 px-3 py-3 rounded-lg cursor-pointer transition-colors group ${chat.id === activeChatId
+                  title={isSidebarCollapsed ? chat.title : undefined}
+                  className={`flex items-center rounded-lg cursor-pointer transition-colors group ${isSidebarCollapsed ? "justify-center px-2 py-2.5" : "gap-3 px-3 py-3"} ${chat.id === activeChatId
                     ? "bg-primary/10 border border-primary/20"
                     : "hover:bg-black/5"
                     }`}
@@ -1029,56 +1147,62 @@ export default function ChatApp() {
                     }`}>
                     {chat.source === "TELEGRAM" ? "send" : "chat_bubble"}
                   </span>
-                  <div className="flex flex-col overflow-hidden flex-1 min-w-0">
-                    <p className={`text-sm font-medium truncate ${chat.id === activeChatId ? "text-text-primary" : "text-text-primary group-hover:text-text-primary"
-                      }`}>
-                      {chat.title}
-                    </p>
-                    <p className="text-text-secondary text-[10px] truncate">
-                      {new Date(chat.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button
-                      className={`size-7 flex items-center justify-center rounded-md ${chat.pinned ? "bg-primary/10 text-primary" : "text-text-secondary hover:text-text-primary hover:bg-black/5"}`}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        void handleTogglePin(chat);
-                      }}
-                      type="button"
-                      title={chat.pinned ? "Unpin" : "Pin"}
-                    >
-                      <span className="material-symbols-outlined text-[16px]">push_pin</span>
-                    </button>
-                    <button
-                      className={`size-7 flex items-center justify-center rounded-md ${chat.isFavorite ? "bg-amber-100 text-amber-600" : "text-text-secondary hover:text-text-primary hover:bg-black/5"}`}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        void handleToggleFavorite(chat);
-                      }}
-                      type="button"
-                      title={chat.isFavorite ? "Unfavorite" : "Favorite"}
-                    >
-                      <span className="material-symbols-outlined text-[16px]">star</span>
-                    </button>
-                    <button
-                      className="size-7 flex items-center justify-center rounded-md text-text-secondary hover:text-red-600 hover:bg-red-50"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        void handleDeleteChat(chat.id);
-                      }}
-                      type="button"
-                      title="Delete"
-                    >
-                      <span className="material-symbols-outlined text-[16px]">delete</span>
-                    </button>
-                  </div>
+                  {!isSidebarCollapsed && (
+                    <>
+                      <div className="flex flex-col overflow-hidden flex-1 min-w-0">
+                        <p className={`text-sm font-medium truncate ${chat.id === activeChatId ? "text-text-primary" : "text-text-primary group-hover:text-text-primary"
+                          }`}>
+                          {chat.title}
+                        </p>
+                        <p className="text-text-secondary text-[10px] truncate">
+                          {new Date(chat.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          className={`size-7 flex items-center justify-center rounded-md ${chat.pinned ? "bg-primary/10 text-primary" : "text-text-secondary hover:text-text-primary hover:bg-black/5"}`}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void handleTogglePin(chat);
+                          }}
+                          type="button"
+                          title={chat.pinned ? "Unpin" : "Pin"}
+                        >
+                          <span className="material-symbols-outlined text-[16px]">push_pin</span>
+                        </button>
+                        <button
+                          className={`size-7 flex items-center justify-center rounded-md ${chat.isFavorite ? "bg-amber-100 text-amber-600" : "text-text-secondary hover:text-text-primary hover:bg-black/5"}`}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void handleToggleFavorite(chat);
+                          }}
+                          type="button"
+                          title={chat.isFavorite ? "Unfavorite" : "Favorite"}
+                        >
+                          <span className="material-symbols-outlined text-[16px]">star</span>
+                        </button>
+                        <button
+                          className="size-7 flex items-center justify-center rounded-md text-text-secondary hover:text-red-600 hover:bg-red-50"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void handleDeleteChat(chat.id);
+                          }}
+                          type="button"
+                          title="Delete"
+                        >
+                          <span className="material-symbols-outlined text-[16px]">delete</span>
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
               ))}
             </div>
           ))}
           {!filteredChats.length && (
-            <div className="px-3 text-xs text-text-secondary">No recent sessions.</div>
+            <div className={`text-xs text-text-secondary ${isSidebarCollapsed ? "px-1 text-center" : "px-3"}`}>
+              {isSidebarCollapsed ? "—" : "No recent sessions."}
+            </div>
           )}
         </div>
 
@@ -1086,7 +1210,7 @@ export default function ChatApp() {
 
       {detailsOpen && (
         <button
-          className="fixed inset-0 z-30 bg-black/30"
+          className="fixed inset-0 z-30 bg-black/30 md:hidden"
           aria-label="Close details"
           onClick={closeDetails}
           type="button"
@@ -1258,7 +1382,9 @@ export default function ChatApp() {
         </div>
       </aside>
 
-      <main className="flex-1 flex flex-col relative h-full">
+      <main
+        className={`flex-1 flex flex-col relative h-full transition-[padding-right] duration-300 ${detailsOpen ? "md:pr-80" : ""}`}
+      >
         {/* Floating Header */}
         <header className="absolute top-0 left-0 right-0 z-30 px-6 py-4 pointer-events-none">
           <div className="glass-panel rounded-xl px-4 py-3 flex items-center justify-between shadow-lg pointer-events-auto">
@@ -1276,17 +1402,33 @@ export default function ChatApp() {
 
             <div className="flex items-center gap-2">
               <div className="relative" ref={modelMenuRef}>
-                <div
-                  className="hidden md:flex h-8 items-center justify-center gap-x-2 rounded-lg bg-primary/10 border border-primary/20 pl-2 pr-3 cursor-pointer hover:bg-primary/20 transition-colors"
-                  onClick={() => setModelMenuOpen(!modelMenuOpen)}
-                >
-                  <span className="material-symbols-outlined text-primary text-[18px]">smart_toy</span>
-                  <p className="text-primary text-xs font-bold">
-                    {selectedModelInfo?.name ?? "GPT-4"}
-                  </p>
-                </div>
+                {apiKeyState === "ok" ? (
+                  <div
+                    className="hidden md:flex h-8 items-center justify-center gap-x-2 rounded-lg bg-primary/10 border border-primary/20 pl-2 pr-3 cursor-pointer hover:bg-primary/20 transition-colors"
+                    onClick={() => setModelMenuOpen(!modelMenuOpen)}
+                  >
+                    <span className="material-symbols-outlined text-primary text-[18px]">smart_toy</span>
+                    <p className="text-primary text-xs font-bold">
+                      {selectedModelInfo?.name ?? "GPT-4"}
+                    </p>
+                  </div>
+                ) : (
+                  <Link
+                    href="/settings#api-keys"
+                    className="hidden md:flex h-8 items-center justify-center gap-x-2 rounded-lg bg-amber-50 border border-amber-300 pl-2 pr-3 hover:bg-amber-100 transition-colors"
+                  >
+                    <span className="material-symbols-outlined text-amber-700 text-[18px]">
+                      key
+                    </span>
+                    <p className="text-amber-700 text-xs font-bold">
+                      {apiKeyState === "invalid"
+                        ? "Проверь API-ключ"
+                        : "Добавить API-ключ"}
+                    </p>
+                  </Link>
+                )}
 
-                {modelMenuOpen && (
+                {apiKeyState === "ok" && modelMenuOpen && (
                   <div className="absolute right-0 top-full z-20 mt-2 w-72 rounded-xl border border-white/60 bg-white/90 p-2 shadow-glass-lg backdrop-blur-md">
                     <div className="px-1 pb-2">
                       <div className="relative">
@@ -1350,7 +1492,11 @@ export default function ChatApp() {
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto pt-24 pb-40 px-6 md:px-0">
+        <div
+          ref={chatScrollRef}
+          onScroll={handleChatScroll}
+          className="chat-scroll-fade-top flex-1 overflow-y-auto pt-24 pb-10 md:pb-12 px-6 md:px-0"
+        >
           <div className="max-w-4xl mx-auto flex flex-col gap-6">
             {error && (
               <div className="rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-900">
@@ -1428,9 +1574,9 @@ export default function ChatApp() {
                     { icon: "code", color: "text-blue-500", title: "Write Code", subtitle: "Python sort function", prompt: "Напиши функцию Python для сортировки списка." },
                     { icon: "edit_note", color: "text-green-500", title: "Edit", subtitle: "Check grammar", prompt: "Проверь грамматику в этом тексте." },
                     { icon: "translate", color: "text-purple-500", title: "Translate", subtitle: "To Spanish", prompt: "Переведи это на испанский." }
-                  ].map((item, i) => (
+                  ].map((item) => (
                     <button
-                      key={i}
+                      key={item.title}
                       className="group flex items-start gap-3 p-4 rounded-xl prompt-card-glass text-left"
                       onClick={() => void sendQuickPrompt(item.prompt)}
                     >
@@ -1453,6 +1599,10 @@ export default function ChatApp() {
                     typeof message.tokenCount === "number"
                       ? message.tokenCount
                       : estimateTokens(message.content);
+                  const isStreamingAssistant =
+                    isAI && isSending && index === messages.length - 1;
+                  const showThinkingPanel =
+                    isStreamingAssistant && !message.content.trim();
                 return (
                   <div key={message.id || index} className={`flex items-start gap-4 ${isAI ? 'pr-4' : 'pl-4 justify-end'} group`}>
                     {isAI && (
@@ -1479,13 +1629,42 @@ export default function ChatApp() {
 
                         <div className="relative z-10">
                           {isAI ? (
-                            <ReactMarkdown
-                              remarkPlugins={[remarkGfm]}
-                              rehypePlugins={[rehypeHighlight]}
-                              className="chat-markdown"
-                            >
-                              {message.content || ""}
-                            </ReactMarkdown>
+                            showThinkingPanel ? (
+                              <div className="flex items-center gap-3 rounded-2xl border border-primary/20 bg-white/50 px-3 py-2">
+                                <span className="material-symbols-outlined text-primary text-[18px] animate-pulse">
+                                  psychology
+                                </span>
+                                <div className="flex flex-col gap-0.5">
+                                  <span className="text-sm font-semibold text-text-primary">
+                                    Думает над ответом...
+                                  </span>
+                                  <span className="text-[11px] text-text-secondary">
+                                    Печатает по мере генерации
+                                  </span>
+                                </div>
+                                <div className="ml-auto flex items-center gap-1" aria-hidden>
+                                  <span className="size-1.5 rounded-full bg-primary/60 animate-bounce [animation-delay:-0.2s]" />
+                                  <span className="size-1.5 rounded-full bg-primary/60 animate-bounce [animation-delay:-0.1s]" />
+                                  <span className="size-1.5 rounded-full bg-primary/60 animate-bounce" />
+                                </div>
+                              </div>
+                            ) : (
+                              <div>
+                                <ReactMarkdown
+                                  remarkPlugins={[remarkGfm]}
+                                  rehypePlugins={[rehypeHighlight]}
+                                  className="chat-markdown"
+                                >
+                                  {message.content || ""}
+                                </ReactMarkdown>
+                                {isStreamingAssistant && (
+                                  <span
+                                    className="mt-1 inline-block h-4 w-1 rounded-full bg-primary/70 animate-pulse"
+                                    aria-hidden
+                                  />
+                                )}
+                              </div>
+                            )
                           ) : (
                             <>
                               {isEditing ? (
@@ -1519,12 +1698,9 @@ export default function ChatApp() {
                               )}
                             </>
                           )}
-                          {isAI && isSending && index === messages.length - 1 && !message.content && (
-                            <span className="animate-pulse">Thinking...</span>
-                          )}
                         </div>
 
-                        {isAI && (
+                        {isAI && !showThinkingPanel && (
                           <div className="mt-4 pt-4 border-t border-black/5 flex flex-wrap gap-2">
                             <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/5 border border-black/10">
                               <span className="material-symbols-outlined text-primary text-[14px]">token</span>
@@ -1575,31 +1751,8 @@ export default function ChatApp() {
           </div>
         </div>
 
-        {messages.length > 0 && (
-          <div className="px-4 pb-3 flex justify-center">
-            <div className="w-full max-w-[720px] flex justify-end gap-2">
-              <button
-                className="rounded-full border border-black/10 px-4 py-1.5 text-xs text-text-secondary hover:text-text-primary hover:border-black/20 disabled:opacity-50"
-                type="button"
-                onClick={handleContinue}
-                disabled={isSending}
-              >
-                Continue
-              </button>
-              <button
-                className="rounded-full bg-primary/15 px-4 py-1.5 text-xs font-semibold text-primary hover:bg-primary/25 disabled:opacity-50"
-                type="button"
-                onClick={handleRegenerate}
-                disabled={isSending}
-              >
-                Regenerate
-              </button>
-            </div>
-          </div>
-        )}
-
         {/* Input Area */}
-        <div className="sticky bottom-6 left-0 right-0 px-4 flex justify-center z-40">
+        <div className="sticky bottom-6 left-0 right-0 z-20 flex justify-center px-4">
           <div className="w-full max-w-[720px] glass-input rounded-3xl p-2 flex flex-col gap-2 transition-all focus-within:ring-0 focus-within:shadow-[0_0_0_6px_rgba(212,122,106,0.14)]">
             {attachments.length > 0 && (
               <div className="flex px-3 gap-2 overflow-x-auto py-1">
@@ -1642,19 +1795,28 @@ export default function ChatApp() {
                     chatId = await createChat(fileTitle);
                   }
                   if (!chatId) return;
-                  for (const file of Array.from(files)) {
-                    await handleUpload(file, chatId);
+                  setIsUploading(true);
+                  try {
+                    for (const file of Array.from(files)) {
+                      await handleUpload(file, chatId);
+                    }
+                  } finally {
+                    setIsUploading(false);
+                    e.target.value = "";
                   }
-                  e.target.value = "";
                 }}
               />
 
               <textarea
+                ref={composerRef}
                 className="w-full bg-transparent border-none text-text-primary placeholder-text-secondary focus:ring-0 focus:outline-none focus-visible:outline-none resize-none max-h-32 py-2.5 text-sm md:text-base leading-normal scrollbar-hide"
                 placeholder="Ask anything or paste text..."
                 rows={1}
                 value={input}
-                onChange={(e) => setInput(e.target.value)}
+                onChange={(e) => {
+                  setInput(e.target.value);
+                  resizeComposer(e.target);
+                }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();

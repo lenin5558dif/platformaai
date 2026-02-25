@@ -4,7 +4,6 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getOpenRouterBaseUrl, getOpenRouterHeaders } from "@/lib/openrouter";
-import { getUserOpenRouterKey } from "@/lib/user-settings";
 import { calculateCreditsFromUsage } from "@/lib/pricing";
 import {
   commitAiQuotaHold,
@@ -23,6 +22,9 @@ import {
 import { findOwnedChat } from "@/lib/chat-ownership";
 import { resolveOrgCostCenterId } from "@/lib/cost-centers";
 import { HttpError } from "@/lib/http-error";
+import { fetchWithTimeout, isFetchTimeoutError } from "@/lib/fetch-timeout";
+
+const OPENROUTER_IMAGE_TIMEOUT_MS = 45_000;
 
 const requestSchema = z.object({
   attachmentId: z.string().min(1),
@@ -32,10 +34,13 @@ const requestSchema = z.object({
 });
 
 export async function POST(request: Request) {
-  const session = await auth(request);
+  const session = await auth();
 
   if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json(
+      { error: "Сессия истекла. Войдите снова.", code: "AUTH_UNAUTHORIZED" },
+      { status: 401 }
+    );
   }
 
   const body = requestSchema.parse(await request.json());
@@ -61,10 +66,6 @@ export async function POST(request: Request) {
   if (body.chatId && !ownedChat) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
-
-  const allowUserKey =
-    process.env.AUTH_BYPASS === "1" ||
-    process.env.ALLOW_USER_OPENROUTER_KEYS === "1";
 
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
@@ -163,10 +164,6 @@ export async function POST(request: Request) {
 
   const safePrompt = dlpResult.content ?? prompt;
 
-  const userKey = allowUserKey
-    ? getUserOpenRouterKey(user?.settings ?? null)
-    : undefined;
-
   const idempotencyKey = crypto.randomUUID();
   let quotaHold = null;
 
@@ -175,7 +172,6 @@ export async function POST(request: Request) {
     const estimatedCredits = await estimateUpperBoundCredits({
       modelId,
       promptTokensEstimate,
-      apiKey: userKey,
     });
 
     const reserveAmount = Math.max(1, estimatedCredits);
@@ -203,7 +199,7 @@ export async function POST(request: Request) {
 
   let headers: Record<string, string>;
   try {
-    headers = getOpenRouterHeaders(userKey);
+    headers = getOpenRouterHeaders();
   } catch (error) {
     const message = error instanceof Error ? error.message : "Missing config";
     await releaseAiQuotaHold({ hold: quotaHold });
@@ -215,23 +211,33 @@ export async function POST(request: Request) {
   const base64 = buffer.toString("base64");
   const imageUrl = `data:${attachment.mimeType};base64,${base64}`;
 
-  const response = await fetch(`${getOpenRouterBaseUrl()}/chat/completions`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      model: modelId,
-      messages: [
-        {
-          role: "user",
-          content: [
-            { type: "text", text: safePrompt },
-            { type: "image_url", image_url: { url: imageUrl } },
-          ],
-        },
-      ],
-      stream: false,
-    }),
-  });
+  let response: Response;
+  try {
+    response = await fetchWithTimeout(`${getOpenRouterBaseUrl()}/chat/completions`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        model: modelId,
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: safePrompt },
+              { type: "image_url", image_url: { url: imageUrl } },
+            ],
+          },
+        ],
+        stream: false,
+      }),
+      timeoutMs: OPENROUTER_IMAGE_TIMEOUT_MS,
+      timeoutLabel: "OpenRouter image description",
+    });
+  } catch (error) {
+    await releaseAiQuotaHold({ hold: quotaHold });
+    const message = isFetchTimeoutError(error) ? "OpenRouter timeout" : "OpenRouter error";
+    const status = isFetchTimeoutError(error) ? 504 : 502;
+    return NextResponse.json({ error: message }, { status });
+  }
 
   if (!response.ok) {
     await releaseAiQuotaHold({ hold: quotaHold });
@@ -252,7 +258,6 @@ export async function POST(request: Request) {
         modelId,
         promptTokens: usage.prompt_tokens ?? 0,
         completionTokens: usage.completion_tokens ?? 0,
-        apiKey: userKey,
       });
 
       if (creditsResult.credits > 0) {

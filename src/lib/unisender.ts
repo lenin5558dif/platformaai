@@ -1,7 +1,11 @@
+import { fetchWithTimeout } from "@/lib/fetch-timeout";
+
 type MagicLinkPayload = {
   email: string;
   url: string;
 };
+
+const UNISENDER_TIMEOUT_MS = 10_000;
 
 export async function sendMagicLink({ email, url }: MagicLinkPayload) {
   const apiKey = process.env.UNISENDER_API_KEY;
@@ -25,13 +29,18 @@ export async function sendMagicLink({ email, url }: MagicLinkPayload) {
     body: `Перейдите по ссылке для входа: ${url}`,
   });
 
-  const response = await fetch("https://api.unisender.com/ru/api/sendEmail", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body,
-  });
+  const response = await fetchWithTimeout(
+    "https://api.unisender.com/ru/api/sendEmail",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body,
+      timeoutMs: UNISENDER_TIMEOUT_MS,
+      timeoutLabel: "UniSender sendEmail",
+    }
+  );
 
   if (!response.ok) {
     const text = await response.text();
@@ -66,13 +75,18 @@ export async function sendOrgInviteEmail({ email, acceptUrl }: OrgInvitePayload)
     body: `Перейдите по ссылке, чтобы принять приглашение: ${acceptUrl}`,
   });
 
-  const response = await fetch("https://api.unisender.com/ru/api/sendEmail", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body,
-  });
+  const response = await fetchWithTimeout(
+    "https://api.unisender.com/ru/api/sendEmail",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body,
+      timeoutMs: UNISENDER_TIMEOUT_MS,
+      timeoutLabel: "UniSender sendEmail",
+    }
+  );
 
   if (!response.ok) {
     const text = await response.text();

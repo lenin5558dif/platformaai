@@ -59,7 +59,7 @@ describe("cache", () => {
         new Map();
     });
 
-    it("should not return cached response from different user", () => {
+    it("should not return cached response from different user", async () => {
       const basePayload = {
         model: "gpt-4",
         messages: [{ role: "user", content: "Hello" }],
@@ -70,21 +70,21 @@ describe("cache", () => {
       const keyUserA = buildCacheKey({ ...basePayload, userId: "user-A" });
       const keyUserB = buildCacheKey({ ...basePayload, userId: "user-B" });
 
-      setCachedResponse(keyUserA, {
+      await setCachedResponse(keyUserA, {
         content: "Response for User A",
         modelId: "gpt-4",
         createdAt: Date.now(),
       });
 
-      const cachedForA = getCachedResponse(keyUserA);
-      const cachedForB = getCachedResponse(keyUserB);
+      const cachedForA = await getCachedResponse(keyUserA);
+      const cachedForB = await getCachedResponse(keyUserB);
 
       expect(cachedForA).not.toBeNull();
       expect(cachedForA?.content).toBe("Response for User A");
       expect(cachedForB).toBeNull();
     });
 
-    it("should return cached response for same user", () => {
+    it("should return cached response for same user", async () => {
       const payload = {
         userId: "user-123",
         model: "gpt-4",
@@ -95,13 +95,13 @@ describe("cache", () => {
 
       const key = buildCacheKey(payload);
 
-      setCachedResponse(key, {
+      await setCachedResponse(key, {
         content: "Cached response",
         modelId: "gpt-4",
         createdAt: Date.now(),
       });
 
-      const cached = getCachedResponse(key);
+      const cached = await getCachedResponse(key);
 
       expect(cached).not.toBeNull();
       expect(cached?.content).toBe("Cached response");

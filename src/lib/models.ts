@@ -1,4 +1,5 @@
 import { getOpenRouterBaseUrl, getOpenRouterHeaders } from "@/lib/openrouter";
+import { fetchWithTimeout } from "@/lib/fetch-timeout";
 
 export type OpenRouterModel = {
   id: string;
@@ -10,12 +11,42 @@ export type OpenRouterModel = {
   };
 };
 
+function hasFreeModelSuffix(modelId: string) {
+  return modelId.toLowerCase().endsWith(":free");
+}
+
+function parsePricingValue(value?: string) {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+export function isOpenRouterModelFree(
+  model: Pick<OpenRouterModel, "id" | "pricing">
+) {
+  if (hasFreeModelSuffix(model.id)) return true;
+
+  const prompt = parsePricingValue(model.pricing?.prompt);
+  const completion = parsePricingValue(model.pricing?.completion);
+
+  if (prompt === null && completion === null) {
+    return false;
+  }
+
+  return (prompt ?? 0) <= 0 && (completion ?? 0) <= 0;
+}
+
+export function filterFreeOpenRouterModels(models: OpenRouterModel[]) {
+  return models.filter(isOpenRouterModelFree);
+}
+
 type ModelsCache = {
   data: OpenRouterModel[];
   fetchedAt: number;
 };
 
 const CACHE_TTL_MS = 10 * 60 * 1000;
+const OPENROUTER_MODELS_TIMEOUT_MS = 12_000;
 const globalCache = globalThis as unknown as {
   openRouterModels?: ModelsCache;
   openRouterModelsByKey?: Map<string, ModelsCache>;
@@ -42,9 +73,11 @@ export async function fetchModels(params?: {
     return cached.data;
   }
 
-  const response = await fetch(`${getOpenRouterBaseUrl()}/models`, {
+  const response = await fetchWithTimeout(`${getOpenRouterBaseUrl()}/models`, {
     headers: getOpenRouterHeaders(apiKey),
     cache: "no-store",
+    timeoutMs: OPENROUTER_MODELS_TIMEOUT_MS,
+    timeoutLabel: "OpenRouter models",
   });
 
   if (!response.ok) {
@@ -70,4 +103,20 @@ export async function getModelPricing(modelId: string, apiKey?: string) {
   const model = models.find((entry) => entry.id === modelId);
 
   return model?.pricing ?? null;
+}
+
+export async function filterFreeOpenRouterModelIds(
+  modelIds: string[],
+  apiKey?: string
+) {
+  if (!modelIds.length) return [];
+
+  const models = await fetchModels({ apiKey });
+  const freeModelIds = new Set(
+    filterFreeOpenRouterModels(models).map((model) => model.id)
+  );
+
+  return modelIds.filter(
+    (modelId) => freeModelIds.has(modelId) || hasFreeModelSuffix(modelId)
+  );
 }

@@ -1,7 +1,8 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import AppShell from "@/components/layout/AppShell";
 import { revalidatePath } from "next/cache";
-import { auth } from "@/lib/auth";
+import { auth, signOut as authSignOut } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import {
   getSettingsObject,
@@ -24,14 +25,17 @@ async function updateOpenRouterKey(formData: FormData) {
     return;
   }
 
-  const allowUserKey =
-    process.env.AUTH_BYPASS === "1" ||
-    process.env.ALLOW_USER_OPENROUTER_KEYS === "1";
+  const allowUserKey = false;
   if (!allowUserKey) {
     return;
   }
 
-  const apiKey = String(formData.get("openrouterApiKey") ?? "").trim();
+  // Users often paste a full Authorization header value (`Bearer ...`).
+  // Store only the raw token and drop accidental whitespace/newlines.
+  const apiKey = String(formData.get("openrouterApiKey") ?? "")
+    .trim()
+    .replace(/^Bearer\s+/i, "")
+    .replace(/\s+/g, "");
 
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
@@ -59,6 +63,8 @@ async function updateProfileSettings(formData: FormData) {
   if (!session?.user?.id) {
     return;
   }
+
+  const redirectTo = String(formData.get("redirectTo") ?? "").trim();
 
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
@@ -96,9 +102,100 @@ async function updateProfileSettings(formData: FormData) {
   });
 
   revalidatePath("/settings");
+  if (redirectTo === "/") {
+    redirect("/");
+  }
 }
 
-export default async function SettingsPage() {
+async function deleteAccount(formData: FormData) {
+  "use server";
+
+  const session = await auth();
+  if (!session?.user?.id) {
+    return;
+  }
+
+  const confirmation = String(formData.get("deleteConfirmation") ?? "")
+    .trim()
+    .toLowerCase();
+  if (confirmation !== "delete" && confirmation !== "удалить") {
+    return;
+  }
+
+  const userId = session.user.id;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.prompt.deleteMany({ where: { createdById: userId } });
+    await tx.message.deleteMany({ where: { userId } });
+    await tx.attachment.deleteMany({ where: { userId } });
+    await tx.chat.deleteMany({ where: { userId } });
+    await tx.transaction.deleteMany({ where: { userId } });
+    await tx.telegramLinkToken.deleteMany({ where: { userId } });
+    await tx.userChannel.deleteMany({ where: { userId } });
+    await tx.orgMembership.deleteMany({ where: { userId } });
+    await tx.account.deleteMany({ where: { userId } });
+    await tx.session.deleteMany({ where: { userId } });
+
+    await tx.orgInvite.updateMany({
+      where: { createdById: userId },
+      data: { createdById: null },
+    });
+    await tx.dlpPolicy.updateMany({
+      where: { createdById: userId },
+      data: { createdById: null },
+    });
+    await tx.dlpPolicy.updateMany({
+      where: { updatedById: userId },
+      data: { updatedById: null },
+    });
+    await tx.modelPolicy.updateMany({
+      where: { createdById: userId },
+      data: { createdById: null },
+    });
+    await tx.modelPolicy.updateMany({
+      where: { updatedById: userId },
+      data: { updatedById: null },
+    });
+    await tx.auditLog.updateMany({
+      where: { actorId: userId },
+      data: { actorId: null },
+    });
+
+    await tx.user.update({
+      where: { id: userId },
+      data: {
+        isActive: false,
+        email: null,
+        telegramId: null,
+        orgId: null,
+        costCenterId: null,
+        role: "USER",
+        balance: 0,
+        dailySpent: 0,
+        monthlySpent: 0,
+        settings: {},
+        emailVerifiedByProvider: null,
+        sessionInvalidatedAt: new Date(),
+        globalRevokeCounter: { increment: 1 },
+      },
+    });
+  });
+
+  redirect("/login?deleted=1");
+}
+
+async function logout() {
+  "use server";
+  await authSignOut({ redirectTo: "/login" });
+}
+
+export default async function SettingsPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ onboarding?: string }>;
+}) {
+  const params = searchParams ? await searchParams : undefined;
+  const isOnboardingFlow = params?.onboarding === "1";
   const session = await auth();
 
   if (!session?.user?.id) {
@@ -126,9 +223,7 @@ export default async function SettingsPage() {
   const userTone = getUserTone(user?.settings ?? null) ?? "";
   const assistantInstructions =
     getUserAssistantInstructions(user?.settings ?? null) ?? "";
-  const allowUserKey =
-    process.env.AUTH_BYPASS === "1" ||
-    process.env.ALLOW_USER_OPENROUTER_KEYS === "1";
+  const allowUserKey = false;
 
   const firstName =
     typeof settings.profileFirstName === "string" ? settings.profileFirstName : "";
@@ -152,6 +247,7 @@ export default async function SettingsPage() {
         displayName,
         planName,
       }}
+      showPlatformNav
     >
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 pb-10">
         <div className="mb-2 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
@@ -163,15 +259,27 @@ export default async function SettingsPage() {
               Управляйте личной информацией и основными предпочтениями.
             </p>
           </div>
-          <Link
-            className="rounded-full border border-slate-200 bg-white/80 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-white"
-            href="/"
-          >
-            В чат
-          </Link>
+          <form action={logout}>
+            <button
+              type="submit"
+              className="rounded-full border border-slate-200 bg-white/80 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-white"
+            >
+              Выйти из аккаунта
+            </button>
+          </form>
         </div>
 
           <form id="profile-form" action={updateProfileSettings} className="space-y-6">
+            <input
+              type="hidden"
+              name="redirectTo"
+              value={isOnboardingFlow ? "/" : ""}
+            />
+            {isOnboardingFlow && (
+              <div className="rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-text-main">
+                Заполните профиль и нажмите «Сохранить изменения», чтобы перейти в чат.
+              </div>
+            )}
             <section
               id="general"
               className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
@@ -190,14 +298,14 @@ export default async function SettingsPage() {
                     <div className="flex size-24 items-center justify-center rounded-full bg-primary/10 text-lg font-semibold text-primary ring-4 ring-gray-50">
                       {user?.email?.[0]?.toUpperCase() ?? "U"}
                     </div>
-                    <button
+                    <Link
+                      href="/profile"
                       className="absolute bottom-0 right-0 rounded-full border border-gray-200 bg-white p-1.5 text-slate-900 shadow-md transition-colors hover:text-primary"
-                      type="button"
                     >
                       <span className="material-symbols-outlined text-[16px] block">
                         edit
                       </span>
-                    </button>
+                    </Link>
                   </div>
                   <div className="grid w-full grid-cols-1 gap-x-6 gap-y-5 md:grid-cols-2">
                     <div className="space-y-1.5">
@@ -388,7 +496,7 @@ export default async function SettingsPage() {
               <p className="mt-1 text-xs text-slate-500">
                 {allowUserKey
                   ? "Ключ хранится в настройках пользователя и используется для запросов в чате."
-                  : "Сейчас используется ключ из .env. Чтобы включить пользовательские ключи, установите ALLOW_USER_OPENROUTER_KEYS=1."}
+                  : "Сейчас используется ключ платформы из .env. Пользовательские ключи OpenRouter отключены."}
               </p>
             </div>
             <div className="p-8">
@@ -430,25 +538,38 @@ export default async function SettingsPage() {
             </div>
           </section>
 
-          <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <form
+            id="danger-zone"
+            action={deleteAccount}
+            className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
+          >
             <div className="border-b border-slate-200/60 px-8 py-6">
               <h3 className="text-base font-bold text-slate-900">Опасная зона</h3>
             </div>
-            <div className="flex flex-col gap-4 p-8 md:flex-row md:items-center md:justify-between">
+            <div className="flex flex-col gap-4 p-8">
               <div>
                 <p className="text-sm font-medium text-slate-900">Удалить аккаунт</p>
                 <p className="text-xs text-slate-500">
-                  Удаление аккаунта необратимо и удалит историю чатов.
+                  Введите DELETE или УДАЛИТЬ для подтверждения. Действие необратимо.
                 </p>
               </div>
-              <button
-                className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-600"
-                type="button"
-              >
-                Удалить аккаунт
-              </button>
+              <div className="flex flex-col gap-3 md:flex-row md:items-center">
+                <input
+                  name="deleteConfirmation"
+                  type="text"
+                  required
+                  className="w-full rounded-lg border border-red-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100 md:max-w-xs"
+                  placeholder="Введите DELETE"
+                />
+                <button
+                  className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-100"
+                  type="submit"
+                >
+                  Удалить аккаунт
+                </button>
+              </div>
             </div>
-          </section>
+          </form>
           <div className="flex flex-col items-start justify-between gap-3 rounded-2xl border border-white/50 bg-white/80 px-5 py-4 text-sm text-slate-500 sm:flex-row sm:items-center">
             <span>Изменения сохраняются после подтверждения.</span>
             <button

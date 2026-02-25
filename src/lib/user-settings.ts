@@ -11,7 +11,12 @@ export function getSettingsObject(settings: Prisma.JsonValue) {
 export function getUserOpenRouterKey(settings: Prisma.JsonValue) {
   const data = getSettingsObject(settings);
   const value = data.openrouterApiKey;
-  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+  if (typeof value !== "string") return undefined;
+  const normalized = value
+    .trim()
+    .replace(/^Bearer\s+/i, "")
+    .replace(/\s+/g, "");
+  return normalized || undefined;
 }
 
 export function getUserProfile(settings: Prisma.JsonValue) {
@@ -36,12 +41,6 @@ export function getUserTone(settings: Prisma.JsonValue) {
   const data = getSettingsObject(settings);
   const value = data.userTone;
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
-}
-
-export function getUserOnboarded(settings: Prisma.JsonValue) {
-  const data = getSettingsObject(settings);
-  const value = data.onboarded;
-  return typeof value === "boolean" ? value : false;
 }
 
 export function mergeSettings(

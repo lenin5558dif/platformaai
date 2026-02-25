@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { fetchWithTimeout } from "@/lib/fetch-timeout";
 import { getOpenRouterBaseUrl, getOpenRouterHeaders } from "@/lib/openrouter";
 
 type SummaryParams = {
@@ -6,6 +7,8 @@ type SummaryParams = {
   userId: string;
   apiKey?: string;
 };
+
+const SUMMARY_TIMEOUT_MS = 20_000;
 
 export async function updateChatSummary(params: SummaryParams) {
   if (process.env.ENABLE_CHAT_SUMMARY !== "1") {
@@ -33,22 +36,27 @@ export async function updateChatSummary(params: SummaryParams) {
   if (!messagesToSummarize.trim()) return;
 
   const headers = getOpenRouterHeaders(params.apiKey);
-  const response = await fetch(`${getOpenRouterBaseUrl()}/chat/completions`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      model: "openai/gpt-4o-mini",
-      messages: [
-        {
-          role: "system",
-          content:
-            "Сделай краткое резюме диалога, сохрани ключевые факты, решения и договоренности. Без лишних деталей.",
-        },
-        { role: "user", content: messagesToSummarize },
-      ],
-      stream: false,
-    }),
-  });
+  const response = await fetchWithTimeout(
+    `${getOpenRouterBaseUrl()}/chat/completions`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        model: "openai/gpt-4o-mini",
+        messages: [
+          {
+            role: "system",
+            content:
+              "Сделай краткое резюме диалога, сохрани ключевые факты, решения и договоренности. Без лишних деталей.",
+          },
+          { role: "user", content: messagesToSummarize },
+        ],
+        stream: false,
+      }),
+      timeoutMs: SUMMARY_TIMEOUT_MS,
+      timeoutLabel: "OpenRouter summary",
+    }
+  );
 
   if (!response.ok) {
     return;

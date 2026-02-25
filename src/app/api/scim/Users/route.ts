@@ -3,6 +3,8 @@ import { prisma } from "@/lib/db";
 import { validateScimRequest } from "@/lib/scim";
 import { scimListResponse, scimUserResource } from "@/lib/scim-responses";
 import { logAudit } from "@/lib/audit";
+import { ensureOrgSystemRolesAndPermissions } from "@/lib/org-rbac";
+import { SYSTEM_ROLE_NAMES } from "@/lib/org-permissions";
 
 function parseFilter(filter: string | null) {
   if (!filter) return null;
@@ -72,22 +74,55 @@ export async function POST(request: Request) {
   }
 
   const active = payload?.active !== false;
-
-  const user = await prisma.user.upsert({
+  const existingUser = await prisma.user.findUnique({
     where: { email },
-    update: {
-      orgId: auth.orgId,
-      isActive: active,
-      role: "EMPLOYEE",
-    },
-    create: {
-      email,
-      orgId: auth.orgId,
-      isActive: active,
-      role: "EMPLOYEE",
-      balance: 0,
-    },
+    select: { id: true, orgId: true },
   });
+
+  if (existingUser?.orgId && existingUser.orgId !== auth.orgId) {
+    return NextResponse.json(
+      { error: "User already belongs to a different organization" },
+      { status: 409 }
+    );
+  }
+
+  const user = existingUser
+    ? await prisma.user.update({
+        where: { id: existingUser.id },
+        data: {
+          orgId: auth.orgId,
+          isActive: active,
+          role: "EMPLOYEE",
+        },
+      })
+    : await prisma.user.create({
+        data: {
+          email,
+          orgId: auth.orgId,
+          isActive: active,
+          role: "EMPLOYEE",
+          balance: 0,
+        },
+      });
+
+  const { rolesByName } = await ensureOrgSystemRolesAndPermissions(auth.orgId);
+  const memberRole = rolesByName.get(SYSTEM_ROLE_NAMES.MEMBER);
+  if (memberRole) {
+    await prisma.orgMembership.upsert({
+      where: {
+        orgId_userId: {
+          orgId: auth.orgId,
+          userId: user.id,
+        },
+      },
+      update: { roleId: memberRole.id },
+      create: {
+        orgId: auth.orgId,
+        userId: user.id,
+        roleId: memberRole.id,
+      },
+    });
+  }
 
   let costCenter = null;
   const groupId = payload?.groups?.[0]?.value;
