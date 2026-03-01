@@ -4,6 +4,8 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getOrgModelPolicy } from "@/lib/org-settings";
 import { filterModels } from "@/lib/model-policy";
+import { getPlatformConfig } from "@/lib/platform-config";
+import { resolveOpenRouterApiKey } from "@/lib/provider-credentials";
 
 export async function GET() {
   const session = await auth();
@@ -17,13 +19,35 @@ export async function GET() {
 
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
-    select: { balance: true, org: { select: { settings: true } } },
+    select: {
+      balance: true,
+      orgId: true,
+      org: { select: { settings: true } },
+    },
   });
 
   try {
+    const [platformConfig, openRouterApiKey] = await Promise.all([
+      getPlatformConfig(),
+      resolveOpenRouterApiKey({ orgId: user?.orgId ?? null }),
+    ]);
+    if (!openRouterApiKey) {
+      return NextResponse.json(
+        { error: "OPENROUTER_API_KEY is not set", code: "OPENROUTER_KEY_MISSING" },
+        { status: 401 }
+      );
+    }
+
     const modelPolicy = getOrgModelPolicy(user?.org?.settings ?? null);
-    const data = await fetchModels();
-    const filtered = filterModels(data, modelPolicy);
+    const data = await fetchModels({ apiKey: openRouterApiKey });
+    const disabledModels = new Set(
+      platformConfig.disabledModelIds
+        .map((entry) => entry.trim().toLowerCase())
+        .filter((entry) => entry.length > 0)
+    );
+    const filtered = filterModels(data, modelPolicy).filter(
+      (model) => !disabledModels.has(model.id.trim().toLowerCase())
+    );
     const hasPaidAccess = Number(user?.balance ?? 0) > 0;
     const visibleModels = hasPaidAccess
       ? filtered

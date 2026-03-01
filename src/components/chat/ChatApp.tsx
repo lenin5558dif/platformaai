@@ -80,6 +80,10 @@ function resizeComposer(element: HTMLTextAreaElement) {
   element.style.overflowY = element.scrollHeight > COMPOSER_MAX_HEIGHT ? "auto" : "hidden";
 }
 
+function isAbortError(error: unknown) {
+  return error instanceof DOMException && error.name === "AbortError";
+}
+
 export default function ChatApp() {
   const searchParams = useSearchParams();
   const [chats, setChats] = useState<Chat[]>([]);
@@ -129,6 +133,7 @@ export default function ChatApp() {
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const modelMenuRef = useRef<HTMLDivElement>(null);
   const appliedPromptRef = useRef<string | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const activeChat = useMemo(
     () => chats.find((chat) => chat.id === activeChatId) ?? null,
@@ -220,7 +225,7 @@ export default function ChatApp() {
       lower.includes("api key") ||
       lower.includes("неверный ключ")
     ) {
-      return "Проверьте API-ключ OpenRouter.";
+      return "Доступ к моделям временно недоступен. Обратитесь к администратору.";
     }
     if (lower.includes("openrouter")) {
       return "Попробуйте другую модель или повторите позже.";
@@ -246,13 +251,16 @@ export default function ChatApp() {
       lower.includes("api key") ||
       lower.includes("неверный ключ")
     ) {
-      return { href: "/settings#api-keys", label: "Проверить ключ" };
+      if (currentUser?.role === "ADMIN") {
+        return { href: "/admin/api-routing", label: "Открыть API-маршрутизацию" };
+      }
+      return null;
     }
     if (lower.includes("balance")) {
       return { href: "/settings", label: "Открыть настройки" };
     }
     return null;
-  }, [error]);
+  }, [error, currentUser?.role]);
 
   const composerState = useMemo(() => {
     if (isUploading) return "uploading";
@@ -344,7 +352,7 @@ export default function ChatApp() {
 
           if (errorCode === "OPENROUTER_KEY_INVALID") {
             setApiKeyState("invalid");
-            setError((prev) => prev ?? "OpenRouter: неверный ключ. Проверьте ключ в настройках.");
+            setError((prev) => prev ?? "OpenRouter: ключ платформы недействителен.");
             return;
           }
 
@@ -606,6 +614,7 @@ export default function ChatApp() {
 
   useEffect(() => {
     if (isSending && streamingChatId && activeChatId !== streamingChatId) {
+      abortControllerRef.current?.abort();
       setIsSending(false);
       setStreamingChatId(null);
     }
@@ -628,6 +637,13 @@ export default function ChatApp() {
 
     void loadChatDetails(activeChatId);
   }, [activeChatId, loadChatDetails, isSending, streamingChatId]);
+
+  useEffect(() => {
+    return () => {
+      abortControllerRef.current?.abort();
+      abortControllerRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -673,8 +689,6 @@ export default function ChatApp() {
   }
 
   async function persistUserMessage(chatId: string, content: string) {
-    const tokenCount = estimateTokens(content);
-
     const response = await fetch("/api/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -682,7 +696,6 @@ export default function ChatApp() {
         chatId,
         role: "USER",
         content,
-        tokenCount,
       }),
     });
 
@@ -749,10 +762,14 @@ export default function ChatApp() {
       skipNextLoadRef.current = chatId;
     }
 
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     try {
       const response = await fetch("/api/ai/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({
           model: selectedModel,
           messages: messageList.map((message) => ({
@@ -814,7 +831,15 @@ export default function ChatApp() {
           }
         }
       }
+    } catch (error) {
+      if (controller.signal.aborted || isAbortError(error)) {
+        return;
+      }
+      throw error;
     } finally {
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null;
+      }
       setIsSending(false);
       setStreamingChatId(null);
       await loadChats();
@@ -940,6 +965,10 @@ export default function ChatApp() {
 
   async function handleCopy(text: string) {
     await navigator.clipboard.writeText(text);
+  }
+
+  function handleStopGeneration() {
+    abortControllerRef.current?.abort();
   }
 
   const closeSidebar = () => {
@@ -1233,19 +1262,14 @@ export default function ChatApp() {
                     </p>
                   </div>
                 ) : (
-                  <Link
-                    href="/settings#api-keys"
-                    className="hidden md:flex h-8 items-center justify-center gap-x-2 rounded-lg bg-amber-50 border border-amber-300 pl-2 pr-3 hover:bg-amber-100 transition-colors"
-                  >
+                  <div className="hidden md:flex h-8 items-center justify-center gap-x-2 rounded-lg bg-amber-50 border border-amber-300 pl-2 pr-3">
                     <span className="material-symbols-outlined text-amber-700 text-[18px]">
                       key
                     </span>
                     <p className="text-amber-700 text-xs font-bold">
-                      {apiKeyState === "invalid"
-                        ? "Проверь API-ключ"
-                        : "Добавить API-ключ"}
+                      {apiKeyState === "invalid" ? "Проверь OpenRouter" : "Модели недоступны"}
                     </p>
-                  </Link>
+                  </div>
                 )}
 
                 {apiKeyState === "ok" && modelMenuOpen && (
@@ -1349,7 +1373,7 @@ export default function ChatApp() {
                   <div>
                     <p className="font-semibold">Завершите первичную настройку</p>
                     <p className="text-xs text-text-secondary">
-                      Добавьте данные профиля, ключи и лимиты, чтобы настроить рабочее пространство.
+                      Добавьте данные профиля и лимиты, чтобы настроить рабочее пространство.
                     </p>
                   </div>
                   <button
@@ -1410,7 +1434,7 @@ export default function ChatApp() {
                   const tokenCount =
                     typeof message.tokenCount === "number"
                       ? message.tokenCount
-                      : estimateTokens(message.content);
+                      : 0;
                   const isStreamingAssistant =
                     isAI && isSending && index === messages.length - 1;
                   const showThinkingPanel =
@@ -1637,13 +1661,26 @@ export default function ChatApp() {
                 }}
               ></textarea>
 
-              <button
-                className="p-2 bg-primary text-white hover:bg-primary/90 transition-colors rounded-full shrink-0 shadow-[0_0_15px_rgba(212,122,106,0.4)] disabled:opacity-50 disabled:cursor-not-allowed"
-                onClick={() => handleSend()}
-                disabled={!input.trim() || isSending}
-              >
-                <span className="material-symbols-outlined text-[20px] translate-x-0.5">arrow_upward</span>
-              </button>
+              {isSending ? (
+                <button
+                  className="p-2 bg-rose-500 text-white hover:bg-rose-600 transition-colors rounded-full shrink-0 shadow-[0_0_15px_rgba(244,63,94,0.35)]"
+                  onClick={handleStopGeneration}
+                  type="button"
+                  aria-label="Остановить генерацию"
+                  title="Остановить генерацию"
+                >
+                  <span className="material-symbols-outlined text-[20px]">stop</span>
+                </button>
+              ) : (
+                <button
+                  className="p-2 bg-primary text-white hover:bg-primary/90 transition-colors rounded-full shrink-0 shadow-[0_0_15px_rgba(212,122,106,0.4)] disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={() => handleSend()}
+                  disabled={!input.trim()}
+                  type="button"
+                >
+                  <span className="material-symbols-outlined text-[20px] translate-x-0.5">arrow_upward</span>
+                </button>
+              )}
             </div>
             <div className="flex items-center justify-between px-3 pb-1">
               <span

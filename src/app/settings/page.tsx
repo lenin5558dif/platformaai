@@ -8,53 +8,12 @@ import {
   getSettingsObject,
   getUserAssistantInstructions,
   getUserGoal,
-  getUserOpenRouterKey,
   getUserProfile,
   getUserTone,
   mergeSettings,
-  removeSettingsKey,
 } from "@/lib/user-settings";
 
 export const dynamic = "force-dynamic";
-
-async function updateOpenRouterKey(formData: FormData) {
-  "use server";
-  const session = await auth();
-
-  if (!session?.user?.id) {
-    return;
-  }
-
-  const allowUserKey = false;
-  if (!allowUserKey) {
-    return;
-  }
-
-  // Users often paste a full Authorization header value (`Bearer ...`).
-  // Store only the raw token and drop accidental whitespace/newlines.
-  const apiKey = String(formData.get("openrouterApiKey") ?? "")
-    .trim()
-    .replace(/^Bearer\s+/i, "")
-    .replace(/\s+/g, "");
-
-  const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { settings: true },
-  });
-
-  if (!user) return;
-
-  const nextSettings = apiKey
-    ? mergeSettings(user.settings, { openrouterApiKey: apiKey })
-    : removeSettingsKey(user.settings, "openrouterApiKey");
-
-  await prisma.user.update({
-    where: { id: session.user.id },
-    data: { settings: nextSettings },
-  });
-
-  revalidatePath("/settings");
-}
 
 async function updateProfileSettings(formData: FormData) {
   "use server";
@@ -217,13 +176,11 @@ export default async function SettingsPage({
   });
 
   const settings = getSettingsObject(user?.settings ?? null);
-  const openRouterKey = getUserOpenRouterKey(user?.settings ?? null);
   const userProfile = getUserProfile(user?.settings ?? null) ?? "";
   const userGoal = getUserGoal(user?.settings ?? null) ?? "";
   const userTone = getUserTone(user?.settings ?? null) ?? "";
   const assistantInstructions =
     getUserAssistantInstructions(user?.settings ?? null) ?? "";
-  const allowUserKey = false;
 
   const firstName =
     typeof settings.profileFirstName === "string" ? settings.profileFirstName : "";
@@ -241,7 +198,7 @@ export default async function SettingsPage({
   return (
     <AppShell
       title="Настройки"
-      subtitle="Личный профиль, предпочтения и ключи доступа."
+      subtitle="Личный профиль и предпочтения."
       user={{
         email: user?.email,
         role: user?.role,
@@ -488,56 +445,27 @@ export default async function SettingsPage({
             </section>
           </form>
 
-          <section
-            id="api-keys"
-            className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
-          >
-            <div className="border-b border-slate-200/60 px-8 py-6">
-              <h3 className="text-base font-bold text-slate-900">API ключи</h3>
-              <p className="mt-1 text-xs text-slate-500">
-                {allowUserKey
-                  ? "Ключ хранится в настройках пользователя и используется для запросов в чате."
-                  : "Сейчас используется ключ платформы из .env. Пользовательские ключи OpenRouter отключены."}
-              </p>
-            </div>
-            <div className="p-8">
-              <form action={updateOpenRouterKey} className="space-y-4">
-                <input
-                  name="openrouterApiKey"
-                  type="password"
-                  autoComplete="off"
-                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition-all placeholder:text-gray-400 focus:border-primary focus:ring-2 focus:ring-primary/10"
-                  placeholder={
-                    openRouterKey
-                      ? `Сохранен ключ ••••${openRouterKey.slice(-4)}`
-                      : "Вставьте ключ OpenRouter"
-                  }
-                />
-                <div className="flex flex-wrap gap-3">
-                  <button
-                    className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary/90 disabled:opacity-60"
-                    disabled={!allowUserKey}
-                  >
-                    Сохранить ключ
-                  </button>
-                  <Link
-                    className="rounded-lg border border-primary/30 bg-primary/10 px-4 py-2 text-sm font-semibold text-primary transition-colors hover:bg-primary/20"
-                    href="/"
-                  >
-                    Перейти в чат
-                  </Link>
-                  <button
-                    className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-slate-900 transition-colors hover:bg-gray-50 disabled:opacity-60"
-                    name="openrouterApiKey"
-                    value=""
-                    disabled={!allowUserKey}
-                  >
-                    Очистить
-                  </button>
-                </div>
-              </form>
-            </div>
-          </section>
+          {user?.role === "ADMIN" && (
+            <section
+              id="admin-panel"
+              className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
+            >
+              <div className="border-b border-slate-200/60 px-8 py-6">
+                <h3 className="text-base font-bold text-slate-900">Админ-панель</h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  Управление пользователями, ключами провайдеров и мониторингом системы.
+                </p>
+              </div>
+              <div className="p-8">
+                <Link
+                  href="/admin"
+                  className="inline-flex rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary/90"
+                >
+                  Перейти в админ-панель
+                </Link>
+              </div>
+            </section>
+          )}
 
           <form
             id="danger-zone"
