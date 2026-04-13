@@ -16,6 +16,27 @@ const { mockAuthFn, mockPrismaDb } = vi.hoisted(() => ({
     orgMembership: {
       findUnique: vi.fn(),
     },
+    platformConfig: {
+      upsert: vi.fn().mockResolvedValue({
+        id: "default",
+        globalSystemPrompt: null,
+        disabledModelIds: [],
+        updatedAt: new Date(),
+        updatedById: null,
+      }),
+      findUnique: vi.fn(),
+      findFirst: vi.fn(),
+    },
+    orgProviderCredential: {
+      findUnique: vi.fn().mockResolvedValue(null),
+      upsert: vi.fn(),
+    },
+    adminPasswordResetToken: {
+      create: vi.fn(),
+      findFirst: vi.fn(),
+      findUnique: vi.fn(),
+      update: vi.fn(),
+    },
   },
 }));
 

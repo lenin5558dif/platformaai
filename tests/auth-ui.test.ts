@@ -59,7 +59,7 @@ describe("auth-ui helpers", () => {
     const signinText = getModeText("signin");
 
     expect(registerText.title).toContain("Создание аккаунта");
-    expect(registerText.subtitle).toContain("nickname");
+    expect(registerText.subtitle).toContain("никнейм");
     expect(registerText.emailAction).toContain("Создать");
     expect(signinText.title).toContain("Вход");
     expect(signinText.emailAction).toContain("Войти");
