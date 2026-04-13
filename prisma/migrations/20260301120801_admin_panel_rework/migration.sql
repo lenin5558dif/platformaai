@@ -1,19 +1,9 @@
 -- CreateEnum
 CREATE TYPE "ProviderType" AS ENUM ('OPENROUTER');
 
--- AlterEnum
--- This migration adds more than one value to an enum.
--- With PostgreSQL versions 11 and earlier, this is not possible
--- in a single migration. This can be worked around by creating
--- multiple migrations, each migration adding only one value to
--- the enum.
-
-
-ALTER TYPE "AuditAction" ADD VALUE 'ADMIN_PASSWORD_RESET_REQUESTED';
-ALTER TYPE "AuditAction" ADD VALUE 'ADMIN_PASSWORD_RESET_COMPLETED';
-ALTER TYPE "AuditAction" ADD VALUE 'PLATFORM_SYSTEM_PROMPT_UPDATED';
-ALTER TYPE "AuditAction" ADD VALUE 'PLATFORM_MODEL_TOGGLED';
-ALTER TYPE "AuditAction" ADD VALUE 'ORG_PROVIDER_CREDENTIAL_UPDATED';
+-- Note: AuditAction enum values are added in subsequent migrations, one per file,
+-- because Postgres requires each ADD VALUE in its own transaction (ALTER TYPE
+-- cannot run alongside other DDL on the same type within one tx).
 
 -- CreateTable
 CREATE TABLE "PlatformConfig" (
