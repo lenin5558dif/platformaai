@@ -50,7 +50,6 @@ export async function POST(request: Request) {
       where: { id: resetToken.userId },
       data: {
         passwordHash,
-        isActive: true,
         sessionInvalidatedAt: revokedAt,
         globalRevokeCounter: { increment: 1 },
       },
