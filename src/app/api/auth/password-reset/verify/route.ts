@@ -19,7 +19,7 @@ export async function GET(request: Request) {
   }
 
   const tokenHash = hashPasswordResetToken(token);
-  const record = await prisma.adminPasswordResetToken.findFirst({
+  const record = await prisma.adminPasswordResetToken.findUnique({
     where: { tokenHash },
     include: {
       user: {
