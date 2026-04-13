@@ -30,11 +30,22 @@ function getEncryptionKey() {
     return deriveKeyFromString(fromEnv);
   }
 
-  const fallback = process.env.AUTH_SECRET?.trim();
-  if (!fallback) {
-    throw new Error("ADMIN_SECRETS_ENCRYPTION_KEY (or AUTH_SECRET) is not set");
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "ADMIN_SECRETS_ENCRYPTION_KEY must be set in production"
+    );
   }
 
+  const fallback = process.env.AUTH_SECRET?.trim();
+  if (!fallback) {
+    throw new Error(
+      "ADMIN_SECRETS_ENCRYPTION_KEY is not set (and AUTH_SECRET fallback also missing)"
+    );
+  }
+
+  console.warn(
+    "[secret-crypto] Using AUTH_SECRET fallback — NOT for production"
+  );
   return deriveKeyFromString(fallback);
 }
 
