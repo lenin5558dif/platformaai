@@ -40,6 +40,9 @@ import {
 } from "@/lib/cache";
 import { updateChatSummary } from "@/lib/summary";
 import { requestSchema } from "@/lib/chat-request-schema";
+import { getPlatformConfig } from "@/lib/platform-config";
+import { resolveOpenRouterApiKey } from "@/lib/provider-credentials";
+import { getOpenRouterRateLimitPayload } from "@/lib/openrouter-metrics";
 
 const OPENROUTER_CHAT_TIMEOUT_MS = 30_000;
 
@@ -81,14 +84,25 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }
 
-  const org = user.orgId
-    ? await prisma.organization.findUnique({
-        where: { id: user.orgId },
-        select: { settings: true },
-      })
-    : null;
+  const [org, platformConfig, openRouterApiKey] = await Promise.all([
+    user.orgId
+      ? prisma.organization.findUnique({
+          where: { id: user.orgId },
+          select: { settings: true },
+        })
+      : null,
+    getPlatformConfig(),
+    resolveOpenRouterApiKey({ orgId: user.orgId }),
+  ]);
   const modelPolicy = getOrgModelPolicy(org?.settings ?? null);
   const dlpPolicy = getOrgDlpPolicy(org?.settings ?? null);
+  const globalDisabledModels = new Set(
+    platformConfig.disabledModelIds
+      .map((modelId) => modelId.trim().toLowerCase())
+      .filter((modelId) => modelId.length > 0)
+  );
+  const isGloballyDisabled = (modelId: string) =>
+    globalDisabledModels.has(modelId.trim().toLowerCase());
 
   const parsedBody = requestSchema.safeParse(await request.json());
   if (!parsedBody.success) {
@@ -178,10 +192,17 @@ export async function POST(request: Request) {
     );
   }
 
+  if (isGloballyDisabled(body.model)) {
+    return NextResponse.json(
+      { error: "Модель временно отключена администратором платформы." },
+      { status: 403 }
+    );
+  }
+
   const rawAllowedFallbacks = filterFallbackModels(
     body.fallbackModels ?? [],
     modelPolicy
-  );
+  ).filter((modelId) => !isGloballyDisabled(modelId));
   const hasPaidAccess = Number(user.balance ?? 0) > 0;
   let allowedFallbacks = rawAllowedFallbacks;
   let modelsToTry = [body.model, ...allowedFallbacks];
@@ -193,7 +214,9 @@ export async function POST(request: Request) {
     let freeModelIds: Set<string>;
 
     try {
-      freeModelIds = new Set(await filterFreeOpenRouterModelIds(candidateModelIds));
+      freeModelIds = new Set(
+        await filterFreeOpenRouterModelIds(candidateModelIds, openRouterApiKey ?? undefined)
+      );
     } catch (error) {
       await logEvent({
         type: "AI_ERROR",
@@ -228,6 +251,12 @@ export async function POST(request: Request) {
   );
 
   const systemMessages: Array<{ role: "system"; content: string }> = [];
+  if (platformConfig.globalSystemPrompt?.trim()) {
+    systemMessages.push({
+      role: "system",
+      content: platformConfig.globalSystemPrompt.trim(),
+    });
+  }
   if (personalization) {
     systemMessages.push({ role: "system", content: personalization });
   }
@@ -340,6 +369,7 @@ export async function POST(request: Request) {
         modelId: reserveEstimateModelId,
         promptTokensEstimate,
         maxTokens: body.max_tokens,
+        apiKey: openRouterApiKey ?? undefined,
       });
 
       const reserveAmount = Math.max(1, estimatedCredits);
@@ -366,22 +396,30 @@ export async function POST(request: Request) {
     }
   }
 
-  await logEvent({
-    type: "AI_REQUEST",
-    userId: session.user.id,
-    chatId: body.chatId,
-    modelId: body.model,
-    payload: {
-      model: body.model,
-      stream: body.stream ?? true,
-      messageCount: trimmedMessages.length,
-    },
-  });
   const baseUrl = getOpenRouterBaseUrl();
   let requestHeaders: Record<string, string>;
 
+  if (!openRouterApiKey) {
+    await releaseAiQuotaHold({ hold: quotaHold });
+    await logEvent({
+      type: "AI_ERROR",
+      userId: session.user.id,
+      chatId: body.chatId,
+      modelId: body.model,
+      message: "OPENROUTER_API_KEY is not set",
+      payload: {
+        source: "web",
+        orgId: user.orgId ?? null,
+      },
+    });
+    return NextResponse.json(
+      { error: "OpenRouter API key is not configured" },
+      { status: 401 }
+    );
+  }
+
   try {
-    requestHeaders = getOpenRouterHeaders();
+    requestHeaders = getOpenRouterHeaders(openRouterApiKey);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Missing config";
     await releaseAiQuotaHold({ hold: quotaHold });
@@ -420,6 +458,7 @@ export async function POST(request: Request) {
           modelId: cached.modelId,
           promptTokens: cached.usage.prompt_tokens ?? 0,
           completionTokens: cached.usage.completion_tokens ?? 0,
+          apiKey: openRouterApiKey ?? undefined,
         });
       }
 
@@ -469,6 +508,20 @@ export async function POST(request: Request) {
       userId: session.user.id,
     });
 
+    await logEvent({
+      type: "AI_REQUEST",
+      userId: session.user.id,
+      chatId: body.chatId,
+      modelId: cached.modelId,
+      payload: {
+        source: "web",
+        model: cached.modelId,
+        stream: body.stream ?? true,
+        messageCount: trimmedMessages.length,
+        cacheHit: true,
+      },
+    });
+
     if (!body.stream) {
       return NextResponse.json({
         choices: [{ message: { content: cached.content } }],
@@ -498,6 +551,7 @@ export async function POST(request: Request) {
     });
   }
 
+  const providerRequestStartedAt = Date.now();
   let response: Response | null = null;
   let usedModel = body.model;
 
@@ -532,16 +586,37 @@ export async function POST(request: Request) {
   } catch (error) {
     await releaseAiQuotaHold({ hold: quotaHold });
     const message = error instanceof Error ? error.message : "OpenRouter error";
+    const status = isFetchTimeoutError(error) ? 504 : 502;
+    const durationMs = Date.now() - providerRequestStartedAt;
+    await logEvent({
+      type: "AI_REQUEST",
+      userId: session.user.id,
+      chatId: body.chatId,
+      modelId: usedModel,
+      payload: {
+        source: "web",
+        model: usedModel,
+        stream: body.stream ?? true,
+        messageCount: trimmedMessages.length,
+        status,
+        durationMs,
+        error: true,
+      },
+    });
     await logEvent({
       type: "AI_ERROR",
       userId: session.user.id,
       chatId: body.chatId,
       modelId: usedModel,
       message,
+      payload: {
+        source: "web",
+        durationMs,
+      },
     });
     return NextResponse.json(
       { error: isFetchTimeoutError(error) ? "OpenRouter timeout" : "OpenRouter error" },
-      { status: isFetchTimeoutError(error) ? 504 : 502 }
+      { status }
     );
   }
 
@@ -549,10 +624,28 @@ export async function POST(request: Request) {
     await releaseAiQuotaHold({ hold: quotaHold });
     const text = response ? await response.text() : "No response";
     const status = response?.status ?? 502;
+    const durationMs = Date.now() - providerRequestStartedAt;
+    const rateLimitPayload = getOpenRouterRateLimitPayload(response?.headers);
     let message = "OpenRouter error";
     if (status === 401) {
-      message = "OpenRouter: ключ из .env.local недействителен или отсутствует.";
+      message = "OpenRouter: ключ недействителен или отсутствует.";
     }
+    await logEvent({
+      type: "AI_REQUEST",
+      userId: session.user.id,
+      chatId: body.chatId,
+      modelId: usedModel,
+      payload: {
+        source: "web",
+        model: usedModel,
+        stream: body.stream ?? true,
+        messageCount: trimmedMessages.length,
+        status,
+        durationMs,
+        error: true,
+        ...rateLimitPayload,
+      },
+    });
     await logEvent({
       type: "AI_ERROR",
       userId: session.user.id,
@@ -562,6 +655,9 @@ export async function POST(request: Request) {
         status,
         details: text.slice(0, 500),
         model: usedModel,
+        durationMs,
+        source: "web",
+        ...rateLimitPayload,
       },
     });
     return NextResponse.json(
@@ -574,6 +670,7 @@ export async function POST(request: Request) {
     let data = await response.json();
     let usage = data?.usage;
     let assistantContent = data?.choices?.[0]?.message?.content ?? "";
+    let telemetryHeaders: Headers | null = response.headers;
 
     if (!assistantContent.trim() && modelsToTry.length > 1) {
       const fallback = modelsToTry.find((modelId) => modelId !== usedModel);
@@ -602,6 +699,7 @@ export async function POST(request: Request) {
           data = await fallbackResponse.json();
           usage = data?.usage;
           assistantContent = data?.choices?.[0]?.message?.content ?? "";
+          telemetryHeaders = fallbackResponse.headers;
         }
       }
     }
@@ -615,6 +713,7 @@ export async function POST(request: Request) {
           modelId: usedModel,
           promptTokens: usage.prompt_tokens ?? 0,
           completionTokens: usage.completion_tokens ?? 0,
+          apiKey: openRouterApiKey ?? undefined,
         });
 
         if (creditsResult.credits > 0) {
@@ -676,6 +775,23 @@ export async function POST(request: Request) {
       });
     }
 
+    await logEvent({
+      type: "AI_REQUEST",
+      userId: session.user.id,
+      chatId: body.chatId,
+      modelId: usedModel,
+      payload: {
+        source: "web",
+        model: usedModel,
+        stream: false,
+        messageCount: trimmedMessages.length,
+        status: 200,
+        durationMs: Date.now() - providerRequestStartedAt,
+        totalTokens: tokenCount,
+        ...getOpenRouterRateLimitPayload(telemetryHeaders),
+      },
+    });
+
     return NextResponse.json(data);
   }
 
@@ -690,10 +806,41 @@ export async function POST(request: Request) {
   let assistantText = "";
   let usage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | null = null;
   let sentAny = false;
+  let streamTelemetryHeaders: Headers | null = response.headers;
   const reader = response.body?.getReader();
 
   if (!reader) {
     await releaseAiQuotaHold({ hold: quotaHold });
+    const durationMs = Date.now() - providerRequestStartedAt;
+    const rateLimitPayload = getOpenRouterRateLimitPayload(streamTelemetryHeaders);
+    await logEvent({
+      type: "AI_REQUEST",
+      userId,
+      chatId,
+      modelId: usedModel,
+      payload: {
+        source: "web",
+        model: usedModel,
+        stream: true,
+        messageCount: trimmedMessages.length,
+        status: 502,
+        durationMs,
+        error: true,
+        ...rateLimitPayload,
+      },
+    });
+    await logEvent({
+      type: "AI_ERROR",
+      userId,
+      chatId,
+      modelId: usedModel,
+      message: "OpenRouter response stream is missing",
+      payload: {
+        source: "web",
+        durationMs,
+        ...rateLimitPayload,
+      },
+    });
     return NextResponse.json({ error: "OpenRouter error" }, { status: 502 });
   }
 
@@ -707,6 +854,7 @@ export async function POST(request: Request) {
           modelId: usedModel,
           promptTokens: usage.prompt_tokens ?? 0,
           completionTokens: usage.completion_tokens ?? 0,
+          apiKey: openRouterApiKey ?? undefined,
         });
 
         if (creditsResult.credits > 0) {
@@ -770,6 +918,23 @@ export async function POST(request: Request) {
         createdAt: Date.now(),
       });
     }
+
+    await logEvent({
+      type: "AI_REQUEST",
+      userId,
+      chatId,
+      modelId: usedModel,
+      payload: {
+        source: "web",
+        model: usedModel,
+        stream: true,
+        messageCount: trimmedMessages.length,
+        status: 200,
+        durationMs: Date.now() - providerRequestStartedAt,
+        totalTokens: tokenCount,
+        ...getOpenRouterRateLimitPayload(streamTelemetryHeaders),
+      },
+    });
   }
 
   const stream = new ReadableStream<Uint8Array>({
@@ -842,6 +1007,7 @@ export async function POST(request: Request) {
                 usedModel = fallback;
                 assistantText = fallbackText;
                 usage = fallbackUsage;
+                streamTelemetryHeaders = fallbackResponse.headers;
                 const payload = JSON.stringify({
                   choices: [{ delta: { content: fallbackText } }],
                 });

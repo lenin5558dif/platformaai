@@ -168,7 +168,7 @@ export default function LoginForm({
       setStatus("error");
       setFeedback({
         state: "error",
-        title: "Заполните форму",
+          title: "Заполните форму",
         message: "Email и пароль обязательны.",
         action: "retry",
       });
@@ -180,8 +180,8 @@ export default function LoginForm({
         setStatus("error");
         setFeedback({
           state: "error",
-          title: "Нужен nickname",
-          message: "Введите nickname длиной не менее 2 символов.",
+          title: "Нужен никнейм",
+          message: "Введите никнейм длиной не менее 2 символов.",
           action: "retry",
         });
         return;
@@ -315,14 +315,14 @@ export default function LoginForm({
                   className="mb-1 block text-sm font-medium text-text-main"
                   htmlFor="auth-nickname"
                 >
-                  Nickname
+                  Никнейм
                 </label>
                 <input
                   id="auth-nickname"
                   type="text"
                   value={nickname}
                   onChange={(event) => setNickname(event.target.value)}
-                  placeholder="your_nickname"
+                  placeholder="ваш_никнейм"
                   className="w-full rounded-lg border border-gray-200 bg-white/70 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
                   autoComplete="nickname"
                   required
@@ -332,7 +332,7 @@ export default function LoginForm({
 
             <div>
               <label className="mb-1 block text-sm font-medium text-text-main" htmlFor="auth-email">
-                Email
+                Электронная почта
               </label>
               <input
                 id="auth-email"
@@ -340,7 +340,7 @@ export default function LoginForm({
                 type="email"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
-                placeholder="name@company.com"
+                placeholder="name@company.ru"
                 className="w-full rounded-lg border border-gray-200 bg-white/70 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
                 autoComplete="email"
                 aria-invalid={status === "error" || status === "expired"}

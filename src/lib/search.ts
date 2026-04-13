@@ -1,7 +1,7 @@
 import * as cheerio from "cheerio";
 import { fetchWithTimeout } from "@/lib/fetch-timeout";
 
-export type SearchResult = {
+type SearchResult = {
   title: string;
   url: string;
   snippet: string;

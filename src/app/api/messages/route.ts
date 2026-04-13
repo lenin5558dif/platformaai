@@ -9,7 +9,7 @@ const createSchema = z.object({
   chatId: z.string().min(1),
   role: z.enum(["USER", "ASSISTANT", "SYSTEM"]),
   content: z.string().min(1),
-  tokenCount: z.number().int().nonnegative(),
+  tokenCount: z.number().int().nonnegative().optional(),
 });
 
 export async function POST(request: Request) {
@@ -120,7 +120,8 @@ export async function POST(request: Request) {
       costCenterId,
       role: payload.role,
       content,
-      tokenCount: payload.tokenCount,
+      // USER messages do not have provider usage; keep factual token accounting only.
+      tokenCount: payload.role === "USER" ? 0 : (payload.tokenCount ?? 0),
       cost: 0,
       modelId: chat.modelId,
     },

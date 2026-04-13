@@ -175,7 +175,7 @@ export default function RbacManager({
         {roles.map((role) => (
           <div key={role.id} className="rounded-xl border border-gray-200 bg-white/70 px-4 py-3">
             <p className="text-sm font-semibold text-text-main">
-              {role.name} {role.isSystem ? "(System)" : ""}
+              {role.name} {role.isSystem ? "(Системная)" : ""}
             </p>
             <div className="mt-2 flex flex-wrap gap-2">
               {RBAC_PERMISSION_GROUPS.map((group) => {
@@ -189,7 +189,7 @@ export default function RbacManager({
                         : "bg-gray-100 text-gray-500"
                     }`}
                   >
-                    {group.label}: {allowed ? "yes" : "no"}
+                    {group.label}: {allowed ? "да" : "нет"}
                   </span>
                 );
               })}
@@ -228,7 +228,7 @@ export default function RbacManager({
                       ? centerNameById.get(member.defaultCostCenterId) ?? "назначен"
                       : "не назначен"}
                     , лимиты D/M {member.dailyLimit ?? "-"}/{member.monthlyLimit ?? "-"}, DLP {" "}
-                    {policyContext.dlpEnabled ? `on (${policyContext.dlpAction})` : "off"}, model policy {" "}
+                    {policyContext.dlpEnabled ? `вкл. (${policyContext.dlpAction})` : "выкл."}, политика моделей{" "}
                     {policyContext.modelPolicyMode} ({policyContext.modelModelsCount})
                   </p>
                 </div>

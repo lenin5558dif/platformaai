@@ -6,8 +6,6 @@ import type { OrgPermissionKey } from "@/lib/org-permissions";
 import { HttpError } from "@/lib/http-error";
 import { ZodError } from "zod";
 
-export type AuthzChannel = "web" | "telegram" | "scim" | "api";
-
 export function toErrorResponse(error: unknown) {
   if (error instanceof HttpError) {
     return NextResponse.json(

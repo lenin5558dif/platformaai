@@ -191,10 +191,10 @@ export default function InviteManager({
   return (
     <div className="rounded-2xl bg-white/80 border border-white/50 shadow-glass-sm p-6 space-y-4">
       <h2 className="text-lg font-semibold text-text-main font-display">
-        Email-locked приглашения
+        Приглашения с привязкой к email
       </h2>
       <p className="text-xs text-text-secondary">
-        Инвайт привязан к конкретному email. Принятие доступно только из аккаунта с этим email.
+        Приглашение привязано к конкретному email. Принятие доступно только из аккаунта с этим email.
       </p>
 
       <MessageBanner message={message} />
@@ -204,7 +204,7 @@ export default function InviteManager({
           type="email"
           value={email}
           onChange={(event) => setEmail(event.target.value)}
-          placeholder="user@company.com"
+          placeholder="user@company.ru"
           className="md:col-span-2 rounded-lg border border-gray-200 bg-white/70 px-3 py-2 text-sm"
           required
         />
@@ -227,7 +227,7 @@ export default function InviteManager({
           onChange={(event) => setDefaultCostCenterId(event.target.value)}
           className="rounded-lg border border-gray-200 bg-white/70 px-3 py-2 text-sm"
         >
-          <option value="">Без cost center</option>
+          <option value="">Без центра затрат</option>
           {costCenterOptions.map((center) => (
             <option key={center.id} value={center.id}>
               {center.name}
@@ -269,7 +269,7 @@ export default function InviteManager({
                   onClick={() => void runInviteAction(invite.id, "resend")}
                   disabled={activeActionId === invite.id}
                 >
-                  Resend
+                  Повторить отправку
                 </button>
                 <button
                   type="button"
@@ -277,7 +277,7 @@ export default function InviteManager({
                   onClick={() => void runInviteAction(invite.id, "revoke")}
                   disabled={activeActionId === invite.id}
                 >
-                  Revoke
+                  Отозвать
                 </button>
               </div>
             </div>

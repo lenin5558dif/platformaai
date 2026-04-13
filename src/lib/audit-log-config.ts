@@ -46,9 +46,9 @@ const auditLogMetricsSchema = z.object({
 });
 
 export type AuditLogRetentionConfig = z.infer<typeof auditLogRetentionSchema>;
-export type AuditLogMetricsConfig = z.infer<typeof auditLogMetricsSchema>;
+type AuditLogMetricsConfig = z.infer<typeof auditLogMetricsSchema>;
 
-export type AuditLogOpsConfig = {
+type AuditLogOpsConfig = {
   retention: AuditLogRetentionConfig;
   metrics: AuditLogMetricsConfig;
 };

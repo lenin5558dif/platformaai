@@ -314,7 +314,7 @@ export default function QuotaDlpAuditManager({
       <MessageBanner message={message} />
 
       <div className="rounded-2xl bg-white/80 border border-white/50 shadow-glass-sm p-6 space-y-4">
-        <h2 className="text-lg font-semibold text-text-main font-display">Quota governance</h2>
+        <h2 className="text-lg font-semibold text-text-main font-display">Управление квотами</h2>
         <p className="text-xs text-text-secondary">
           Статусы нормализованы: ok / warning / blocked / unknown. Обновления лимитов применяются
           только после подтверждения сервера.
@@ -361,7 +361,7 @@ export default function QuotaDlpAuditManager({
               >
                 <p className="text-sm font-medium text-text-main">{member.email ?? member.id}</p>
                 <p className="text-xs text-text-secondary">
-                  Spent D/M: {member.dailySpent.toFixed(2)} / {member.monthlySpent.toFixed(2)}
+                  Потрачено D/M: {member.dailySpent.toFixed(2)} / {member.monthlySpent.toFixed(2)}
                 </p>
                 <span
                   className={`inline-block rounded-full px-2 py-1 text-[11px] font-medium ${statusBadgeClass(
@@ -376,9 +376,9 @@ export default function QuotaDlpAuditManager({
                     type="number"
                     step="0.01"
                     defaultValue={member.dailyLimit ?? ""}
-                    placeholder="daily"
+                    placeholder="день"
                     className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs"
-                    aria-label="Daily limit"
+                    aria-label="Дневной лимит"
                     disabled={!canManageLimits || activeLimitUserId === member.id}
                   />
                   <input
@@ -386,9 +386,9 @@ export default function QuotaDlpAuditManager({
                     type="number"
                     step="0.01"
                     defaultValue={member.monthlyLimit ?? ""}
-                    placeholder="monthly"
+                    placeholder="месяц"
                     className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs"
-                    aria-label="Monthly limit"
+                    aria-label="Месячный лимит"
                     disabled={!canManageLimits || activeLimitUserId === member.id}
                   />
                 </div>
@@ -405,7 +405,7 @@ export default function QuotaDlpAuditManager({
         </div>
 
         <div className="rounded-xl border border-gray-200 bg-white/70 px-4 py-3">
-          <p className="text-sm font-medium text-text-main mb-2">Cost centers</p>
+          <p className="text-sm font-medium text-text-main mb-2">Центры затрат</p>
           <div className="space-y-1">
             {costCenters.map((center) => {
               const budget = centerBudgets[center.id]?.budget ?? 0;
@@ -428,7 +428,7 @@ export default function QuotaDlpAuditManager({
       </div>
 
       <div className="rounded-2xl bg-white/80 border border-white/50 shadow-glass-sm p-6 space-y-4">
-        <h2 className="text-lg font-semibold text-text-main font-display">DLP и model policy</h2>
+        <h2 className="text-lg font-semibold text-text-main font-display">DLP и политика моделей</h2>
         {!canManagePolicy && (
           <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
             Доступ только для чтения: изменение политик запрещено.
@@ -492,7 +492,7 @@ export default function QuotaDlpAuditManager({
           </div>
 
           <div className="space-y-2 rounded-xl border border-gray-200 bg-white/70 px-4 py-3">
-            <h3 className="text-sm font-semibold text-text-main">Model policy</h3>
+            <h3 className="text-sm font-semibold text-text-main">Политика моделей</h3>
             <select
               className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"
               value={modelPolicy.mode}
@@ -504,8 +504,8 @@ export default function QuotaDlpAuditManager({
               }
               disabled={!canManagePolicy || policyBusy !== null}
             >
-              <option value="allowlist">Allowlist</option>
-              <option value="denylist">Denylist</option>
+              <option value="allowlist">Список разрешенных</option>
+              <option value="denylist">Список запрещенных</option>
             </select>
             <textarea
               rows={5}
@@ -531,17 +531,17 @@ export default function QuotaDlpAuditManager({
               disabled={!canManagePolicy || policyBusy !== null}
               onClick={() => void savePolicy("model")}
             >
-              {policyBusy === "model" ? "Сохраняем..." : "Сохранить policy"}
+              {policyBusy === "model" ? "Сохраняем..." : "Сохранить политику"}
             </button>
           </div>
         </div>
       </div>
 
       <div className="rounded-2xl bg-white/80 border border-white/50 shadow-glass-sm p-6 space-y-4">
-        <h2 className="text-lg font-semibold text-text-main font-display">Audit timeline</h2>
+        <h2 className="text-lg font-semibold text-text-main font-display">Лента аудита</h2>
         {!canReadAudit && (
           <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-            Нет права `org:audit.read` для просмотра audit-событий.
+            Нет права `org:audit.read` для просмотра событий аудита.
           </p>
         )}
 
@@ -550,7 +550,7 @@ export default function QuotaDlpAuditManager({
             <div className="grid gap-2 md:grid-cols-4">
               <input
                 className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs"
-                placeholder="actor"
+                placeholder="кто"
                 value={auditFilters.actor}
                 onChange={(event) =>
                   setAuditFilters((current) => ({ ...current, actor: event.target.value }))
@@ -558,7 +558,7 @@ export default function QuotaDlpAuditManager({
               />
               <input
                 className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs"
-                placeholder="action"
+                placeholder="действие"
                 value={auditFilters.action}
                 onChange={(event) =>
                   setAuditFilters((current) => ({ ...current, action: event.target.value.toUpperCase() }))
@@ -574,7 +574,7 @@ export default function QuotaDlpAuditManager({
                   }))
                 }
               >
-                <option value="">all channels</option>
+                <option value="">все каналы</option>
                 <option value="WEB">WEB</option>
                 <option value="TELEGRAM">TELEGRAM</option>
               </select>
@@ -588,7 +588,7 @@ export default function QuotaDlpAuditManager({
                   }))
                 }
               >
-                <option value="">all time</option>
+                <option value="">за все время</option>
                 <option value="24h">24h</option>
                 <option value="7d">7d</option>
                 <option value="30d">30d</option>
@@ -597,7 +597,7 @@ export default function QuotaDlpAuditManager({
 
             <div className="grid gap-3 md:grid-cols-2">
               <div className="space-y-2">
-                {auditBusy && <p className="text-xs text-text-secondary">Загрузка audit...</p>}
+                {auditBusy && <p className="text-xs text-text-secondary">Загрузка аудита...</p>}
                 {!auditBusy && auditEvents.length === 0 && (
                   <p className="text-xs text-text-secondary">События не найдены.</p>
                 )}
@@ -621,7 +621,7 @@ export default function QuotaDlpAuditManager({
                         {new Date(event.createdAt).toLocaleString("ru-RU")} • {event.channel ?? "-"}
                       </p>
                       <p className="text-[11px] text-text-secondary">
-                        {event.actorEmail ?? event.actorId ?? "unknown actor"}
+                        {event.actorEmail ?? event.actorId ?? "неизвестный пользователь"}
                       </p>
                     </button>
                   ))}
@@ -635,13 +635,13 @@ export default function QuotaDlpAuditManager({
                   <div className="space-y-2">
                     <p className="text-sm font-semibold text-text-main">{selectedAudit.action}</p>
                     <p className="text-xs text-text-secondary">
-                      actor: {selectedAudit.actorEmail ?? selectedAudit.actorId ?? "-"}
+                      Автор: {selectedAudit.actorEmail ?? selectedAudit.actorId ?? "-"}
                     </p>
                     <p className="text-xs text-text-secondary">
-                      target: {selectedAudit.targetType ?? "-"}/{selectedAudit.targetId ?? "-"}
+                      Цель: {selectedAudit.targetType ?? "-"}/{selectedAudit.targetId ?? "-"}
                     </p>
                     <p className="text-xs text-text-secondary">
-                      correlation: {selectedAudit.correlationId ?? "-"}
+                      Корреляция: {selectedAudit.correlationId ?? "-"}
                     </p>
                     <pre className="overflow-auto rounded-lg bg-slate-950 text-slate-100 p-3 text-[11px]">
                       {JSON.stringify(selectedAudit.metadata, null, 2)}
