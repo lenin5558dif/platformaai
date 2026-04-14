@@ -55,6 +55,10 @@ const envSchema = z
     TELEGRAM_BOT_TOKEN: z.string().trim().min(1).optional(),
     TELEGRAM_LOGIN_BOT_NAME: z.string().trim().min(1).optional(),
     NEXT_PUBLIC_TELEGRAM_LOGIN_BOT_NAME: z.string().trim().min(1).optional(),
+    NEXT_PUBLIC_TEMP_ACCESS_ENABLED: z.enum(["0", "1"]).optional(),
+    TEMP_ACCESS_TOKEN: z.string().trim().min(1).optional(),
+    TEMP_ACCESS_EMAIL: z.string().trim().email().optional(),
+    TEMP_ACCESS_ROLE: z.enum(["USER", "ADMIN", "EMPLOYEE"]).optional(),
 
     SSO_ISSUER: urlSchema.optional(),
     SSO_CLIENT_ID: z.string().trim().min(1).optional(),
@@ -168,6 +172,15 @@ const envSchema = z
           message: `${key} must be set together with the other Telegram auth values`,
         });
       }
+    }
+
+    if (env.NEXT_PUBLIC_TEMP_ACCESS_ENABLED === "1" && !env.TEMP_ACCESS_TOKEN) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["TEMP_ACCESS_TOKEN"],
+        message:
+          "TEMP_ACCESS_TOKEN must be set when NEXT_PUBLIC_TEMP_ACCESS_ENABLED is enabled",
+      });
     }
 
     if (env.NODE_ENV === "production" && env.AUTH_BYPASS === "1") {

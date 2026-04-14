@@ -8,7 +8,7 @@ Use it together with [self-hosted.md](./self-hosted.md).
 - Confirm `.env` is complete for the intended feature set.
 - Confirm the database is reachable from the host.
 - Confirm the target image or working tree matches the release you intend to deploy.
-- Run migrations before switching traffic to the new app version.
+- Run the deploy-safe migration job before switching traffic to the new app version.
 - Keep the previous release or image available for rollback.
 
 ## Backup
@@ -64,7 +64,9 @@ curl -fsS -H "x-cron-secret: $CRON_SECRET" http://localhost:3000/api/internal/me
 Then verify manually:
 
 - login page loads
-- email or SSO auth surface matches the configured env
+- email, SSO, Telegram, or temporary-access auth surfaces match the configured env
+- unauthenticated access to `/` redirects to `/login?mode=signin`
+- public routes such as `/pricing`, `/share/[token]`, and `/invite/accept?token=...` still load without a session
 - chat page opens for an authenticated user
 - org page opens for an org admin
 - Stripe checkout route responds as expected in the current environment

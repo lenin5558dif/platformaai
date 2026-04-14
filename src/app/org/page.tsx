@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
-import { auth } from "@/lib/auth";
+import { requirePageSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import { createAuthorizer, requireSession } from "@/lib/authorize";
@@ -484,89 +484,7 @@ async function removeSsoDomain(domainId: string) {
 }
 
 export default async function OrgPage() {
-  const session = await auth();
-
-  if (!session?.user?.id) {
-    return (
-      <div className="min-h-screen px-6 py-10">
-        <div className="mx-auto grid max-w-5xl gap-6 lg:grid-cols-[1.05fr_0.95fr]">
-          <section className="rounded-3xl border border-white/60 bg-white/80 p-6 shadow-glass-sm md:p-8">
-            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-primary">
-              Онбординг организации
-            </p>
-            <h1 className="mt-3 text-3xl font-semibold leading-tight text-text-main font-display">
-              Организация недоступна без входа
-            </h1>
-            <p className="mt-3 text-sm leading-6 text-text-secondary">
-              После входа вы сможете создать или открыть организацию, управлять приглашениями,
-              назначать роли и держать лимиты под контролем в одном экране.
-            </p>
-
-            <div className="mt-6 space-y-3">
-              {[
-                {
-                  title: "1. Авторизация",
-                  text: "Войдите в аккаунт через email, SSO или Telegram.",
-                },
-                {
-                  title: "2. Создание организации",
-                  text: "Задайте название и стартовый бюджет для рабочего пространства.",
-                },
-                {
-                  title: "3. Управление",
-                  text: "Настройте приглашения, роли, центры затрат и политики.",
-                },
-              ].map((item) => (
-                <div
-                  key={item.title}
-                  className="rounded-2xl border border-white/60 bg-white/70 px-4 py-4"
-                >
-                  <p className="text-sm font-semibold text-text-main">{item.title}</p>
-                  <p className="mt-2 text-xs leading-5 text-text-secondary">{item.text}</p>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <div className="rounded-3xl border border-white/60 bg-white/80 p-6 shadow-glass-sm md:p-8">
-            <h2 className="text-2xl font-semibold text-text-main font-display">
-              Создайте организацию
-            </h2>
-            <p className="mt-2 text-sm text-text-secondary">
-              Организация нужна для распределения бюджета, доступа и лимитов сотрудников.
-            </p>
-            <form action={createOrganization} className="mt-6 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-text-main">
-                  Название
-                </label>
-                <input
-                  name="name"
-                  className="mt-2 w-full rounded-lg border border-gray-200 bg-white/70 px-3 py-2 text-sm"
-                  placeholder="PlatformaAI"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-text-main">
-                  Бюджет (кредиты)
-                </label>
-                <input
-                  name="budget"
-                  type="number"
-                  step="0.01"
-                  className="mt-2 w-full rounded-lg border border-gray-200 bg-white/70 px-3 py-2 text-sm"
-                  placeholder="1000"
-                />
-              </div>
-              <button className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-hover">
-                Создать организацию
-              </button>
-            </form>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const session = await requirePageSession();
 
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },

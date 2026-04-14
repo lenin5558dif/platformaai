@@ -6,6 +6,7 @@ This directory contains the project documentation that should stay aligned with 
 
 - [deployment/self-hosted.md](./deployment/self-hosted.md) production and self-hosted runtime notes
 - [deployment/operations.md](./deployment/operations.md) backup, restore, deploy, rollback, smoke checks
+- [deployment/ui-audit-2026-04-15.md](./deployment/ui-audit-2026-04-15.md) production UI audit and follow-up checklist
 
 ## API and operational notes
 
@@ -25,3 +26,6 @@ Before changing docs, verify behavior in:
 - `src/app`
 - `src/app/api`
 - `docker-compose.yml`
+
+Keep the production deployment docs aligned with the deploy-safe migration
+script and feature flags such as temporary access.

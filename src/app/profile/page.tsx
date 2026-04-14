@@ -1,4 +1,4 @@
-import { auth } from "@/lib/auth";
+import { requirePageSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import Link from "next/link";
 import TopUpForm from "@/components/billing/TopUpForm";
@@ -14,22 +14,7 @@ export default async function ProfilePage({
   searchParams?: Promise<{ success?: string; canceled?: string }>;
 }) {
   const resolvedParams = searchParams ? await searchParams : undefined;
-  const session = await auth();
-
-  if (!session?.user) {
-    return (
-      <div className="min-h-screen flex items-center justify-center px-6">
-        <div className="rounded-2xl bg-white/80 border border-white/50 shadow-glass-sm p-6 text-center">
-          <h1 className="text-2xl font-semibold text-text-main mb-2 font-display">
-            Профиль недоступен
-          </h1>
-          <p className="text-sm text-text-secondary">
-            Пожалуйста, войдите в аккаунт.
-          </p>
-        </div>
-      </div>
-    );
-  }
+  const session = await requirePageSession();
 
   const dbUser = await prisma.user.findUnique({
     where: { id: session.user.id },

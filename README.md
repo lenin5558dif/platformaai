@@ -67,6 +67,8 @@ npm run dev
 ```
 
 Local PostgreSQL defaults use port `5433`, matching `.env.example`.
+If you are creating or editing migrations locally, use `npm run prisma:migrate:dev`;
+`npm run prisma:migrate` applies existing migrations in a production-safe way.
 
 ### Required environment
 
@@ -87,6 +89,7 @@ Optional by feature:
 - `UNISENDER_SENDER_EMAIL`, `UNISENDER_SENDER_NAME`
 - `OPENAI_API_KEY`, `WHISPER_MODEL`, `WHISPER_LANGUAGE`
 - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_LOGIN_BOT_NAME`, `NEXT_PUBLIC_TELEGRAM_LOGIN_BOT_NAME`, `NEXT_PUBLIC_TELEGRAM_AUTH_ENABLED`
+- `NEXT_PUBLIC_TEMP_ACCESS_ENABLED`, `TEMP_ACCESS_TOKEN`, `TEMP_ACCESS_EMAIL`, `TEMP_ACCESS_ROLE`
 - `SSO_ISSUER`, `SSO_CLIENT_ID`, `SSO_CLIENT_SECRET`, `SSO_NAME`, `NEXT_PUBLIC_SSO_ENABLED`
 - `CRON_SECRET`, `BILLING_REFILL_TOKEN`
 - `AUTH_BYPASS`, `AUTH_BYPASS_EMAIL`, `AUTH_BYPASS_ROLE`, `AUTH_BYPASS_BALANCE`
@@ -106,17 +109,25 @@ npm run test:e2e
 npm run bot:dev
 npm run prisma:generate
 npm run prisma:migrate
+npm run prisma:migrate:dev
 npm run prisma:seed
 ```
 
 ### Main pages
 
-- `/`
+Public entry routes:
+
 - `/login`
+- `/pricing`
+- `/share/[token]`
+- `/invite/accept?token=...`
+
+Authenticated app routes:
+
+- `/`
 - `/models`
 - `/prompts`
 - `/billing`
-- `/pricing`
 - `/settings`
 - `/profile`
 - `/org`
@@ -124,8 +135,6 @@ npm run prisma:seed
 - `/events`
 - `/audit`
 - `/admin`
-- `/share/[token]`
-- `/invite/[token]`
 
 ### Main API groups
 
@@ -153,6 +162,9 @@ npm run prisma:seed
 ### Notes
 
 - Current web login UI uses email and password. SSO and Telegram are optional and env-driven.
+- Temporary access is optional and only appears when `NEXT_PUBLIC_TEMP_ACCESS_ENABLED=1` and `TEMP_ACCESS_TOKEN` are set.
+- The root app route `/` requires a valid session and redirects unauthenticated users to `/login?mode=signin`.
+- Private dashboard pages redirect unauthenticated users to `/login?mode=signin`; role-gated pages may still show access-denied states for signed-in users without enough privileges.
 - `/api/ai/image` currently describes uploaded images; it is not a general image generation endpoint.
 - Internal protected endpoints use the `x-cron-secret` header when `CRON_SECRET` is configured.
 
@@ -223,6 +235,8 @@ npm run dev
 ```
 
 Локальный PostgreSQL по умолчанию работает на порту `5433`, как и в `.env.example`.
+Если вы создаете или меняете миграции локально, используйте `npm run prisma:migrate:dev`;
+`npm run prisma:migrate` применяет уже существующие миграции безопасным для production способом.
 
 ### Обязательные переменные окружения
 
@@ -243,6 +257,7 @@ npm run dev
 - `UNISENDER_SENDER_EMAIL`, `UNISENDER_SENDER_NAME`
 - `OPENAI_API_KEY`, `WHISPER_MODEL`, `WHISPER_LANGUAGE`
 - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_LOGIN_BOT_NAME`, `NEXT_PUBLIC_TELEGRAM_LOGIN_BOT_NAME`, `NEXT_PUBLIC_TELEGRAM_AUTH_ENABLED`
+- `NEXT_PUBLIC_TEMP_ACCESS_ENABLED`, `TEMP_ACCESS_TOKEN`, `TEMP_ACCESS_EMAIL`, `TEMP_ACCESS_ROLE`
 - `SSO_ISSUER`, `SSO_CLIENT_ID`, `SSO_CLIENT_SECRET`, `SSO_NAME`, `NEXT_PUBLIC_SSO_ENABLED`
 - `CRON_SECRET`, `BILLING_REFILL_TOKEN`
 - `AUTH_BYPASS`, `AUTH_BYPASS_EMAIL`, `AUTH_BYPASS_ROLE`, `AUTH_BYPASS_BALANCE`
@@ -262,17 +277,25 @@ npm run test:e2e
 npm run bot:dev
 npm run prisma:generate
 npm run prisma:migrate
+npm run prisma:migrate:dev
 npm run prisma:seed
 ```
 
 ### Основные страницы
 
-- `/`
+Публичные входные маршруты:
+
 - `/login`
+- `/pricing`
+- `/share/[token]`
+- `/invite/accept?token=...`
+
+Маршруты приложения с обязательной сессией:
+
+- `/`
 - `/models`
 - `/prompts`
 - `/billing`
-- `/pricing`
 - `/settings`
 - `/profile`
 - `/org`
@@ -280,8 +303,6 @@ npm run prisma:seed
 - `/events`
 - `/audit`
 - `/admin`
-- `/share/[token]`
-- `/invite/[token]`
 
 ### Основные API-группы
 
@@ -309,6 +330,9 @@ npm run prisma:seed
 ### Примечания
 
 - Текущий веб-логин использует email и пароль. SSO и Telegram подключаются через env.
+- Temporary access включается только при `NEXT_PUBLIC_TEMP_ACCESS_ENABLED=1` и наличии `TEMP_ACCESS_TOKEN`.
+- Корневой маршрут приложения `/` требует активную сессию и редиректит неавторизованных пользователей на `/login?mode=signin`.
+- Приватные dashboard-страницы редиректят неавторизованных пользователей на `/login?mode=signin`; role-based страницы могут дополнительно показывать `access denied` уже для вошедшего пользователя без нужных прав.
 - `/api/ai/image` сейчас описывает загруженные изображения, а не является общим image generation endpoint.
 - Защищённые внутренние endpoints используют заголовок `x-cron-secret`, если задан `CRON_SECRET`.
 

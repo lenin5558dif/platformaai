@@ -1,6 +1,6 @@
 import Link from "next/link";
 import AppShell from "@/components/layout/AppShell";
-import { auth } from "@/lib/auth";
+import { requirePageSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getSettingsObject } from "@/lib/user-settings";
 import TopUpForm from "@/components/billing/TopUpForm";
@@ -22,20 +22,7 @@ function formatCredits(value: number) {
 }
 
 export default async function BillingPage() {
-  const session = await auth();
-
-  if (!session?.user?.id) {
-    return (
-      <div className="min-h-screen flex items-center justify-center px-6">
-        <div className="rounded-2xl border border-slate-200 bg-white/80 p-6 text-center shadow-sm">
-          <h1 className="text-2xl font-semibold text-slate-900 mb-2 font-display">
-            Биллинг недоступен
-          </h1>
-          <p className="text-sm text-slate-500">Пожалуйста, войдите в аккаунт.</p>
-        </div>
-      </div>
-    );
-  }
+  const session = await requirePageSession();
 
   const now = new Date();
   const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
@@ -131,11 +118,15 @@ export default async function BillingPage() {
                     </p>
                   </div>
                   <div className="flex gap-3">
-                    <button className="flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-900 shadow-sm transition-colors hover:bg-slate-50">
+                    <button
+                      className="flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-slate-100 px-4 py-2 text-sm font-medium text-slate-400 shadow-sm"
+                      disabled
+                      type="button"
+                    >
                       <span className="material-symbols-outlined text-[18px] text-slate-500">
                         description
                       </span>
-                      Инвойсы
+                      Инвойсы скоро
                     </button>
                   </div>
                 </div>
@@ -174,11 +165,19 @@ export default async function BillingPage() {
                       </p>
                     </div>
                     <div className="flex min-w-[160px] flex-col gap-3">
-                      <button className="w-full rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white shadow-sm transition-all hover:bg-primary/90">
-                        Сменить тариф
+                      <button
+                        className="w-full rounded-lg bg-slate-300 px-4 py-2 text-sm font-medium text-white shadow-sm"
+                        disabled
+                        type="button"
+                      >
+                        Смена тарифа скоро
                       </button>
-                      <button className="w-full rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-500 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-600">
-                        Отменить
+                      <button
+                        className="w-full rounded-lg border border-slate-200 bg-slate-100 px-4 py-2 text-sm font-medium text-slate-400"
+                        disabled
+                        type="button"
+                      >
+                        Отмена скоро
                       </button>
                     </div>
                   </div>
@@ -339,11 +338,15 @@ export default async function BillingPage() {
                   <h3 className="font-display text-lg font-bold text-slate-900">
                     История платежей
                   </h3>
-                  <button className="flex items-center gap-1 text-sm text-slate-500 transition-colors hover:text-slate-900">
+                  <button
+                    className="flex items-center gap-1 text-sm text-slate-400"
+                    disabled
+                    type="button"
+                  >
                     <span className="material-symbols-outlined text-[18px]">
                       filter_list
                     </span>
-                    Фильтр
+                    Фильтр скоро
                   </button>
                 </div>
                 <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -410,7 +413,11 @@ export default async function BillingPage() {
                                 </span>
                               </td>
                               <td className="whitespace-nowrap px-6 py-4 text-right">
-                                <button className="rounded p-1 text-slate-400 transition-colors hover:bg-primary/5 hover:text-primary">
+                                <button
+                                  className="rounded p-1 text-slate-300"
+                                  disabled
+                                  type="button"
+                                >
                                   <span className="material-symbols-outlined text-[20px]">
                                     download
                                   </span>
@@ -423,8 +430,12 @@ export default async function BillingPage() {
                     </table>
                   </div>
                   <div className="flex justify-center border-t border-slate-200 bg-slate-50/50 px-6 py-3">
-                    <button className="text-sm font-medium text-primary transition-colors hover:text-primary/80 hover:underline">
-                      Показать больше
+                    <button
+                      className="text-sm font-medium text-slate-400"
+                      disabled
+                      type="button"
+                    >
+                      Пагинация скоро
                     </button>
                   </div>
                 </div>

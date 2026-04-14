@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { auth } from "@/lib/auth";
+import { requirePageSession } from "@/lib/auth";
 import { isGlobalAdminSession } from "@/lib/admin-access";
 import { prisma } from "@/lib/db";
 
@@ -18,20 +18,7 @@ function formatCredits(value: string | number | null | undefined) {
 }
 
 export default async function AdminPage() {
-  const session = await auth();
-
-  if (!session?.user?.id) {
-    return (
-      <div className="min-h-screen flex items-center justify-center px-6">
-        <div className="rounded-2xl bg-white/80 border border-white/50 shadow-glass-sm p-6 text-center">
-          <h1 className="text-2xl font-semibold text-text-main mb-2 font-display">
-            Доступ запрещен
-          </h1>
-          <p className="text-sm text-text-secondary">Требуется авторизация.</p>
-        </div>
-      </div>
-    );
-  }
+  const session = await requirePageSession();
 
   if (!isGlobalAdminSession(session)) {
     return (

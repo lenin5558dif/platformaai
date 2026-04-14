@@ -10,6 +10,10 @@ const mocks = vi.hoisted(() => ({
   requireCronSecret: vi.fn(),
   jsonNoStore: vi.fn(),
   chatApp: vi.fn(() => "chat-app"),
+  auth: vi.fn(),
+  redirect: vi.fn((url: string) => {
+    throw new Error(`NEXT_REDIRECT:${url}`);
+  }),
   requireSession: vi.fn(),
   createAuthorizer: vi.fn(),
   toErrorResponse: vi.fn(),
@@ -34,6 +38,20 @@ vi.mock("@/lib/internal-http", () => ({
 
 vi.mock("@/components/chat/ChatApp", () => ({
   default: () => mocks.chatApp(),
+}));
+
+vi.mock("next/navigation", () => ({
+  redirect: mocks.redirect,
+}));
+
+vi.mock("@/lib/auth", () => ({
+  requirePageSession: async () => {
+    const session = await mocks.auth();
+    if (!session?.user?.id) {
+      return mocks.redirect("/login?mode=signin");
+    }
+    return session;
+  },
 }));
 
 vi.mock("@/lib/authorize", () => ({
@@ -64,6 +82,7 @@ describe("statement ROI small cluster", () => {
     globalThis.fetch = mocks.fetch as typeof globalThis.fetch;
 
     mocks.jsonNoStore.mockImplementation((body: unknown) => Response.json(body));
+    mocks.auth.mockResolvedValue({ user: { id: "home-user" } });
     mocks.requireSession.mockResolvedValue({ user: { id: "actor-1" } });
     mocks.createAuthorizer.mockReturnValue({
       requireOrgPermission: vi.fn().mockResolvedValue({ orgId: "org-1" }),
@@ -192,11 +211,17 @@ describe("statement ROI small cluster", () => {
     expect(await response.json()).toEqual({ ok: true, deletedCount: 5 });
   });
 
-  test("home page renders suspense fallback wrapper and ChatApp", () => {
-    const html = renderToStaticMarkup(React.createElement(Home));
+  test("home page renders suspense fallback wrapper and ChatApp", async () => {
+    const html = renderToStaticMarkup(await Home());
 
     expect(html).toContain("chat-app");
     expect(mocks.chatApp).toHaveBeenCalledTimes(1);
+  });
+
+  test("home page redirects to login without session", async () => {
+    mocks.auth.mockResolvedValue(null);
+
+    await expect(Home()).rejects.toThrow("NEXT_REDIRECT:/login?mode=signin");
   });
 
   test("events export route enforces auth, clamps limit, filters events, and escapes csv", async () => {

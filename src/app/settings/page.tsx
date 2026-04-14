@@ -1,7 +1,7 @@
 import Link from "next/link";
 import AppShell from "@/components/layout/AppShell";
 import { revalidatePath } from "next/cache";
-import { auth } from "@/lib/auth";
+import { auth, requirePageSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import {
   getSettingsObject,
@@ -99,20 +99,7 @@ async function updateProfileSettings(formData: FormData) {
 }
 
 export default async function SettingsPage() {
-  const session = await auth();
-
-  if (!session?.user?.id) {
-    return (
-      <div className="min-h-screen flex items-center justify-center px-6">
-        <div className="rounded-2xl bg-white/80 border border-slate-200 p-6 text-center shadow-sm">
-          <h1 className="text-2xl font-semibold text-slate-900 mb-2 font-display">
-            Настройки недоступны
-          </h1>
-          <p className="text-sm text-slate-500">Пожалуйста, войдите в аккаунт.</p>
-        </div>
-      </div>
-    );
-  }
+  const session = await requirePageSession();
 
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
@@ -191,7 +178,8 @@ export default async function SettingsPage() {
                       {user?.email?.[0]?.toUpperCase() ?? "U"}
                     </div>
                     <button
-                      className="absolute bottom-0 right-0 rounded-full border border-gray-200 bg-white p-1.5 text-slate-900 shadow-md transition-colors hover:text-primary"
+                      className="absolute bottom-0 right-0 rounded-full border border-gray-200 bg-slate-100 p-1.5 text-slate-400 shadow-md"
+                      disabled
                       type="button"
                     >
                       <span className="material-symbols-outlined text-[16px] block">
@@ -438,14 +426,15 @@ export default async function SettingsPage() {
               <div>
                 <p className="text-sm font-medium text-slate-900">Удалить аккаунт</p>
                 <p className="text-xs text-slate-500">
-                  Удаление аккаунта необратимо и удалит историю чатов.
+                  Удаление аккаунта необратимо и станет доступно после отдельного confirm-flow.
                 </p>
               </div>
               <button
-                className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-600"
+                className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-300"
+                disabled
                 type="button"
               >
-                Удалить аккаунт
+                Скоро
               </button>
             </div>
           </section>

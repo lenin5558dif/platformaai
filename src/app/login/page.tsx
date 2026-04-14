@@ -41,7 +41,7 @@ export default async function LoginPage({
               href="/"
               className="rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-hover"
             >
-              Перейти в чат
+              На главную
             </Link>
           </div>
         </section>

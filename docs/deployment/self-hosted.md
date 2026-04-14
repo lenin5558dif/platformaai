@@ -10,9 +10,9 @@ For backups, restore, rollback, and smoke-check procedures, see [operations.md](
 - PostgreSQL 16 or the bundled `postgres` service
 - A populated `.env` file based on `.env.example`
 
-The build uses the same canonical env contract as the app itself. In practice
-that means the required app secrets must be available at build time because
-`next.config.ts` imports the env validator.
+The runtime uses the same canonical env contract as the app itself. Keep the
+required secrets available in `.env` before starting the containers; the build
+does not import the env validator from `next.config.ts`.
 
 ## Services
 
@@ -20,7 +20,7 @@ The default `docker-compose.yml` now defines:
 
 - `postgres` - PostgreSQL 16 with a healthcheck
 - `app` - Next.js production container built from `Dockerfile`
-- `migrate` - one-shot Prisma migration job, enabled with the `migrate` profile
+- `migrate` - one-shot Prisma migration job that runs `prisma migrate deploy`, enabled with the `migrate` profile
 - `pgadmin` - optional admin UI, enabled with the `admin` profile
 
 ## First Deploy
@@ -39,7 +39,7 @@ docker compose --profile admin up -d pgadmin
 ```
 
 If the schema already exists, the `migrate` step can be repeated independently
-after each release:
+after each release to apply any pending production-safe migrations:
 
 ```bash
 docker compose --profile migrate run --rm migrate

@@ -11,6 +11,9 @@ const originalEnv = {
 };
 
 const mocks = vi.hoisted(() => ({
+  redirect: vi.fn((url: string) => {
+    throw new Error(`NEXT_REDIRECT:${url}`);
+  }),
   link: vi.fn((props: { children?: unknown; href?: string }) =>
     React.createElement("a", { href: props.href }, props.children)
   ),
@@ -90,6 +93,10 @@ vi.mock("next/link", () => ({
   default: (props: { children?: unknown; href?: string }) => mocks.link(props),
 }));
 
+vi.mock("next/navigation", () => ({
+  redirect: mocks.redirect,
+}));
+
 vi.mock("next/cache", () => ({
   revalidatePath: mocks.revalidatePath,
 }));
@@ -118,6 +125,13 @@ vi.mock("@/components/profile/SessionSecurityCard", () => ({
 
 vi.mock("@/lib/auth", () => ({
   auth: mocks.auth,
+  requirePageSession: async () => {
+    const session = await mocks.auth();
+    if (!session?.user?.id) {
+      return mocks.redirect("/login?mode=signin");
+    }
+    return session;
+  },
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -146,6 +160,10 @@ import TimelinePage from "@/app/timeline/page";
 
 function render(node: unknown) {
   return renderToStaticMarkup(node as never);
+}
+
+async function expectRedirect(promise: Promise<unknown>, url: string) {
+  await expect(promise).rejects.toThrow(`NEXT_REDIRECT:${url}`);
 }
 
 function getForms(root: unknown) {
@@ -246,13 +264,9 @@ describe("dashboard pages", () => {
     );
   });
 
-  test("renders billing page fallback and zero activity state", async () => {
+  test("redirects billing page to login without session", async () => {
     mocks.auth.mockResolvedValue(null);
-
-    const html = render(await BillingPage());
-
-    expect(html).toContain("Биллинг недоступен");
-    expect(html).toContain("Пожалуйста, войдите в аккаунт.");
+    await expectRedirect(BillingPage(), "/login?mode=signin");
   });
 
   test("renders billing page with personal plan details and empty history", async () => {
@@ -386,23 +400,16 @@ describe("dashboard pages", () => {
     expect(html).toContain("—");
   });
 
-  test("renders profile page fallback without session", async () => {
+  test("redirects profile page to login without session", async () => {
     mocks.auth.mockResolvedValue(null);
-
-    const html = render(await ProfilePage({}));
-
-    expect(html).toContain("Профиль недоступен");
+    await expectRedirect(ProfilePage({}), "/login?mode=signin");
   });
 
-  test("renders settings page fallback and API key hint", async () => {
+  test("redirects settings page to login without session", async () => {
     delete process.env.AUTH_BYPASS;
     delete process.env.ALLOW_USER_OPENROUTER_KEYS;
     mocks.auth.mockResolvedValue(null);
-
-    const html = render(await SettingsPage());
-
-    expect(html).toContain("Настройки недоступны");
-    expect(html).toContain("Пожалуйста, войдите в аккаунт.");
+    await expectRedirect(SettingsPage(), "/login?mode=signin");
   });
 
   test("renders settings page and applies profile and API key actions", async () => {
@@ -701,12 +708,9 @@ describe("dashboard pages", () => {
     );
   });
 
-  test("renders prompts page fallback without session", async () => {
+  test("redirects prompts page to login without session", async () => {
     mocks.auth.mockResolvedValue(null);
-
-    const html = render(await PromptsPage());
-
-    expect(html).toContain("Библиотека недоступна");
+    await expectRedirect(PromptsPage(), "/login?mode=signin");
   });
 
   test("renders timeline page for personal and org-admin views", async () => {
@@ -782,12 +786,9 @@ describe("dashboard pages", () => {
     );
   });
 
-  test("renders timeline page fallback without session", async () => {
+  test("redirects timeline page to login without session", async () => {
     mocks.auth.mockResolvedValue(null);
-
-    const html = render(await TimelinePage({}));
-
-    expect(html).toContain("Лента недоступна");
+    await expectRedirect(TimelinePage({}), "/login?mode=signin");
   });
 
   test("renders events page and covers payload formatting", async () => {
@@ -880,19 +881,14 @@ describe("dashboard pages", () => {
     );
   });
 
-  test("renders events page fallback without session", async () => {
+  test("redirects events page to login without session", async () => {
     mocks.auth.mockResolvedValue(null);
-
-    const html = render(await EventsPage({}));
-
-    expect(html).toContain("События недоступны");
+    await expectRedirect(EventsPage({}), "/login?mode=signin");
   });
 
   test("renders admin page and covers query fallback", async () => {
     mocks.auth.mockResolvedValue(null);
-
-    const unauthorizedHtml = render(await AdminPage());
-    expect(unauthorizedHtml).toContain("Доступ запрещен");
+    await expectRedirect(AdminPage(), "/login?mode=signin");
 
     mocks.auth.mockResolvedValue(createSession({ role: "USER" }));
     const forbiddenHtml = render(await AdminPage());

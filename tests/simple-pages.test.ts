@@ -17,6 +17,10 @@ const mocks = vi.hoisted(() => ({
       findFirst: vi.fn(),
     },
   },
+  auth: vi.fn(),
+  redirect: vi.fn((url: string) => {
+    throw new Error(`NEXT_REDIRECT:${url}`);
+  }),
   authUi: {
     getAuthCapabilities: vi.fn(),
     loadAuthEmailGuardrails: vi.fn(),
@@ -26,6 +30,10 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("next/link", () => ({
   default: (props: { children?: unknown }) => mocks.link(props),
+}));
+
+vi.mock("next/navigation", () => ({
+  redirect: mocks.redirect,
 }));
 
 vi.mock("@/components/auth/LoginForm", () => ({
@@ -50,6 +58,17 @@ vi.mock("@/lib/models", () => ({
   fetchModels: mocks.fetchModels,
 }));
 
+vi.mock("@/lib/auth", () => ({
+  auth: mocks.auth,
+  requirePageSession: async () => {
+    const session = await mocks.auth();
+    if (!session?.user?.id) {
+      return mocks.redirect("/login?mode=signin");
+    }
+    return session;
+  },
+}));
+
 vi.mock("@/lib/db", () => ({
   prisma: mocks.prisma,
 }));
@@ -63,9 +82,20 @@ async function render(node: unknown) {
   return renderToStaticMarkup(node as never);
 }
 
+async function expectRedirect(promise: Promise<unknown>, url: string) {
+  await expect(promise).rejects.toThrow(`NEXT_REDIRECT:${url}`);
+}
+
 describe("simple pages", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.auth.mockResolvedValue({
+      user: {
+        id: "user-1",
+        email: "user@example.com",
+        role: "USER",
+      },
+    });
   });
 
   afterEach(() => {
@@ -93,7 +123,7 @@ describe("simple pages", () => {
 
     expect(html).toContain("Один вход для чата, регистрации и управления организацией");
     expect(html).toContain("Открыть организацию");
-    expect(html).toContain("Перейти в чат");
+    expect(html).toContain("На главную");
     expect(html).toContain("login:register:AccessDenied");
     expect(mocks.authUi.resolveAuthMode).toHaveBeenCalledWith("register");
     expect(mocks.authUi.getAuthCapabilities).toHaveBeenCalledTimes(1);
@@ -165,6 +195,13 @@ describe("simple pages", () => {
   });
 
   test("renders the models page with fetched data", async () => {
+    mocks.auth.mockResolvedValue({
+      user: {
+        id: "user-1",
+        email: "models@example.com",
+        role: "USER",
+      },
+    });
     mocks.fetchModels.mockResolvedValue([
       {
         id: "openai/gpt-4o-mini",
@@ -196,6 +233,13 @@ describe("simple pages", () => {
   });
 
   test("renders the models page error state when fetch fails", async () => {
+    mocks.auth.mockResolvedValue({
+      user: {
+        id: "user-1",
+        email: "models@example.com",
+        role: "USER",
+      },
+    });
     mocks.fetchModels.mockRejectedValue(new Error("OpenRouter offline"));
 
     const html = await render(await ModelsPage());
@@ -205,11 +249,24 @@ describe("simple pages", () => {
   });
 
   test("renders the generic models page error when fetch rejects with a non-error", async () => {
+    mocks.auth.mockResolvedValue({
+      user: {
+        id: "user-1",
+        email: "models@example.com",
+        role: "USER",
+      },
+    });
     mocks.fetchModels.mockRejectedValue("timeout");
 
     const html = await render(await ModelsPage());
 
     expect(html).toContain("Не удалось загрузить модели.");
+  });
+
+  test("redirects the models page to login without session", async () => {
+    mocks.auth.mockResolvedValue(null);
+
+    await expectRedirect(ModelsPage(), "/login?mode=signin");
   });
 
   test("renders the shared chat page when chat exists", async () => {

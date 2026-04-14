@@ -2,10 +2,6 @@ import { defineConfig } from "@playwright/test";
 
 const baseURL = process.env.E2E_BASE_URL ?? "http://127.0.0.1:3000";
 const testAuthEnv = {
-  AUTH_BYPASS: "1",
-  AUTH_BYPASS_EMAIL: "e2e@platforma.local",
-  AUTH_BYPASS_ROLE: "ADMIN",
-  AUTH_BYPASS_BALANCE: "1000",
   __NEXT_TEST_MODE: "1",
   AUTH_SECRET: "e2e-test-secret",
   NEXTAUTH_SECRET: "e2e-test-secret",

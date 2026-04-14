@@ -1,7 +1,9 @@
 import AppShell from "@/components/layout/AppShell";
+import { requirePageSession } from "@/lib/auth";
 import { fetchModels } from "@/lib/models";
 
 export default async function ModelsPage() {
+  const session = await requirePageSession();
   let models: Awaited<ReturnType<typeof fetchModels>> = [];
   let error: string | null = null;
 
@@ -15,11 +17,19 @@ export default async function ModelsPage() {
     <AppShell
       title="Модели"
       subtitle="Список моделей OpenRouter и базовые цены."
+      user={{
+        email: session.user.email,
+        role: session.user.role,
+      }}
     >
       <div className="mx-auto max-w-4xl rounded-2xl border border-slate-200 bg-white/92 p-6 shadow-glass-sm">
         {error ? (
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
             {error}
+          </div>
+        ) : models.length === 0 ? (
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
+            Список моделей пока пуст. Проверьте подключение OpenRouter и повторите позже.
           </div>
         ) : (
           <div className="space-y-2.5">

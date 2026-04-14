@@ -1,5 +1,5 @@
 import { AuditAction } from "@prisma/client";
-import { auth } from "@/lib/auth";
+import { requirePageSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
@@ -35,20 +35,7 @@ export default async function AuditPage({
 }: {
   searchParams?: Promise<{ action?: string; actor?: string }>;
 }) {
-  const session = await auth();
-
-  if (!session?.user?.id) {
-    return (
-      <div className="min-h-screen flex items-center justify-center px-6">
-        <div className="rounded-2xl bg-white/80 border border-white/50 shadow-glass-sm p-6 text-center">
-          <h1 className="text-2xl font-semibold text-text-main mb-2 font-display">
-            Доступ запрещен
-          </h1>
-          <p className="text-sm text-text-secondary">Требуется авторизация.</p>
-        </div>
-      </div>
-    );
-  }
+  const session = await requirePageSession();
 
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
