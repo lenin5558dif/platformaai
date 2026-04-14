@@ -113,6 +113,7 @@ describe("auth module", () => {
     process.env.DATABASE_URL = "postgresql://user:pass@localhost:5432/platformaai";
     process.env.AUTH_SECRET = "auth-secret";
     process.env.NEXTAUTH_URL = "https://app.example";
+    process.env.APP_URL = "https://app.example";
     process.env.NEXT_PUBLIC_APP_URL = "https://app.example";
     process.env.OPENROUTER_API_KEY = "openrouter-key";
     process.env.UNISENDER_API_KEY = "unisender-key";
