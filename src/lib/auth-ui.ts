@@ -12,6 +12,7 @@ export type AuthCapabilities = {
   email: boolean;
   sso: boolean;
   telegram: boolean;
+  tempAccess: boolean;
 };
 
 export type AuthEmailGuardrails = {
@@ -142,6 +143,8 @@ export function getAuthCapabilities(
     email: true,
     sso: Boolean(ssoConfigured) && env.NEXT_PUBLIC_SSO_ENABLED !== "0",
     telegram: Boolean(telegramConfigured),
+    tempAccess:
+      env.NEXT_PUBLIC_TEMP_ACCESS_ENABLED === "1" && Boolean(env.TEMP_ACCESS_TOKEN),
   };
 }
 
