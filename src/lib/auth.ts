@@ -427,10 +427,22 @@ const nextAuth = NextAuth({
     },
     session: async ({ session, user, token }) => {
       const safeToken = token ?? {};
+      const tokenRole =
+        typeof safeToken.role === "string" ? (safeToken.role as UserRole) : undefined;
+      const tokenOrgId =
+        typeof safeToken.orgId === "string" ? safeToken.orgId : null;
+      const tokenBalance =
+        typeof safeToken.balance === "string" ? safeToken.balance : undefined;
+      const tokenEmailVerifiedByProvider =
+        typeof safeToken.emailVerifiedByProvider === "boolean"
+          ? safeToken.emailVerifiedByProvider
+          : null;
+      const tokenSessionIssuedAt =
+        typeof safeToken.sessionIssuedAt === "number" ? safeToken.sessionIssuedAt : null;
       const balance =
         typeof user?.balance === "string"
           ? user.balance
-          : user?.balance?.toString?.() ?? safeToken.balance ?? "0";
+          : user?.balance?.toString?.() ?? tokenBalance ?? "0";
       const userId =
         user?.id ??
         (typeof safeToken.sub === "string" && safeToken.sub.length > 0
@@ -439,16 +451,14 @@ const nextAuth = NextAuth({
 
       if (session.user) {
         session.user.id = userId;
-        session.user.role =
-          user?.role ?? safeToken.role ?? session.user.role ?? "USER";
-        session.user.orgId =
-          user?.orgId ?? safeToken.orgId ?? session.user.orgId ?? null;
+        session.user.role = user?.role ?? tokenRole ?? session.user.role ?? "USER";
+        session.user.orgId = user?.orgId ?? tokenOrgId ?? session.user.orgId ?? null;
         session.user.balance = balance;
         session.user.emailVerifiedByProvider =
           user?.emailVerifiedByProvider ??
-          safeToken.emailVerifiedByProvider ??
+          tokenEmailVerifiedByProvider ??
           null;
-        session.user.sessionTokenIssuedAt = safeToken.sessionIssuedAt ?? null;
+        session.user.sessionTokenIssuedAt = tokenSessionIssuedAt;
       }
       return session;
     },
