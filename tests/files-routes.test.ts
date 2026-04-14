@@ -41,7 +41,7 @@ vi.mock("node:fs/promises", () => ({
   readFile: mocks.readFile,
 }));
 
-import { GET as getFile, POST as uploadFile } from "@/app/api/files/route";
+import { POST as uploadFile } from "@/app/api/files/route";
 import { GET as getAttachment } from "@/app/api/files/[id]/route";
 
 function jsonResponse(res: Response) {

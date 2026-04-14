@@ -1,4 +1,3 @@
-import assert from "node:assert/strict";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 const state = vi.hoisted(() => ({

@@ -1,0 +1,26 @@
+services:
+  lint:
+    image: node:20-bookworm-slim
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+    command: >
+      bash -lc "npm ci && npm run lint"
+
+  vitest:
+    image: node:20-bookworm-slim
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+    command: >
+      bash -lc "npm ci && npm test"
+
+  playwright:
+    image: mcr.microsoft.com/playwright:v1.54.2-jammy
+    working_dir: /workspace
+    environment:
+      E2E_BASE_URL: ${E2E_BASE_URL:?Set E2E_BASE_URL for server:e2e}
+    volumes:
+      - .:/workspace
+    command: >
+      bash -lc "npm ci && npm run test:e2e"
