@@ -3,7 +3,20 @@ import { z } from "zod";
 const requiredText = (name: string) =>
   z.string().trim().min(1, `${name} is required`);
 
-const urlSchema = z.string().trim().url();
+function normalizeUrlInput(value: string) {
+  const trimmed = value.trim();
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+  return `https://${trimmed}`;
+}
+
+const urlSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .transform(normalizeUrlInput)
+  .pipe(z.string().url());
 
 function normalizeComparableUrl(value: string) {
   return value.trim().replace(/\/+$/, "");
