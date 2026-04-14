@@ -34,7 +34,7 @@ export default function TelegramLoginButton({
     (window as typeof window & { onTelegramAuth?: (user: unknown) => void }).onTelegramAuth =
       (user) => {
         onStartedRef.current?.();
-        void signIn("credentials", {
+        void signIn("telegram", {
           data: JSON.stringify(user),
           callbackUrl: "/",
         });

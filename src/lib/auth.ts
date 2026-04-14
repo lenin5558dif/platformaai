@@ -6,7 +6,9 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import type { EmailConfig, OIDCConfig } from "@auth/core/providers";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { EmailSignInError } from "@auth/core/errors";
+import { compare } from "bcryptjs";
 import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import { AuditAction, Prisma, UserRole } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
@@ -193,12 +195,65 @@ const tempAccessProvider =
       })
     : null;
 
+const passwordProvider = CredentialsProvider({
+  id: "credentials",
+  name: "Email and Password",
+  credentials: {
+    email: { label: "Email", type: "email" },
+    password: { label: "Password", type: "password" },
+  },
+  authorize: async (credentials) => {
+    const email =
+      typeof credentials?.email === "string" ? credentials.email.trim().toLowerCase() : "";
+    const password =
+      typeof credentials?.password === "string" ? credentials.password : "";
+
+    if (!email || !password) {
+      return null;
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { email },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        orgId: true,
+        balance: true,
+        passwordHash: true,
+        isActive: true,
+        emailVerifiedByProvider: true,
+      },
+    });
+
+    if (!user?.passwordHash) {
+      return null;
+    }
+
+    const passwordMatches = await compare(password, user.passwordHash).catch(() => false);
+    if (!passwordMatches) {
+      return null;
+    }
+
+    return {
+      id: user.id,
+      email: user.email ?? undefined,
+      name: user.email ?? "User",
+      role: user.role,
+      orgId: user.orgId,
+      balance: user.balance.toString(),
+      emailVerifiedByProvider: user.emailVerifiedByProvider,
+    };
+  },
+});
+
 const nextAuth = NextAuth({
   adapter: PrismaAdapter(prisma),
-  session: { strategy: "database" },
+  session: { strategy: "jwt" },
   trustHost: true,
   providers: [
     ...(emailProvider ? [emailProvider] : []),
+    passwordProvider,
     CredentialsProvider({
       id: "telegram",
       name: "Telegram",
@@ -260,6 +315,21 @@ const nextAuth = NextAuth({
     ...(ssoProvider ? [ssoProvider] : []),
   ],
   callbacks: {
+    jwt: async ({ token, user }) => {
+      if (user) {
+        token.role = user.role;
+        token.orgId = user.orgId;
+        token.balance =
+          typeof user.balance === "string"
+            ? user.balance
+            : user.balance.toString();
+        token.emailVerifiedByProvider =
+          user.emailVerifiedByProvider ?? null;
+        token.sessionIssuedAt = Date.now();
+      }
+
+      return token;
+    },
     signIn: async ({ user, account, email, profile }) => {
       if (
         account?.provider === "email" &&
@@ -355,14 +425,30 @@ const nextAuth = NextAuth({
 
       return true;
     },
-    session: async ({ session, user }) => {
+    session: async ({ session, user, token }) => {
+      const safeToken = token ?? {};
+      const balance =
+        typeof user?.balance === "string"
+          ? user.balance
+          : user?.balance?.toString?.() ?? safeToken.balance ?? "0";
+      const userId =
+        user?.id ??
+        (typeof safeToken.sub === "string" && safeToken.sub.length > 0
+          ? safeToken.sub
+          : "");
+
       if (session.user) {
-        session.user.id = user.id;
-        session.user.role = user.role;
-        session.user.orgId = user.orgId;
-        session.user.balance = String(user.balance);
+        session.user.id = userId;
+        session.user.role =
+          user?.role ?? safeToken.role ?? session.user.role ?? "USER";
+        session.user.orgId =
+          user?.orgId ?? safeToken.orgId ?? session.user.orgId ?? null;
+        session.user.balance = balance;
         session.user.emailVerifiedByProvider =
-          user.emailVerifiedByProvider ?? null;
+          user?.emailVerifiedByProvider ??
+          safeToken.emailVerifiedByProvider ??
+          null;
+        session.user.sessionTokenIssuedAt = safeToken.sessionIssuedAt ?? null;
       }
       return session;
     },
@@ -410,6 +496,7 @@ async function getBypassSession() {
       orgId: user.orgId,
       balance: user.balance.toString(),
       emailVerifiedByProvider: null,
+      sessionTokenIssuedAt: Date.now(),
     },
   };
 }
@@ -433,7 +520,13 @@ export async function auth(request?: Request): Promise<Session | null> {
 
   const dbUser = await prisma.user.findUnique({
     where: { id: session.user.id },
-    select: { isActive: true, orgId: true, role: true, emailVerifiedByProvider: true },
+    select: {
+      isActive: true,
+      orgId: true,
+      role: true,
+      emailVerifiedByProvider: true,
+      sessionInvalidatedAt: true,
+    },
   });
 
   if (!dbUser) {
@@ -444,10 +537,29 @@ export async function auth(request?: Request): Promise<Session | null> {
     return null;
   }
 
+  if (
+    dbUser.sessionInvalidatedAt &&
+    session.user.sessionTokenIssuedAt &&
+    dbUser.sessionInvalidatedAt.getTime() >
+      session.user.sessionTokenIssuedAt
+  ) {
+    return null;
+  }
+
   session.user.orgId = dbUser.orgId;
   session.user.role = dbUser.role;
   session.user.emailVerifiedByProvider =
     dbUser.emailVerifiedByProvider ?? null;
+
+  return session;
+}
+
+export async function requirePageSession(): Promise<Session> {
+  const session = await auth();
+
+  if (!session?.user?.id) {
+    redirect("/login?mode=signin");
+  }
 
   return session;
 }

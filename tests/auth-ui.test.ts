@@ -45,11 +45,12 @@ describe("auth-ui helpers", () => {
     });
 
     expect(capabilities.sso).toBe(true);
+    expect(capabilities.email).toBe(true);
     expect(capabilities.telegram).toBe(false);
     expect(capabilities.tempAccess).toBe(false);
   });
 
-  it("hides methods when their server configuration is incomplete", () => {
+  it("keeps password auth available when optional server integrations are incomplete", () => {
     const capabilities = getAuthCapabilities({
       UNISENDER_API_KEY: "unisender-key",
       NEXT_PUBLIC_SSO_ENABLED: "1",
@@ -58,7 +59,7 @@ describe("auth-ui helpers", () => {
     });
 
     expect(capabilities).toEqual({
-      email: false,
+      email: true,
       sso: false,
       telegram: false,
       tempAccess: false,

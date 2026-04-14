@@ -102,7 +102,8 @@ export default function LoginForm({
   const emailRef = useRef<HTMLInputElement>(null);
 
   const modeText = useMemo(() => getModeText(mode), [mode]);
-  const hasAnyMethod = capabilities.email || capabilities.sso;
+  const hasAnyMethod =
+    capabilities.email || capabilities.sso || capabilities.telegram || capabilities.tempAccess;
   const showTelegramWidget = capabilities.telegram && !telegramUnavailable;
 
   useEffect(() => {

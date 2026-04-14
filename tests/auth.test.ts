@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { hashSync } from "bcryptjs";
 import { EmailSignInError } from "@auth/core/errors";
 import { AuditAction } from "@prisma/client";
 import { logAudit } from "@/lib/audit";
@@ -85,6 +86,10 @@ async function loadAuthModule() {
   return import("../src/lib/auth");
 }
 
+function getProvider(id: string) {
+  return state.nextAuthConfig.providers.find((provider: { id?: string }) => provider.id === id);
+}
+
 describe("auth module", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -147,7 +152,7 @@ describe("auth module", () => {
       }),
     ).resolves.toBe(true);
 
-    const emailProvider = state.nextAuthConfig.providers[0];
+    const emailProvider = getProvider("email");
     await emailProvider.sendVerificationRequest({
       identifier: "user@example.com",
       url: "https://example.com/magic",
@@ -219,7 +224,7 @@ describe("auth module", () => {
   test("email provider blocks configured email domains and audits them", async () => {
     process.env.AUTH_EMAIL_BLOCKLIST = "blocked.example,blocked@tenant.example";
     await loadAuthModule();
-    const emailProvider = state.nextAuthConfig.providers[0];
+    const emailProvider = getProvider("email");
 
     await expect(
       emailProvider.sendVerificationRequest({
@@ -257,7 +262,7 @@ describe("auth module", () => {
       remaining: 0,
       resetAt: Date.now() + 900000,
     });
-    const emailProvider = state.nextAuthConfig.providers[0];
+    const emailProvider = getProvider("email");
 
     await expect(
       emailProvider.sendVerificationRequest({
@@ -290,7 +295,7 @@ describe("auth module", () => {
   test("email provider wraps transport failures as send errors", async () => {
     await loadAuthModule();
     state.sendMagicLink.mockRejectedValueOnce(new Error("boom"));
-    const emailProvider = state.nextAuthConfig.providers[0];
+    const emailProvider = getProvider("email");
 
     await expect(
       emailProvider.sendVerificationRequest({
@@ -312,8 +317,8 @@ describe("auth module", () => {
 
     await loadAuthModule();
 
-    expect(state.nextAuthConfig.providers).toHaveLength(3);
-    expect(state.nextAuthConfig.providers[2]).toMatchObject({
+    expect(state.nextAuthConfig.providers).toHaveLength(4);
+    expect(getProvider("sso")).toMatchObject({
       id: "sso",
       name: "Corp SSO",
       issuer: "https://issuer.example",
@@ -323,17 +328,89 @@ describe("auth module", () => {
     });
   });
 
+  test("credentials authorize accepts valid email and password", async () => {
+    state.prisma.user.findUnique.mockResolvedValue({
+      id: "u-credentials",
+      email: "user@example.com",
+      role: "USER",
+      orgId: "org-1",
+      balance: { toString: () => "7" },
+      passwordHash: hashSync("correct-horse-battery-staple", 10),
+      isActive: true,
+      emailVerifiedByProvider: null,
+    });
+
+    await loadAuthModule();
+    const credentialsProvider = getProvider("credentials");
+
+    await expect(
+      credentialsProvider.authorize({
+        email: "user@example.com",
+        password: "correct-horse-battery-staple",
+      })
+    ).resolves.toEqual({
+      id: "u-credentials",
+      email: "user@example.com",
+      name: "user@example.com",
+      role: "USER",
+      orgId: "org-1",
+      balance: "7",
+      emailVerifiedByProvider: null,
+    });
+  });
+
+  test("credentials authorize rejects invalid password or missing password hash", async () => {
+    state.prisma.user.findUnique.mockResolvedValueOnce({
+      id: "u-credentials",
+      email: "user@example.com",
+      role: "USER",
+      orgId: null,
+      balance: { toString: () => "0" },
+      passwordHash: hashSync("correct-password", 10),
+      isActive: true,
+      emailVerifiedByProvider: null,
+    });
+
+    await loadAuthModule();
+    const credentialsProvider = getProvider("credentials");
+
+    await expect(
+      credentialsProvider.authorize({
+        email: "user@example.com",
+        password: "wrong-password",
+      })
+    ).resolves.toBeNull();
+
+    state.prisma.user.findUnique.mockResolvedValueOnce({
+      id: "u-credentials-2",
+      email: "user2@example.com",
+      role: "USER",
+      orgId: null,
+      balance: { toString: () => "0" },
+      passwordHash: null,
+      isActive: true,
+      emailVerifiedByProvider: null,
+    });
+
+    await expect(
+      credentialsProvider.authorize({
+        email: "user2@example.com",
+        password: "correct-password",
+      })
+    ).resolves.toBeNull();
+  });
+
   test("telegram authorize rejects empty, invalid, and unverifiable payloads", async () => {
     await loadAuthModule();
-    const credentialsProvider = state.nextAuthConfig.providers[1];
+    const telegramProvider = getProvider("telegram");
 
-    await expect(credentialsProvider.authorize(undefined)).resolves.toBeNull();
-    await expect(credentialsProvider.authorize({ data: 123 })).resolves.toBeNull();
-    await expect(credentialsProvider.authorize({ data: "{bad json" })).resolves.toBeNull();
+    await expect(telegramProvider.authorize(undefined)).resolves.toBeNull();
+    await expect(telegramProvider.authorize({ data: 123 })).resolves.toBeNull();
+    await expect(telegramProvider.authorize({ data: "{bad json" })).resolves.toBeNull();
 
     state.verifyTelegramLogin.mockReturnValue(false);
     await expect(
-      credentialsProvider.authorize({
+      telegramProvider.authorize({
         data: JSON.stringify({ id: 1, auth_date: 123, hash: "hash" }),
       }),
     ).resolves.toBeNull();
@@ -353,9 +430,9 @@ describe("auth module", () => {
     });
 
     await loadAuthModule();
-    const credentialsProvider = state.nextAuthConfig.providers[1];
+    const telegramProvider = getProvider("telegram");
 
-    const result = await credentialsProvider.authorize({
+    const result = await telegramProvider.authorize({
       data: JSON.stringify({
         id: 42,
         username: "platforma_bot",
@@ -401,9 +478,9 @@ describe("auth module", () => {
     });
 
     await loadAuthModule();
-    const credentialsProvider = state.nextAuthConfig.providers[1];
+    const telegramProvider = getProvider("telegram");
 
-    const result = await credentialsProvider.authorize({
+    const result = await telegramProvider.authorize({
       data: JSON.stringify({
         id: 77,
         auth_date: 123,
@@ -685,6 +762,7 @@ describe("auth module", () => {
       orgId: "org-1",
       balance: "99",
       emailVerifiedByProvider: true,
+      sessionTokenIssuedAt: null,
     });
   });
 
@@ -702,7 +780,7 @@ describe("auth module", () => {
     });
 
     let mod = await loadAuthModule();
-    await expect(mod.auth()).resolves.toEqual({
+    await expect(mod.auth()).resolves.toMatchObject({
       user: {
         id: "bypass-user",
         email: "dev@example.com",

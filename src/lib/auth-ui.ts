@@ -132,8 +132,6 @@ export function evaluateAuthEmailGuardrails(
 export function getAuthCapabilities(
   env: Record<string, string | undefined> = process.env
 ): AuthCapabilities {
-  const emailConfigured =
-    Boolean(env.UNISENDER_API_KEY) && Boolean(env.UNISENDER_SENDER_EMAIL);
   const ssoConfigured =
     env.SSO_ISSUER && env.SSO_CLIENT_ID && env.SSO_CLIENT_SECRET;
   const telegramEnabledByFlag = env.NEXT_PUBLIC_TELEGRAM_AUTH_ENABLED !== "0";
@@ -148,7 +146,7 @@ export function getAuthCapabilities(
   const ssoEnabled = Boolean(ssoConfigured) && ssoVisibleByFlag;
 
   return {
-    email: emailConfigured,
+    email: true,
     sso: ssoEnabled,
     telegram: telegramEnabled,
     tempAccess,
