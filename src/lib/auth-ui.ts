@@ -12,6 +12,7 @@ export type AuthCapabilities = {
   email: boolean;
   sso: boolean;
   telegram: boolean;
+  tempAccess: boolean;
 };
 
 export type AuthEmailGuardrails = {
@@ -131,16 +132,26 @@ export function evaluateAuthEmailGuardrails(
 export function getAuthCapabilities(
   env: Record<string, string | undefined> = process.env
 ): AuthCapabilities {
+  const emailConfigured =
+    Boolean(env.UNISENDER_API_KEY) && Boolean(env.UNISENDER_SENDER_EMAIL);
   const ssoConfigured =
     env.SSO_ISSUER && env.SSO_CLIENT_ID && env.SSO_CLIENT_SECRET;
+  const telegramEnabledByFlag = env.NEXT_PUBLIC_TELEGRAM_AUTH_ENABLED !== "0";
   const telegramEnabled =
-    env.NEXT_PUBLIC_TELEGRAM_AUTH_ENABLED === "1" &&
-    Boolean(env.NEXT_PUBLIC_TELEGRAM_LOGIN_BOT_NAME);
+    telegramEnabledByFlag &&
+    Boolean(env.NEXT_PUBLIC_TELEGRAM_LOGIN_BOT_NAME) &&
+    Boolean(env.TELEGRAM_LOGIN_BOT_NAME) &&
+    Boolean(env.TELEGRAM_BOT_TOKEN);
+  const tempAccess = env.NEXT_PUBLIC_TEMP_ACCESS_ENABLED === "1";
+  const ssoVisibleByFlag =
+    env.NEXT_PUBLIC_SSO_ENABLED === undefined || env.NEXT_PUBLIC_SSO_ENABLED === "1";
+  const ssoEnabled = Boolean(ssoConfigured) && ssoVisibleByFlag;
 
   return {
-    email: true,
-    sso: env.NEXT_PUBLIC_SSO_ENABLED === "1" || Boolean(ssoConfigured),
+    email: emailConfigured,
+    sso: ssoEnabled,
     telegram: telegramEnabled,
+    tempAccess,
   };
 }
 
@@ -153,7 +164,7 @@ export function getModeText(mode: AuthMode) {
     return {
       title: "Создание аккаунта PlatformaAI",
       subtitle:
-        "Заполните никнейм, email и пароль. После регистрации можно сразу войти в чат.",
+        "Заполните никнейм, email и пароль. Email станет основным идентификатором аккаунта.",
       emailAction: "Создать аккаунт",
       ssoAction: "Зарегистрироваться через SSO",
     };
@@ -186,6 +197,27 @@ export function mapLoginError(error?: string): MappedAuthError | null {
         title: "Неверный email или пароль",
         message: "Проверьте данные и попробуйте снова.",
         action: "retry",
+      };
+    case "EmailSignInError":
+      return {
+        state: "error",
+        title: "Вход временно ограничен",
+        message: "Подождите немного и повторите попытку.",
+        action: "retry",
+      };
+    case "EmailDomainBlocked":
+      return {
+        state: "error",
+        title: "Доступ ограничен политикой",
+        message: "Для этого домена вход ограничен. Обратитесь к администратору.",
+        action: "contact_admin",
+      };
+    case "AccountDisabled":
+      return {
+        state: "error",
+        title: "Аккаунт отключен",
+        message: "Доступ отключен администратором. Обратитесь в поддержку вашей организации.",
+        action: "contact_admin",
       };
     case "Verification":
       return {

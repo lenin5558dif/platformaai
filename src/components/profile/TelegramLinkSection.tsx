@@ -236,7 +236,7 @@ export default function TelegramLinkSection(params: {
         ) : (
           <p>
             Если Telegram не привязан, начните с генерации ссылки. Это занимает один шаг и не
-            влияет на email-вход.
+            влияет на вход по почте.
           </p>
         )}
       </div>
@@ -274,7 +274,7 @@ export default function TelegramLinkSection(params: {
 
       <div className="mb-3 grid gap-2 md:grid-cols-3 text-[11px] text-text-secondary">
         <div className="rounded-lg border border-gray-200 bg-white/70 px-3 py-2">
-          1. Сгенерируйте link
+          1. Сгенерируйте ссылку
         </div>
         <div className="rounded-lg border border-gray-200 bg-white/70 px-3 py-2">
           2. Откройте Telegram и подтвердите

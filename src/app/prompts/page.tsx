@@ -96,7 +96,7 @@ export default async function PromptsPage() {
 
   return (
     <AppShell
-      title="Prompt Library"
+      title="Библиотека промптов"
       subtitle="Готовые сценарии для быстрых запусков."
       user={{
         email: user?.email,

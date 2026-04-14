@@ -14,13 +14,13 @@ export default async function InviteAcceptPage({
       <div className="mx-auto grid w-full max-w-6xl gap-6 lg:grid-cols-[0.95fr_1.05fr]">
         <section className="rounded-3xl border border-white/60 bg-white/80 p-6 shadow-glass-sm md:p-8">
           <p className="text-xs font-semibold uppercase tracking-[0.28em] text-primary">
-            Invite handoff
+            Принятие приглашения
           </p>
           <h1 className="mt-3 text-3xl font-semibold leading-tight text-text-main font-display">
             Примите приглашение и сразу попадите в рабочее пространство
           </h1>
           <p className="mt-3 text-sm leading-6 text-text-secondary">
-            Приглашение привязано к конкретному email. Сначала войдите тем же аккаунтом, затем
+            Приглашение привязано к конкретному email-адресу. Сначала войдите тем же аккаунтом, затем
             подтвердите доступ и перейдите в организацию без лишних промежуточных экранов.
           </p>
 
@@ -32,7 +32,7 @@ export default async function InviteAcceptPage({
               },
               {
                 title: "2. Подтвердите",
-                text: "Проверьте token из письма и завершите принятие инвайта.",
+                text: "Проверьте токен из письма и завершите принятие приглашения.",
               },
               {
                 title: "3. Начните работу",
@@ -57,7 +57,7 @@ export default async function InviteAcceptPage({
               href="/org"
               className="rounded-full border border-gray-200 bg-white/80 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-white"
             >
-              Открыть org
+              Открыть организацию
             </Link>
           </div>
         </section>

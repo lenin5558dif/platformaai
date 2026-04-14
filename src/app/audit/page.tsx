@@ -9,17 +9,17 @@ const ACTION_LABELS: Record<string, string> = {
   USER_INVITED: "Приглашение",
   USER_UPDATED: "Пользователь",
   USER_DISABLED: "Отключение",
-  COST_CENTER_CREATED: "Cost center",
-  COST_CENTER_UPDATED: "Cost center",
-  COST_CENTER_DELETED: "Cost center",
+  COST_CENTER_CREATED: "Центр затрат",
+  COST_CENTER_UPDATED: "Центр затрат",
+  COST_CENTER_DELETED: "Центр затрат",
   COST_CENTER_ASSIGNED: "Назначение CC",
   DLP_POLICY_UPDATED: "DLP",
   MODEL_POLICY_UPDATED: "Политика моделей",
   POLICY_BLOCKED: "Блокировка политики",
   SCIM_TOKEN_CREATED: "SCIM токен",
   SCIM_TOKEN_REVOKED: "SCIM токен",
-  SCIM_USER_SYNC: "SCIM user",
-  SCIM_GROUP_SYNC: "SCIM group",
+  SCIM_USER_SYNC: "SCIM пользователь",
+  SCIM_GROUP_SYNC: "SCIM группа",
   SSO_DOMAIN_UPDATED: "SSO домен",
 };
 
@@ -115,7 +115,7 @@ export default async function AuditPage({
       <div className="max-w-5xl mx-auto space-y-6">
         <div className="rounded-2xl bg-white/80 border border-white/50 shadow-glass-sm p-6">
           <h1 className="text-2xl font-semibold text-text-main mb-2 font-display">
-            Audit Logs
+            Аудит-логи
           </h1>
           <p className="text-sm text-text-secondary">
             История административных действий и политик безопасности.

@@ -8,7 +8,7 @@ export type NavItem = {
 
 const B2C_ITEMS: NavItem[] = [
   { href: "/", label: "Чаты", icon: "chat" },
-  { href: "/prompts", label: "Prompt Library", icon: "library_books" },
+  { href: "/prompts", label: "Библиотека промптов", icon: "library_books" },
   { href: "/models", label: "Модели", icon: "view_in_ar" },
   { href: "/billing", label: "Биллинг", icon: "credit_card" },
   { href: "/settings", label: "Настройки", icon: "settings" },

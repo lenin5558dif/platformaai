@@ -133,7 +133,7 @@ export default function InviteManager({
 
       setMessage({
         title: "Инвайт отправлен",
-        message: "Приглашение создано и отправлено на email сотрудника.",
+        message: "Приглашение создано и отправлено на почту сотрудника.",
         tone: "success",
       });
       setEmail("");
@@ -193,17 +193,17 @@ export default function InviteManager({
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="max-w-2xl">
           <h2 className="text-lg font-semibold text-text-main font-display">
-            Email-locked приглашения
+            Приглашения с привязкой к почте
           </h2>
           <p className="mt-1 text-xs text-text-secondary">
-            Инвайт привязан к конкретному email. Это снижает ошибки доступа и делает ротацию
-            сотрудников понятной: создайте invite, дождитесь принятия, затем при необходимости
-            resend или revoke.
+            Инвайт привязан к конкретной почте. Это снижает ошибки доступа и делает ротацию
+            сотрудников понятной: создайте приглашение, дождитесь принятия, затем при необходимости
+            отправьте повторно или отзовите.
           </p>
         </div>
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
-          <p className="font-semibold">Когда нужен revoke</p>
-          <p className="mt-1">Если email ушёл не тому человеку или роль поменялась.</p>
+          <p className="font-semibold">Когда нужен отзыв</p>
+          <p className="mt-1">Если почта ушла не тому человеку или роль поменялась.</p>
         </div>
       </div>
 
@@ -224,7 +224,7 @@ export default function InviteManager({
           type="email"
           value={email}
           onChange={(event) => setEmail(event.target.value)}
-          placeholder="user@company.com"
+          placeholder="почта@company.ru"
           className="md:col-span-2 rounded-lg border border-gray-200 bg-white/70 px-3 py-2 text-sm"
           required
         />
@@ -247,7 +247,7 @@ export default function InviteManager({
           onChange={(event) => setDefaultCostCenterId(event.target.value)}
           className="rounded-lg border border-gray-200 bg-white/70 px-3 py-2 text-sm"
         >
-          <option value="">Без cost center</option>
+          <option value="">Без центра затрат</option>
           {costCenterOptions.map((center) => (
             <option key={center.id} value={center.id}>
               {center.name}
@@ -259,15 +259,15 @@ export default function InviteManager({
           className="md:col-span-4 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-hover disabled:opacity-60"
           disabled={isSubmitting || !hasRoles}
         >
-          {isSubmitting ? "Отправляем..." : "Создать и отправить invite"}
+          {isSubmitting ? "Отправляем..." : "Создать и отправить приглашение"}
         </button>
       </form>
 
       <div className="rounded-xl border border-gray-200 bg-white/60 px-4 py-3 text-xs text-text-secondary">
         <p className="font-semibold text-text-main">Что увидит админ после создания</p>
         <p className="mt-1">
-          Свежие invites появляются в списке ниже. Отсюда же их можно resend, если письмо не
-          дошло, или revoke, если доступ больше не нужен.
+          Свежие приглашения появляются в списке ниже. Отсюда же их можно отправить повторно, если
+          письмо не дошло, или отозвать, если доступ больше не нужен.
         </p>
       </div>
 
@@ -279,7 +279,7 @@ export default function InviteManager({
           <div className="rounded-xl border border-dashed border-gray-300 bg-white/60 px-4 py-4">
             <p className="text-sm font-medium text-text-main">Активных приглашений пока нет</p>
             <p className="mt-1 text-xs text-text-secondary">
-              Создайте invite для нового сотрудника или внешнего подрядчика. После принятия запись
+              Создайте приглашение для нового сотрудника или внешнего подрядчика. После принятия запись
               автоматически исчезнет из этого списка.
             </p>
           </div>
@@ -298,7 +298,7 @@ export default function InviteManager({
                   {new Date(invite.expiresAt).toLocaleString("ru-RU")}
                 </p>
                 <p className="mt-1 text-[11px] text-text-secondary">
-                  Resend помогает, если письмо потерялось. Revoke закрывает приглашение сразу.
+                  Повторная отправка помогает, если письмо потерялось. Отзыв закрывает приглашение сразу.
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -308,7 +308,7 @@ export default function InviteManager({
                   onClick={() => void runInviteAction(invite.id, "resend")}
                   disabled={activeActionId === invite.id}
                 >
-                  Resend
+                  Повторно отправить
                 </button>
                 <button
                   type="button"
@@ -316,7 +316,7 @@ export default function InviteManager({
                   onClick={() => void runInviteAction(invite.id, "revoke")}
                   disabled={activeActionId === invite.id}
                 >
-                  Revoke
+                  Отозвать
                 </button>
               </div>
             </div>

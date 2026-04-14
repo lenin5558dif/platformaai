@@ -52,7 +52,7 @@ export function mapInviteError(code?: InviteApiErrorCode): InviteUiMessage {
     case "INVITE_EXISTS":
       return {
         title: "Инвайт уже активен",
-        message: "Для этого email уже есть активный инвайт. Используйте resend или revoke.",
+        message: "Для этой почты уже есть активный инвайт. Используйте повторную отправку или отзыв.",
         tone: "warning",
       };
     case "INVITE_EXPIRED":
@@ -75,28 +75,28 @@ export function mapInviteError(code?: InviteApiErrorCode): InviteUiMessage {
       };
     case "INVITE_EMAIL_MISMATCH":
       return {
-        title: "Email не совпадает",
-        message: "Войдите под тем email, на который отправлен инвайт, и повторите попытку.",
+        title: "Почта не совпадает",
+        message: "Войдите под той почтой, на которую отправлен инвайт, и повторите попытку.",
         tone: "error",
       };
     case "EMAIL_REQUIRED":
       return {
-        title: "Нужен аккаунт с email",
+        title: "Нужен аккаунт с почтой",
         message:
-          "Для принятия приглашения нужен web-аккаунт с тем же email, на который пришёл инвайт. Войдите через magic link или SSO и повторите попытку.",
+          "Для принятия приглашения нужен веб-аккаунт с той же почтой, на которую пришёл инвайт. Войдите по ссылке входа или через SSO и повторите попытку.",
         tone: "warning",
       };
     case "EMAIL_NOT_VERIFIED":
       return {
-        title: "Email не подтвержден",
-        message: "Подтвердите email у провайдера входа и повторите принятие инвайта.",
+        title: "Почта не подтверждена",
+        message: "Подтвердите почту у провайдера входа и повторите принятие инвайта.",
         tone: "warning",
       };
     case "EMAIL_DOMAIN_BLOCKED":
       return {
-        title: "Email ограничен политикой",
+        title: "Почта ограничена политикой",
         message:
-          "Для этого email или домена доступ временно ограничен. Используйте другой корпоративный адрес или обратитесь к администратору.",
+          "Для этой почты или домена доступ временно ограничен. Используйте другой корпоративный адрес или обратитесь к администратору.",
         tone: "error",
       };
     case "ROLE_NOT_FOUND":

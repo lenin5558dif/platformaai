@@ -50,7 +50,7 @@ export default function UserMenu({
   }, [isOpen]);
 
   const name = displayName?.trim() || email?.trim() || "Пользователь";
-  const plan = planName?.trim() || "Pro Plan";
+  const plan = planName?.trim() || "План Pro";
   const initial = resolveInitial(email ?? displayName);
   const navItems = getNavItems(role, email);
 

@@ -42,13 +42,13 @@ export default function PricingPage() {
                 className="flex-1 rounded-lg bg-white py-2 text-sm font-bold leading-normal text-slate-900 shadow-sm ring-1 ring-black/5"
                 type="button"
               >
-                Individual (B2C)
+                Персональный (B2C)
               </button>
               <button
                 className="flex-1 rounded-lg py-2 text-sm font-bold leading-normal text-slate-500 transition-all hover:text-slate-900"
                 type="button"
               >
-                Business (B2B)
+                Бизнес (B2B)
               </button>
             </div>
           </div>
@@ -60,7 +60,7 @@ export default function PricingPage() {
               <div className="flex flex-col gap-2">
                 <div className="flex items-center justify-between">
                   <h3 className="text-xl font-bold leading-tight text-slate-900">
-                    Starter
+                    Старт
                   </h3>
                   <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-wider text-slate-700">
                     Бесплатно
@@ -71,7 +71,7 @@ export default function PricingPage() {
                   <span className="text-sm font-medium text-slate-500">/мес</span>
                 </div>
                 <p className="mt-1 min-h-[40px] text-sm leading-relaxed text-slate-500">
-                  Идеально для ознакомления с open-source моделями.
+                  Идеально для знакомства с open-source моделями.
                 </p>
               </div>
               <button
@@ -108,7 +108,7 @@ export default function PricingPage() {
               <div className="mt-2 flex flex-col gap-2">
                 <div className="flex items-center justify-between">
                   <h3 className="text-xl font-bold leading-tight text-slate-900">
-                    Creator
+                    Креатор
                   </h3>
                 </div>
                 <div className="mt-2 flex items-baseline gap-1 text-slate-900">
@@ -123,12 +123,12 @@ export default function PricingPage() {
                 className="mt-2 h-12 w-full rounded-lg bg-primary text-sm font-bold tracking-wide text-white shadow-lg shadow-primary/30 transition-all hover:bg-primary/90"
                 type="button"
               >
-                Выбрать Creator
+                Выбрать «Креатор»
               </button>
               <div className="my-1 h-px w-full bg-slate-100" />
               <div className="flex flex-col gap-4">
                 {[
-                  "Всё из тарифа Starter",
+                  "Всё из тарифа «Старт»",
                   "GPT-4o, Claude 3.5 Sonnet",
                   "1M токенов в месяц",
                   "Приоритетная очередь",
@@ -151,7 +151,7 @@ export default function PricingPage() {
               <div className="flex flex-col gap-2">
                 <div className="flex items-center justify-between">
                   <h3 className="text-xl font-bold leading-tight text-slate-900">
-                    Power User
+                    Профи
                   </h3>
                   <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-wider text-slate-700">
                     Максимум
@@ -169,7 +169,7 @@ export default function PricingPage() {
                 className="mt-2 h-12 w-full rounded-lg border border-slate-200 bg-white text-sm font-bold tracking-wide text-slate-900 shadow-sm transition-all hover:border-primary hover:text-primary"
                 type="button"
               >
-                Выбрать Power User
+                Выбрать «Профи»
               </button>
               <div className="my-1 h-px w-full bg-slate-100" />
               <div className="flex flex-col gap-4">
@@ -262,7 +262,7 @@ export default function PricingPage() {
                 {
                   question: "Как считаются токены?",
                   answer:
-                    "1 токен примерно равен 4 символам английского текста. 1000 токенов — это около 750 слов. В тарифе Creator 1M токенов эквивалентен примерно 700,000 слов или нескольким книгам текста.",
+                    "1 токен примерно равен 4 символам английского текста. 1000 токенов — это около 750 слов. В тарифе «Креатор» 1M токенов эквивалентен примерно 700,000 слов или нескольким книгам текста.",
                 },
                 {
                   question: "Могу ли я сменить тариф в любой момент?",
@@ -270,14 +270,14 @@ export default function PricingPage() {
                     "Да, вы можете повысить или понизить тариф в любое время. При повышении тарифа изменения вступают в силу немедленно с перерасчетом стоимости.",
                 },
                 {
-                  question: "Что такое API доступ в плане Power User?",
+                  question: "Что такое доступ к API в плане «Профи»?",
                   answer:
                     "Вы получаете унифицированный API ключ, который позволяет интегрировать возможности всех поддерживаемых нами LLM (GPT-4, Claude и др.) в ваши собственные приложения, используя единый формат запросов.",
                 },
                 {
                   question: "Есть ли пробный период для платных тарифов?",
                   answer:
-                    "Мы не предоставляем триал для тарифа Creator, но вы можете начать с бесплатного плана Starter, чтобы оценить интерфейс и базовые возможности платформы перед покупкой.",
+                    "Мы не предоставляем триал для тарифа «Креатор», но вы можете начать с бесплатного плана «Старт», чтобы оценить интерфейс и базовые возможности платформы перед покупкой.",
                 },
               ].map((item) => (
                 <div key={item.question} className="border-b border-slate-100 pb-4 last:border-0 last:pb-0">
@@ -375,7 +375,7 @@ export default function PricingPage() {
                 className="text-sm text-slate-500 transition-colors hover:text-primary"
                 href="#"
               >
-                Changelog
+                История изменений
               </a>
               <a
                 className="text-sm text-slate-500 transition-colors hover:text-primary"
@@ -433,7 +433,7 @@ export default function PricingPage() {
                 className="text-sm text-slate-500 transition-colors hover:text-primary"
                 href="#"
               >
-                Cookie
+                Файлы cookie
               </a>
             </div>
           </div>

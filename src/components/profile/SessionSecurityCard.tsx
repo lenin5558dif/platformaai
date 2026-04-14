@@ -35,7 +35,7 @@ export default function SessionSecurityCard() {
     <div className="rounded-xl border border-gray-200 bg-white/70 p-4">
       <p className="text-sm font-medium text-text-main">Безопасность сессий</p>
       <p className="mt-2 text-xs text-text-secondary">
-        Если есть риск компрометации, завершите все свои web-сессии и войдите заново.
+        Если есть риск компрометации, завершите все свои веб-сессии и войдите заново.
       </p>
       <button
         type="button"

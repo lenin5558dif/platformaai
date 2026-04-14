@@ -86,22 +86,22 @@ export default function InviteAcceptanceCard({ token }: InviteAcceptanceCardProp
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary">
-            Org invite
+            Приглашение в организацию
           </p>
           <h1 className="mt-3 text-2xl font-semibold text-text-main font-display">
             Принятие приглашения
           </h1>
           <p className="mt-2 text-sm text-text-secondary">
-            Войдите в аккаунт с тем же email, на который отправлено приглашение, затем подтвердите
+            Войдите в аккаунт с той же почтой, на которую отправлено приглашение, затем подтвердите
             действие и сразу откройте организацию.
           </p>
           <p className="mt-2 text-xs text-text-secondary">
-            Telegram-only аккаунт без email не сможет принять инвайт.
+            Аккаунт только с Telegram без почты не сможет принять приглашение.
           </p>
         </div>
         <div className="rounded-2xl border border-white/60 bg-white/70 px-4 py-3 text-xs text-text-secondary">
           <p className="font-semibold text-text-main">Что дальше</p>
-          <p className="mt-1">Права, лимиты и cost centers уже будут видны после принятия.</p>
+          <p className="mt-1">Права, лимиты и центры затрат уже будут видны после принятия.</p>
         </div>
       </div>
 
@@ -109,7 +109,7 @@ export default function InviteAcceptanceCard({ token }: InviteAcceptanceCardProp
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
           <p className="font-semibold">Нужна ссылка из письма</p>
           <p className="mt-1">
-            Откройте письмо-приглашение, войдите тем же email и вернитесь по ссылке с token.
+            Откройте письмо-приглашение, войдите с той же почтой и вернитесь по ссылке с токеном.
           </p>
         </div>
       )}
@@ -129,11 +129,11 @@ export default function InviteAcceptanceCard({ token }: InviteAcceptanceCardProp
           },
           {
             title: "2. Принять",
-            text: "Подтвердите приглашение по token из письма.",
+            text: "Подтвердите приглашение по токену из письма.",
           },
           {
             title: "3. Перейти",
-            text: "Откройте org и продолжите работу в команде.",
+            text: "Откройте организацию и продолжите работу в команде.",
           },
         ].map((item) => (
           <div key={item.title} className="rounded-2xl border border-white/60 bg-white/70 px-4 py-4">

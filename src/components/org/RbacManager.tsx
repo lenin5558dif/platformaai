@@ -223,7 +223,7 @@ export default function RbacManager({
       <div className="grid gap-3 md:grid-cols-2">
         {roles.length === 0 ? (
           <div className="md:col-span-2 rounded-xl border border-dashed border-gray-300 bg-white/60 px-4 py-4 text-sm text-text-secondary">
-            Роли пока не настроены. Создайте хотя бы базовые Owner и Member, чтобы инвайты и
+            Роли пока не настроены. Создайте хотя бы базовые «Владелец» и «Участник», чтобы инвайты и
             управление участниками стали понятнее.
           </div>
         ) : (
@@ -231,10 +231,10 @@ export default function RbacManager({
             <div key={role.id} className="rounded-xl border border-gray-200 bg-white/70 px-4 py-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-sm font-semibold text-text-main">
-                  {role.name} {role.isSystem ? "(System)" : ""}
+                  {role.name} {role.isSystem ? "(Системная)" : ""}
                 </p>
                 <span className="rounded-full border border-gray-200 bg-white px-2 py-1 text-[11px] font-medium text-text-secondary">
-                  {role.permissionKeys.length} permissions
+                  {role.permissionKeys.length} прав
                 </span>
               </div>
               <div className="mt-2 flex flex-wrap gap-2">
@@ -249,7 +249,7 @@ export default function RbacManager({
                           : "bg-gray-100 text-gray-500"
                       }`}
                     >
-                      {group.label}: {allowed ? "yes" : "no"}
+                      {group.label}: {allowed ? "да" : "нет"}
                     </span>
                   );
                 })}
@@ -272,7 +272,7 @@ export default function RbacManager({
             <div className="rounded-xl border border-dashed border-gray-300 bg-white/60 px-4 py-4">
               <p className="text-sm font-medium text-text-main">Участников пока нет</p>
               <p className="mt-1 text-xs text-text-secondary">
-                Отправьте invite или подключите SCIM, чтобы список наполнился автоматически.
+                Отправьте приглашение или подключите SCIM, чтобы список наполнился автоматически.
               </p>
             </div>
           )}
@@ -297,8 +297,8 @@ export default function RbacManager({
                         ? centerNameById.get(member.defaultCostCenterId) ?? "назначен"
                         : "не назначен"}
                       , лимиты D/M {member.dailyLimit ?? "-"}/{member.monthlyLimit ?? "-"}, DLP{" "}
-                      {policyContext.dlpEnabled ? `on (${policyContext.dlpAction})` : "off"}, model
-                      policy {policyContext.modelPolicyMode} ({policyContext.modelModelsCount})
+                      {policyContext.dlpEnabled ? `вкл (${policyContext.dlpAction})` : "выкл"}, политика моделей{" "}
+                      {policyContext.modelPolicyMode} ({policyContext.modelModelsCount})
                     </p>
                   </div>
 

@@ -12,6 +12,7 @@ export default defineConfig({
     environment: "node",
     include: ["tests/**/*.test.ts", "tests/**/*.spec.ts"],
     exclude: ["tests/e2e/**"],
+    setupFiles: ["tests/setup-env.ts"],
     coverage: {
       exclude: [
         ".next/**",

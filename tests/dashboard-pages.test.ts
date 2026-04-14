@@ -233,11 +233,11 @@ describe("dashboard pages", () => {
     const html = render(await PricingPage());
 
     expect(html).toContain("Раскройте потенциал всех");
-    expect(html).toContain("Starter");
-    expect(html).toContain("Creator");
-    expect(html).toContain("Power User");
+    expect(html).toContain("Старт");
+    expect(html).toContain("Креатор");
+    expect(html).toContain("Профи");
     expect(html).toContain("Часто задаваемые вопросы");
-    expect(html).toContain("Начать бесплатно");
+    expect(html).toContain("Попробовать бесплатно");
     expect(mocks.appShell).toHaveBeenCalledWith(
       expect.objectContaining({
         title: "Тарифы",
@@ -365,7 +365,7 @@ describe("dashboard pages", () => {
     expect(html).toContain("Платёж отменён");
     expect(html).toContain("Telegram ID");
     expect(html).toContain("tg-123");
-    expect(html).toContain("Telegram: linked");
+    expect(html).toContain("Telegram:tg-123");
     expect(html).toContain("SessionSecurityCard");
     expect(mocks.appShell).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -381,7 +381,7 @@ describe("dashboard pages", () => {
 
     const html = render(await ProfilePage({}));
 
-    expect(html).toContain("Telegram: not linked");
+    expect(html).toContain("Telegram:none");
     expect(html).toContain("SessionSecurityCard");
     expect(html).toContain("—");
   });
@@ -534,11 +534,11 @@ describe("dashboard pages", () => {
     }));
 
     const treeForKey = await SettingsPage();
-    const keyAction = getNamedFormAction(getForms(treeForKey), "updateOpenRouterKey")!;
+    const keyActionForKeyOnly = getNamedFormAction(getForms(treeForKey), "updateOpenRouterKey")!;
 
     const apiKeyFormData = new FormData();
     apiKeyFormData.set("openrouterApiKey", " sk-test-1 ");
-    await keyAction(apiKeyFormData);
+    await keyActionForKeyOnly(apiKeyFormData);
     expect(mocks.userSettings.mergeSettings).toHaveBeenCalledWith(
       expect.any(Object),
       { openrouterApiKey: "sk-test-1" }
@@ -555,7 +555,7 @@ describe("dashboard pages", () => {
 
     const emptyApiKeyFormData = new FormData();
     emptyApiKeyFormData.set("openrouterApiKey", "");
-    await keyAction(emptyApiKeyFormData);
+    await keyActionForKeyOnly(emptyApiKeyFormData);
     expect(mocks.userSettings.removeSettingsKey).toHaveBeenCalledWith(
       expect.any(Object),
       "openrouterApiKey"
@@ -565,7 +565,7 @@ describe("dashboard pages", () => {
     mocks.auth.mockResolvedValue(session);
     const blockedApiKeyFormData = new FormData();
     blockedApiKeyFormData.set("openrouterApiKey", "sk-ignored");
-    await keyAction(blockedApiKeyFormData);
+    await keyActionForKeyOnly(blockedApiKeyFormData);
     expect(mocks.prisma.user.update).toHaveBeenCalledTimes(2);
   });
 
@@ -622,7 +622,7 @@ describe("dashboard pages", () => {
     const html = render(tree);
     const action = getNamedFormAction(getForms(tree), "createPrompt")!;
 
-    expect(html).toContain("Prompt Library");
+    expect(html).toContain("Библиотека промптов");
     expect(html).toContain("Org prompt");
     expect(html).toContain("Для организации");
     expect(html).toContain("Сохранить");

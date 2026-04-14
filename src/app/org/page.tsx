@@ -492,7 +492,7 @@ export default async function OrgPage() {
         <div className="mx-auto grid max-w-5xl gap-6 lg:grid-cols-[1.05fr_0.95fr]">
           <section className="rounded-3xl border border-white/60 bg-white/80 p-6 shadow-glass-sm md:p-8">
             <p className="text-xs font-semibold uppercase tracking-[0.28em] text-primary">
-              Org onboarding
+              Онбординг организации
             </p>
             <h1 className="mt-3 text-3xl font-semibold leading-tight text-text-main font-display">
               Организация недоступна без входа
@@ -509,12 +509,12 @@ export default async function OrgPage() {
                   text: "Войдите в аккаунт через email, SSO или Telegram.",
                 },
                 {
-                  title: "2. Создание org",
-                  text: "Задайте название и стартовый бюджет для workspace.",
+                  title: "2. Создание организации",
+                  text: "Задайте название и стартовый бюджет для рабочего пространства.",
                 },
                 {
                   title: "3. Управление",
-                  text: "Настройте инвайты, роли, cost centers и governance.",
+                  text: "Настройте приглашения, роли, центры затрат и политики.",
                 },
               ].map((item) => (
                 <div
@@ -579,7 +579,7 @@ export default async function OrgPage() {
         <div className="mx-auto grid max-w-5xl gap-6 lg:grid-cols-[1.05fr_0.95fr]">
           <section className="rounded-3xl border border-white/60 bg-white/80 p-6 shadow-glass-sm md:p-8">
             <p className="text-xs font-semibold uppercase tracking-[0.28em] text-primary">
-              Org onboarding
+              Онбординг организации
             </p>
             <h1 className="mt-3 text-3xl font-semibold leading-tight text-text-main font-display">
               Создайте первую организацию
@@ -593,7 +593,7 @@ export default async function OrgPage() {
               {[
                 {
                   title: "1. Название",
-                  text: "Задайте понятное имя workspace для вашей команды.",
+                  text: "Задайте понятное имя рабочего пространства для вашей команды.",
                 },
                 {
                   title: "2. Бюджет",
@@ -601,7 +601,7 @@ export default async function OrgPage() {
                 },
                 {
                   title: "3. Настройка",
-                  text: "После создания откроются инвайты, роли и governance.",
+                  text: "После создания откроются приглашения, роли и политики.",
                 },
               ].map((item) => (
                 <div
@@ -828,7 +828,7 @@ export default async function OrgPage() {
     {
       label: "Сотрудники",
       value: `${members.length}`,
-      note: "В активной org",
+      note: "В активной организации",
     },
     {
       label: "Роли",
@@ -836,28 +836,28 @@ export default async function OrgPage() {
       note: "Доступно для инвайтов",
     },
     {
-      label: "Cost centers",
+      label: "Центры затрат",
       value: `${costCenters.length}`,
       note: "Для учета расходов",
     },
   ];
   const quickLinks = [
     { href: "#rbac", label: "RBAC" },
-    { href: "#governance", label: "Governance" },
-    { href: "#invites", label: "Invites" },
-    { href: "#members", label: "Members" },
+    { href: "#governance", label: "Политики" },
+    { href: "#invites", label: "Приглашения" },
+    { href: "#members", label: "Сотрудники" },
   ];
   const workflowSteps = [
     {
-      title: "Members",
+      title: "Сотрудники",
       text: "Проверьте статус и роли сотрудников, при необходимости отзовите сессии.",
     },
     {
-      title: "Invites",
-      text: "Создавайте инвайты только после выбора роли и, если нужно, cost center.",
+      title: "Приглашения",
+      text: "Создавайте приглашения только после выбора роли и, если нужно, центра затрат.",
     },
     {
-      title: "Roles",
+      title: "Роли",
       text: "Сначала убедитесь, что система ролей отражает реальный процесс команды.",
     },
   ];
@@ -869,14 +869,14 @@ export default async function OrgPage() {
           <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
             <div className="max-w-2xl">
               <p className="text-xs font-semibold uppercase tracking-[0.28em] text-primary">
-                Organization command center
+                Центр управления организацией
               </p>
               <h1 className="mt-3 text-3xl font-semibold leading-tight text-text-main font-display">
                 {org?.name}
               </h1>
               <p className="mt-3 text-sm leading-6 text-text-secondary">
-                Отсюда начинается управление доступом: приглашения, роли, cost centers, SCIM и
-                governance собраны в одном пространстве с понятной последовательностью действий.
+                Отсюда начинается управление доступом: приглашения, роли, центры затрат, SCIM и
+                политики собраны в одном пространстве с понятной последовательностью действий.
               </p>
               <div className="mt-4 flex flex-wrap gap-2">
                 {quickLinks.map((link) => (
@@ -956,7 +956,7 @@ export default async function OrgPage() {
 
         <div className="rounded-2xl bg-white/80 border border-white/50 shadow-glass-sm p-6">
           <h2 className="text-lg font-semibold text-text-main mb-4 font-display">
-            Cost Analyzer
+            Анализ расходов
           </h2>
           <div className="mb-6">
             <p className="text-xs text-text-secondary mb-3">
@@ -1052,7 +1052,7 @@ export default async function OrgPage() {
             </div>
             <div>
               <h3 className="text-sm font-semibold text-text-main mb-3">
-                Cost centers
+                Центры затрат
               </h3>
               <div className="space-y-3">
                 {topCostCenters.length === 0 && (
@@ -1089,7 +1089,7 @@ export default async function OrgPage() {
         {user.role === "ADMIN" && (
           <div className="rounded-2xl bg-white/80 border border-white/50 shadow-glass-sm p-6">
             <h2 className="text-lg font-semibold text-text-main mb-2 font-display">
-              Cost centers
+              Центры затрат
             </h2>
             <p className="text-xs text-text-secondary mb-4">
               Группируйте расходы по отделам или проектам.
@@ -1287,7 +1287,7 @@ export default async function OrgPage() {
             <p className="font-semibold">Подсказка для админа</p>
             <p className="mt-1">
               Сначала проверьте роль и активность участника, затем при необходимости обновите
-              cost center, лимиты или завершите доступ через отзыв сессий.
+              центр затрат, лимиты или завершите доступ через отзыв сессий.
             </p>
           </div>
           <div className="space-y-3">
@@ -1295,7 +1295,7 @@ export default async function OrgPage() {
               <div className="rounded-xl border border-dashed border-gray-300 bg-white/60 px-4 py-4">
                 <p className="text-sm font-medium text-text-main">Пока нет сотрудников</p>
                 <p className="mt-1 text-xs text-text-secondary">
-                  Создайте первый invite или подключите SCIM, чтобы сотрудники начали появляться
+                  Создайте первое приглашение или подключите SCIM, чтобы сотрудники начали появляться
                   здесь автоматически.
                 </p>
               </div>

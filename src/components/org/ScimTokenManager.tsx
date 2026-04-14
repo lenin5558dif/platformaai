@@ -73,7 +73,7 @@ export default function ScimTokenManager() {
   return (
     <div className="space-y-4">
       <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-xs text-sky-700">
-        <p className="font-semibold">SCIM нужен для provisioning</p>
+        <p className="font-semibold">SCIM нужен для автоматической синхронизации</p>
         <p className="mt-1">
           Используйте токен, чтобы синхронизировать пользователей и группы из IdP. Новый токен
           показывается один раз, затем хранится только в вашем менеджере секретов.
@@ -87,7 +87,7 @@ export default function ScimTokenManager() {
             value={name}
             onChange={(event) => setName(event.target.value)}
             className="mt-2 w-full rounded-lg border border-gray-200 bg-white/70 px-3 py-2 text-sm"
-            placeholder="Okta / Azure"
+            placeholder="Например, Okta / Azure"
           />
         </div>
         <button
@@ -115,7 +115,8 @@ export default function ScimTokenManager() {
           <div className="rounded-xl border border-dashed border-gray-300 bg-white/60 px-4 py-4">
             <p className="text-sm font-medium text-text-main">Токены еще не созданы</p>
             <p className="mt-1 text-xs text-text-secondary">
-              Создайте первый токен, если будете подключать Okta, Azure AD или другой IdP.
+              Создайте первый токен, если будете подключать Okta, Azure AD или другой провайдер
+              идентификации.
             </p>
           </div>
         )}

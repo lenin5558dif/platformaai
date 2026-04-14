@@ -100,7 +100,7 @@ export default async function AdminPage() {
                 Админ‑панель
               </h1>
               <p className="text-sm text-text-secondary">
-                Обзор потребления токенов и используемых моделей. Отсюда удобно перейти к org,
+                Обзор потребления токенов и используемых моделей. Отсюда удобно перейти к организации,
                 аудиту и событиям, если нужно разбирать расход или доступы.
               </p>
             </div>
@@ -109,19 +109,19 @@ export default async function AdminPage() {
                 href="/org"
                 className="rounded-full border border-gray-200 bg-white/80 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-white"
               >
-                Org
+                Организация
               </Link>
               <Link
                 href="/audit"
                 className="rounded-full border border-gray-200 bg-white/80 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-white"
               >
-                Audit
+                Аудит
               </Link>
               <Link
                 href="/events"
                 className="rounded-full border border-gray-200 bg-white/80 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-white"
               >
-                Events
+                События
               </Link>
             </div>
           </div>
@@ -129,7 +129,7 @@ export default async function AdminPage() {
           <div className="mt-4 grid gap-3 md:grid-cols-3">
             {[
               {
-                title: "Проверить org",
+                title: "Проверить организацию",
                 text: "Если расход выглядит неожиданно, откройте управление организацией и проверьте роли.",
               },
               {
@@ -138,7 +138,7 @@ export default async function AdminPage() {
               },
               {
                 title: "Сопоставить модели",
-                text: "Смотрите на модели с высоким токен-объёмом, чтобы ловить перекосы в usage.",
+                text: "Смотрите на модели с высоким токен-объёмом, чтобы ловить перекосы в использовании.",
               },
             ].map((item) => (
               <div key={item.title} className="rounded-xl border border-gray-200 bg-white/70 p-4">

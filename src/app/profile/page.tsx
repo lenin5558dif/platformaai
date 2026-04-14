@@ -62,7 +62,7 @@ export default async function ProfilePage({
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="max-w-2xl">
               <p className="text-xs font-semibold uppercase tracking-[0.28em] text-primary">
-                Account control
+                Управление аккаунтом
               </p>
               <h1 className="mt-2 text-2xl font-semibold text-text-main font-display">
                 Всё для повседневного аккаунта в одном месте
@@ -74,7 +74,7 @@ export default async function ProfilePage({
             </div>
             <div className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-[11px] text-sky-700">
               <p className="font-semibold">Безопасность доступа</p>
-              <p className="mt-1">Свои сессии можно завершить здесь, чужие — через org center.</p>
+              <p className="mt-1">Свои сессии можно завершить здесь, чужие — через центр организации.</p>
             </div>
           </div>
 
@@ -105,13 +105,13 @@ export default async function ProfilePage({
 
           <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-text-secondary">
             <span className="rounded-full border border-gray-200 bg-white px-3 py-1">
-              Org: {session.user.orgId ?? "без org"}
+              Организация: {session.user.orgId ?? "не указана"}
             </span>
             <span className="rounded-full border border-gray-200 bg-white px-3 py-1">
-              Telegram: {dbUser?.telegramId ? "linked" : "not linked"}
+              Telegram: {dbUser?.telegramId ? "привязан" : "не привязан"}
             </span>
             <span className="rounded-full border border-gray-200 bg-white px-3 py-1">
-              Profile actions: top up, Telegram, billing
+              Действия профиля: пополнение, Telegram, биллинг
             </span>
           </div>
 
@@ -124,14 +124,14 @@ export default async function ProfilePage({
               <div className="rounded-xl border border-gray-200 bg-white/70 p-4">
                 <p className="text-sm font-medium text-text-main">Где управлять доступом</p>
                 <p className="mt-2 text-xs text-text-secondary">
-                  Роли, invites, cost centers и отзыв сессий участников находятся в организационном центре.
+                  Роли, приглашения, cost centers и отзыв сессий участников находятся в организационном центре.
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <Link
                     href="/org"
                     className="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-white hover:bg-primary-hover"
                   >
-                    Открыть org
+                    Открыть организацию
                   </Link>
                   <Link
                     href="/admin"
