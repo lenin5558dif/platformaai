@@ -1,23 +1,17 @@
-import "@/lib/env";
-
 import NextAuth from "next-auth";
 import type { Session } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
-import type { EmailConfig, OIDCConfig } from "@auth/core/providers";
+import type { OIDCConfig } from "@auth/core/providers";
 import { PrismaAdapter } from "@auth/prisma-adapter";
-import { EmailSignInError } from "@auth/core/errors";
-import { headers } from "next/headers";
-import { AuditAction, Prisma, UserRole } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { logAudit } from "@/lib/audit";
-import { sendMagicLink } from "@/lib/unisender";
 import { verifyTelegramLogin, type TelegramAuthPayload } from "@/lib/telegram";
-import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
-import {
-  evaluateAuthEmailGuardrails,
-  loadAuthEmailGuardrails,
-} from "@/lib/auth-ui";
 import { z } from "zod";
+import { Prisma, UserRole } from "@prisma/client";
+import { SYSTEM_ROLE_NAMES } from "@/lib/org-permissions";
+import { ensureOrgSystemRolesAndPermissions } from "@/lib/org-rbac";
+import { compare } from "bcryptjs";
+import { checkRateLimit } from "@/lib/rate-limit";
+import { getClientIp } from "@/lib/request-ip";
 
 const telegramSchema = z.object({
   id: z.number(),
@@ -29,40 +23,15 @@ const telegramSchema = z.object({
   hash: z.string(),
 });
 
-const authEmailGuardrails = loadAuthEmailGuardrails();
-const EMAIL_SIGNIN_DOMAIN_LIMIT = 20;
-const EMAIL_SIGNIN_DOMAIN_WINDOW_MS = 15 * 60 * 1000;
-const EMAIL_SIGNIN_SUSPICIOUS_DOMAIN_LIMIT = 5;
-const emailAuthConfigured =
-  Boolean(process.env.UNISENDER_API_KEY) &&
-  Boolean(process.env.UNISENDER_SENDER_EMAIL);
+const credentialsSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(8).max(72),
+});
 
-async function logAuthSecurityAudit(params: {
-  stage: "email_signin" | "invite_create" | "invite_resend" | "invite_accept";
-  reason: string;
-  email: string;
-  domain: string | null;
-  clientIp?: string | null;
-  userAgent?: string | null;
-  blocked?: boolean;
-  suspicious?: boolean;
-}) {
-  await logAudit({
-    action: AuditAction.POLICY_BLOCKED,
-    ip: params.clientIp ?? undefined,
-    userAgent: params.userAgent ?? undefined,
-    metadata: {
-      auth: {
-        stage: params.stage,
-        reason: params.reason,
-        email: params.email,
-        domain: params.domain,
-        blocked: params.blocked ?? false,
-        suspicious: params.suspicious ?? false,
-      },
-    },
-  });
-}
+const LOGIN_IP_LIMIT = 30;
+const LOGIN_IP_WINDOW_MS = 5 * 60 * 1000;
+const LOGIN_IDENTITY_LIMIT = 10;
+const LOGIN_IDENTITY_WINDOW_MS = 10 * 60 * 1000;
 
 const ssoProvider: OIDCConfig<Record<string, unknown>> | null =
   process.env.SSO_ISSUER &&
@@ -79,127 +48,98 @@ const ssoProvider: OIDCConfig<Record<string, unknown>> | null =
       }
     : null;
 
-const emailProvider: EmailConfig | null = emailAuthConfigured
-  ? ({
-      id: "email",
-      name: "Email",
-      type: "email",
-      from: process.env.UNISENDER_SENDER_EMAIL,
-      maxAge: 10 * 60,
-      sendVerificationRequest: async ({ identifier, url }) => {
-        const normalizedEmail = identifier.trim().toLowerCase();
-        const authDecision = evaluateAuthEmailGuardrails(
-          normalizedEmail,
-          authEmailGuardrails
-        );
-        const requestHeaders = await headers();
-        const clientIp = getClientIp(requestHeaders);
-        const userAgent = requestHeaders.get("user-agent");
-
-        if (authDecision.blocked) {
-          await logAuthSecurityAudit({
-            stage: "email_signin",
-            reason: "blocked_email_domain",
-            email: authDecision.normalizedEmail,
-            domain: authDecision.domain,
-            clientIp,
-            userAgent,
-            blocked: true,
-          });
-
-          throw new EmailSignInError("Unable to send verification email");
-        }
-
-        if (authDecision.domain) {
-          const domainRateLimit = await checkRateLimit({
-            key: `auth:email-domain:${authDecision.domain}`,
-            limit: authDecision.suspicious
-              ? EMAIL_SIGNIN_SUSPICIOUS_DOMAIN_LIMIT
-              : EMAIL_SIGNIN_DOMAIN_LIMIT,
-            windowMs: EMAIL_SIGNIN_DOMAIN_WINDOW_MS,
-          });
-
-          if (!domainRateLimit.ok) {
-            await logAuthSecurityAudit({
-              stage: "email_signin",
-              reason: authDecision.suspicious
-                ? "suspicious_domain_throttled"
-                : "domain_throttled",
-              email: authDecision.normalizedEmail,
-              domain: authDecision.domain,
-              clientIp,
-              userAgent,
-              blocked: true,
-              suspicious: authDecision.suspicious,
-            });
-
-            throw new EmailSignInError("Rate limited");
-          }
-        }
-
-        try {
-          await sendMagicLink({ email: normalizedEmail, url });
-        } catch {
-          throw new EmailSignInError("Unable to send verification email");
-        }
-      },
-    } satisfies EmailConfig)
-  : null;
-
-const tempAccessProvider =
-  process.env.TEMP_ACCESS_TOKEN && process.env.NEXT_PUBLIC_TEMP_ACCESS_ENABLED === "1"
-    ? CredentialsProvider({
-        id: "temp-access",
-        name: "Temporary access",
-        credentials: {
-          token: { label: "Access token", type: "password" },
-        },
-        authorize: async (credentials) => {
-          const token =
-            typeof credentials?.token === "string" ? credentials.token.trim() : "";
-
-          if (!token || token !== process.env.TEMP_ACCESS_TOKEN) {
-            return null;
-          }
-
-          const user = await prisma.user.upsert({
-            where: {
-              email:
-                process.env.TEMP_ACCESS_EMAIL?.trim().toLowerCase() ??
-                "temp-access@platforma.local",
-            },
-            update: {
-              role: (process.env.TEMP_ACCESS_ROLE as UserRole | undefined) ?? "ADMIN",
-              isActive: true,
-            },
-            create: {
-              email:
-                process.env.TEMP_ACCESS_EMAIL?.trim().toLowerCase() ??
-                "temp-access@platforma.local",
-              role: (process.env.TEMP_ACCESS_ROLE as UserRole | undefined) ?? "ADMIN",
-              isActive: true,
-            },
-          });
-
-          return {
-            id: user.id,
-            email: user.email ?? undefined,
-            name: "Temporary Access",
-            role: user.role,
-            orgId: user.orgId,
-            balance: user.balance.toString(),
-          };
-        },
-      })
-    : null;
-
 const nextAuth = NextAuth({
   adapter: PrismaAdapter(prisma),
-  session: { strategy: "database" },
+  session: { strategy: "jwt" },
   trustHost: true,
   providers: [
-    ...(emailProvider ? [emailProvider] : []),
     CredentialsProvider({
+      id: "credentials",
+      name: "Email and Password",
+      credentials: {
+        email: { label: "Email", type: "email" },
+        password: { label: "Password", type: "password" },
+      },
+      authorize: async (credentials, request) => {
+        const clientIp = getClientIp(request);
+
+        const ipRate = await checkRateLimit({
+          key: `auth:login:ip:${clientIp}`,
+          limit: LOGIN_IP_LIMIT,
+          windowMs: LOGIN_IP_WINDOW_MS,
+        });
+        if (!ipRate.ok) {
+          return null;
+        }
+
+        const parsed = credentialsSchema.safeParse({
+          email:
+            typeof credentials?.email === "string"
+              ? credentials.email.trim().toLowerCase()
+              : "",
+          password:
+            typeof credentials?.password === "string" ? credentials.password : "",
+        });
+
+        if (!parsed.success) {
+          return null;
+        }
+
+        const identityRate = await checkRateLimit({
+          key: `auth:login:identity:${clientIp}:${parsed.data.email}`,
+          limit: LOGIN_IDENTITY_LIMIT,
+          windowMs: LOGIN_IDENTITY_WINDOW_MS,
+        });
+        if (!identityRate.ok) {
+          return null;
+        }
+
+        const credentialsLookup = {
+          where: { email: parsed.data.email },
+          select: {
+            id: true,
+            email: true,
+            passwordHash: true,
+            role: true,
+            orgId: true,
+            balance: true,
+            isActive: true,
+            emailVerifiedByProvider: true,
+          },
+        } as unknown as Parameters<typeof prisma.user.findUnique>[0];
+
+        const user = (await prisma.user.findUnique(credentialsLookup)) as {
+          id: string;
+          email: string | null;
+          passwordHash: string | null;
+          role: UserRole;
+          orgId: string | null;
+          balance: Prisma.Decimal;
+          isActive: boolean;
+          emailVerifiedByProvider: boolean | null;
+        } | null;
+
+        if (!user || !user.passwordHash || user.isActive === false) {
+          return null;
+        }
+
+        const isValid = await compare(parsed.data.password, user.passwordHash);
+        if (!isValid) {
+          return null;
+        }
+
+        return {
+          id: user.id,
+          email: user.email ?? undefined,
+          role: user.role,
+          orgId: user.orgId,
+          balance: user.balance.toString(),
+          emailVerifiedByProvider: user.emailVerifiedByProvider ?? null,
+        };
+      },
+    }),
+    CredentialsProvider({
+      id: "telegram",
       name: "Telegram",
       credentials: {
         data: { label: "Telegram payload", type: "text" },
@@ -255,35 +195,10 @@ const nextAuth = NextAuth({
         };
       },
     }),
-    ...(tempAccessProvider ? [tempAccessProvider] : []),
     ...(ssoProvider ? [ssoProvider] : []),
   ],
   callbacks: {
-    signIn: async ({ user, account, email, profile }) => {
-      if (
-        account?.provider === "email" &&
-        email?.verificationRequest &&
-        user?.email
-      ) {
-        const clientIp = getClientIp(await headers());
-        const rate = await checkRateLimit({
-          key: `auth:email:${user.email.trim().toLowerCase()}`,
-          limit: 5,
-          windowMs: 15 * 60 * 1000,
-        });
-
-        const ipRate = await checkRateLimit({
-          key: `auth:email-ip:${clientIp}`,
-          limit: 20,
-          windowMs: 15 * 60 * 1000,
-        });
-
-        if (!rate.ok || !ipRate.ok) {
-          throw new EmailSignInError("Rate limited");
-        }
-      }
-
-      if (!user?.email) return true;
+    signIn: async ({ user, account, profile }) => {
       if (!user?.id) return true;
 
       const dbUser = await prisma.user.findUnique({
@@ -292,8 +207,10 @@ const nextAuth = NextAuth({
       });
 
       if (dbUser && dbUser.isActive === false) {
-        return "/login?error=AccountDisabled";
+        return false;
       }
+
+      if (!user?.email) return true;
 
       const domain = user.email.split("@")[1]?.toLowerCase();
       if (!domain) return true;
@@ -310,17 +227,42 @@ const nextAuth = NextAuth({
         return "/login?error=SSORequired";
       }
 
-      if (usingSso && dbUser?.orgId !== domainPolicy.orgId) {
-        await prisma.user.update({
-          where: { id: user.id },
-          data: {
-            orgId: domainPolicy.orgId,
-            role: dbUser?.role === "ADMIN" ? "ADMIN" : "EMPLOYEE",
-          },
-        });
+      if (usingSso) {
+        const nextLegacyRole: UserRole = dbUser?.role === "ADMIN" ? "ADMIN" : "EMPLOYEE";
+
+        if (dbUser?.orgId !== domainPolicy.orgId) {
+          await prisma.user.update({
+            where: { id: user.id },
+            data: {
+              orgId: domainPolicy.orgId,
+              role: nextLegacyRole,
+            },
+          });
+        }
+
+        const { rolesByName } = await ensureOrgSystemRolesAndPermissions(domainPolicy.orgId);
+        const roleName =
+          nextLegacyRole === "ADMIN" ? SYSTEM_ROLE_NAMES.ADMIN : SYSTEM_ROLE_NAMES.MEMBER;
+        const orgRole = rolesByName.get(roleName) ?? rolesByName.get(SYSTEM_ROLE_NAMES.MEMBER);
+        if (orgRole) {
+          await prisma.orgMembership.upsert({
+            where: {
+              orgId_userId: {
+                orgId: domainPolicy.orgId,
+                userId: user.id,
+              },
+            },
+            update: { roleId: orgRole.id },
+            create: {
+              orgId: domainPolicy.orgId,
+              userId: user.id,
+              roleId: orgRole.id,
+            },
+          });
+        }
       }
 
-      if (account?.type !== "credentials") {
+      if (account?.provider !== "telegram") {
         await prisma.userChannel.upsert({
           where: {
             userId_channel: {
@@ -337,14 +279,15 @@ const nextAuth = NextAuth({
             externalId: user.id,
           },
         });
+      }
 
+      if (account?.provider !== "telegram" && account?.provider !== "credentials") {
         const profileRecord = profile as Record<string, unknown> | null;
         const profileEmailVerified =
           profileRecord && typeof profileRecord["email_verified"] === "boolean"
             ? (profileRecord["email_verified"] as boolean)
             : null;
-        const emailVerifiedByProvider =
-          account?.provider === "email" ? true : profileEmailVerified;
+        const emailVerifiedByProvider = profileEmailVerified;
 
         await prisma.user.update({
           where: { id: user.id },
@@ -354,14 +297,59 @@ const nextAuth = NextAuth({
 
       return true;
     },
-    session: async ({ session, user }) => {
+    jwt: async ({ token, user }) => {
+      if (user) {
+        token.sub = user.id;
+        token.role = user.role;
+        token.orgId = user.orgId;
+        token.balance = String(user.balance);
+        token.emailVerifiedByProvider = user.emailVerifiedByProvider ?? null;
+        token.sessionIssuedAt = Math.floor(Date.now() / 1000);
+      }
+      return token;
+    },
+    session: async ({ session, user, token }) => {
       if (session.user) {
-        session.user.id = user.id;
-        session.user.role = user.role;
-        session.user.orgId = user.orgId;
-        session.user.balance = String(user.balance);
+        const tokenSub = typeof token?.sub === "string" ? token.sub : null;
+        const nextId = user?.id ?? tokenSub;
+        if (nextId) {
+          session.user.id = nextId;
+        }
+
+        const tokenRole =
+          typeof token?.role === "string" &&
+          (token.role === "USER" ||
+            token.role === "ADMIN" ||
+            token.role === "EMPLOYEE")
+            ? token.role
+            : null;
+        session.user.role = user?.role ?? tokenRole ?? "USER";
+
+        const tokenOrgId =
+          typeof token?.orgId === "string" || token?.orgId === null
+            ? token.orgId
+            : null;
+        session.user.orgId = user?.orgId ?? tokenOrgId ?? null;
+
+        const tokenBalance =
+          typeof token?.balance === "string" ? token.balance : null;
+        session.user.balance = String(user?.balance ?? tokenBalance ?? "0");
+
+        const tokenEmailVerified =
+          typeof token?.emailVerifiedByProvider === "boolean" ||
+          token?.emailVerifiedByProvider === null
+            ? token.emailVerifiedByProvider
+            : null;
         session.user.emailVerifiedByProvider =
-          user.emailVerifiedByProvider ?? null;
+          user?.emailVerifiedByProvider ?? tokenEmailVerified ?? null;
+
+        const issuedAt =
+          typeof token?.sessionIssuedAt === "number"
+            ? token.sessionIssuedAt
+            : typeof token?.iat === "number"
+              ? token.iat
+              : null;
+        session.user.sessionTokenIssuedAt = issuedAt;
       }
       return session;
     },
@@ -369,7 +357,6 @@ const nextAuth = NextAuth({
 });
 
 export const handlers = nextAuth.handlers;
-export const signIn = nextAuth.signIn;
 export const signOut = nextAuth.signOut;
 
 const nextAuthAuth = nextAuth.auth;
@@ -428,7 +415,13 @@ export async function auth(request?: Request): Promise<Session | null> {
 
   const dbUser = await prisma.user.findUnique({
     where: { id: session.user.id },
-    select: { isActive: true, orgId: true, role: true, emailVerifiedByProvider: true },
+    select: {
+      isActive: true,
+      orgId: true,
+      role: true,
+      emailVerifiedByProvider: true,
+      sessionInvalidatedAt: true,
+    },
   });
 
   if (!dbUser) {
@@ -436,6 +429,14 @@ export async function auth(request?: Request): Promise<Session | null> {
   }
 
   if (dbUser.isActive === false) {
+    return null;
+  }
+
+  if (
+    dbUser.sessionInvalidatedAt &&
+    typeof session.user.sessionTokenIssuedAt === "number" &&
+    session.user.sessionTokenIssuedAt * 1000 <= dbUser.sessionInvalidatedAt.getTime()
+  ) {
     return null;
   }
 
