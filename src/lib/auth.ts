@@ -403,11 +403,17 @@ async function getBypassSession() {
 export async function auth(request?: Request): Promise<Session | null> {
   const bypass = await getBypassSession();
   if (bypass) return bypass as Session;
-  const session = request
+  let session = request
     ? ((await nextAuthAuth(
         request as unknown as Parameters<typeof nextAuthAuth>[0]
       )) as unknown as Session | null)
     : ((await nextAuthAuth()) as unknown as Session | null);
+
+  // In some Node runtimes, passing the raw Request can miss cookie context.
+  // Fallback to the implicit auth() call to preserve session resolution.
+  if (!session?.user?.id && request) {
+    session = (await nextAuthAuth()) as unknown as Session | null;
+  }
 
   if (!session?.user?.id) {
     return session;
