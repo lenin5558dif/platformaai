@@ -54,7 +54,6 @@ next-env.d.ts
 
 .opencode/
 openspec/
-AGENTS.md
 .playwright-mcp/
 .github/agents/
 .github/prompts/

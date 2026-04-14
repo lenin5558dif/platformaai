@@ -87,9 +87,10 @@ Do not restore the database casually after a deploy failure. If migrations were 
 
 ## Recurring Ops
 
-- Run `quota-cleanup` and audit-log purge through authenticated cron calls.
 - Treat the audit-log purge scheduler as single-node unless you add a lock or
   external worker; do not let multiple replicas run it independently.
+- The current repository does not expose a generic authenticated cron route for
+  purge jobs. Use the in-process scheduler or add a dedicated worker/route.
 - Scrape `/api/internal/metrics` with `x-cron-secret`, but remember the export
   is process-local and not aggregated across replicas.
 - Review disk usage for PostgreSQL volumes and stored backups.

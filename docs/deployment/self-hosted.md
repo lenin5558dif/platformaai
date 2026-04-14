@@ -82,10 +82,15 @@ metrics scraping, and alerting.
 
 - `AUTH_BYPASS` is rejected in production by startup validation
 - `NEXTAUTH_URL` and `NEXT_PUBLIC_APP_URL` must match
-- `ops`, `cron`, and `metrics` stay behind `x-cron-secret`
+- `ops` and `metrics` stay behind `x-cron-secret`
 - health/readiness responses are `no-store`
 - the Compose app service uses `restart: unless-stopped`
 - the app image is built as `standalone` and does not depend on the dev toolchain
+
+Current limitation:
+
+- there is no generic `/api/internal/cron/*` HTTP surface in the repository
+- audit-log purge scheduling is in-process via `AUDIT_LOG_PURGE_INTERVAL_MS`
 
 ## Suggested Checks
 
