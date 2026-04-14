@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: platformaai
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/platformaai
+      POSTGRES_PASSWORD: postgres
+      PGADMIN_PASSWORD: pgadmin
+      NEXTAUTH_SECRET: test-secret
+      NEXTAUTH_URL: http://localhost:3000
+      AUTH_SECRET: test-secret
+      OPENROUTER_API_KEY: test
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+      STRIPE_SECRET_KEY: sk_test_123
+      STRIPE_WEBHOOK_SECRET: whsec_test
+      TELEGRAM_LOGIN_BOT_NAME: test_bot
+      NEXT_PUBLIC_TELEGRAM_LOGIN_BOT_NAME: test_bot
+      UNISENDER_API_KEY: test
+      TELEGRAM_BOT_TOKEN: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+      - run: npm ci
+      - run: docker compose config
+      - run: npm run prisma:generate
+      - run: npx prisma migrate deploy
+      - run: npm run lint
+      - run: npm run test
+      - run: npm run build
+      - run: npx playwright install --with-deps
+      - run: npm run test:e2e

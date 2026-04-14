@@ -1,0 +1,225 @@
+@import "tailwindcss";
+
+/* Local Material Symbols to avoid external font fetches. */
+@font-face {
+  font-family: "Material Symbols Outlined";
+  font-style: normal;
+  font-weight: 100 700;
+  font-display: swap;
+  src: url("/fonts/material-symbols-outlined.woff2") format("woff2");
+}
+
+@theme inline {
+  --color-primary: #D47A6A; /* Muted terracotta */
+  --color-primary-hover: #c06a5a;
+  --color-background: #fdf8f5; /* Light cream */
+  --color-surface: #ffffff;
+  --color-surface-muted: #f8fafc;
+  --color-sidebar: #fdf8f5;
+  --color-border-light: #e5e7eb;
+  --color-text-main: #4A3D36; /* Dark warm brown */
+  --color-text-secondary: #857A73; /* Medium warm grey-brown */
+  --color-input-bg: rgba(255, 255, 255, 0.5);
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.5rem;
+  --radius-3xl: 1.5rem; /* Matches code.html */
+  --shadow-soft: 0 2px 15px -3px rgba(0, 0, 0, 0.07),
+    0 10px 20px -2px rgba(0, 0, 0, 0.04);
+  --shadow-card: 0 8px 24px -12px rgba(15, 23, 42, 0.25);
+  --shadow-glass-lg: 0 8px 32px 0 rgba(0, 0, 0, 0.05),
+    0 0 0 1px rgba(180, 160, 140, 0.1);
+  --shadow-glass-sm: 0 4px 10px 0 rgba(0, 0, 0, 0.03),
+    0 0 0 1px rgba(180, 160, 140, 0.1);
+  --font-display: var(--font-space-grotesk);
+  --font-body: var(--font-space-grotesk);
+}
+
+body {
+  background-color: var(--color-background);
+  color: var(--color-text-main);
+  font-family: var(--font-body);
+  position: relative;
+  overflow-x: hidden;
+}
+
+/* Background Blobs */
+body::before {
+  content: "";
+  position: fixed;
+  top: -10%;
+  left: -10%;
+  width: 50vw;
+  height: 50vw;
+  background-color: rgba(255, 218, 185, 0.2);
+  border-radius: 9999px;
+  filter: blur(100px);
+  z-index: -1;
+  animation: float 10s infinite ease-in-out;
+  pointer-events: none;
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  top: 20%;
+  right: 0%;
+  width: 40vw;
+  height: 40vw;
+  background-color: rgba(183, 110, 121, 0.15);
+  border-radius: 9999px;
+  filter: blur(100px);
+  z-index: -1;
+  animation: float 10s infinite ease-in-out;
+  animation-delay: -5s;
+  pointer-events: none;
+}
+
+/* Extra blob for bottom */
+.blob-bottom {
+  position: fixed;
+  bottom: -10%;
+  left: 20%;
+  width: 35vw;
+  height: 35vw;
+  background-color: rgba(245, 222, 179, 0.15);
+  border-radius: 9999px;
+  filter: blur(80px);
+  z-index: -1;
+  animation: float 10s infinite ease-in-out;
+  animation-delay: -2s;
+  pointer-events: none;
+}
+
+@keyframes float {
+  0% { transform: translate(0px, 0px) scale(1); }
+  33% { transform: translate(30px, -50px) scale(1.1); }
+  66% { transform: translate(-20px, 20px) scale(0.9); }
+  100% { transform: translate(0px, 0px) scale(1); }
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Custom Scrollbar from Code.html */
+::-webkit-scrollbar {
+    width: 8px;
+}
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+::-webkit-scrollbar-thumb {
+    background: rgba(180, 160, 140, 0.2);
+    border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(180, 160, 140, 0.3);
+}
+
+.material-symbols-outlined {
+  font-family: "Material Symbols Outlined";
+  font-weight: 400;
+  font-style: normal;
+  line-height: 1;
+  display: inline-block;
+  white-space: nowrap;
+  text-transform: none;
+  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
+}
+
+.material-symbols-outlined.fill {
+  font-variation-settings: "FILL" 1;
+}
+
+.focus-ring {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(212, 122, 106, 0.2);
+}
+
+.glass-panel {
+  background: rgba(255, 250, 240, 0.7);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(180, 160, 140, 0.1);
+  border-radius: 12px;
+}
+
+.glass-message-ai {
+    background: rgba(255, 250, 240, 0.7);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(180, 160, 140, 0.1);
+    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.03);
+}
+
+.glass-input {
+    background: rgba(255, 250, 240, 0.7);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(180, 160, 140, 0.1);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.05);
+}
+
+.prompt-card-glass {
+  background-color: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  transition: all 0.2s ease-in-out;
+}
+
+.prompt-card-glass:hover {
+  background-color: rgba(255, 255, 255, 0.8);
+  border-color: var(--color-primary);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+}
+
+.chat-markdown {
+  line-height: 1.6;
+}
+
+.chat-markdown :where(p, ul, ol, pre, blockquote, h1, h2, h3, h4, h5, h6) {
+  margin: 0 0 0.75rem;
+}
+
+.chat-markdown :where(ul, ol) {
+  padding-left: 1.2rem;
+}
+
+.chat-markdown pre {
+  background: #1e1e1e;
+  color: #e2e8f0;
+  padding: 1rem;
+  border-radius: 0.75rem;
+  overflow-x: auto;
+  font-size: 0.9rem;
+}
+
+.chat-markdown code {
+  background: rgba(0, 0, 0, 0.05);
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.4rem;
+  font-family: inherit;
+}
+
+.chat-markdown pre code {
+  background: transparent;
+  padding: 0;
+}
+
+.chat-markdown a {
+  color: var(--color-primary);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
