@@ -33,6 +33,8 @@ front/
 # internal docs (not for public)
 Plan Platforma AI.md
 how much is it.md
+server.md
+.server/
 
 # debug
 npm-debug.log*

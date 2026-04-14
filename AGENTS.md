@@ -2,6 +2,9 @@
 
 This file is the short operational map for contributors and coding agents working in this repository.
 
+For any deploy, server access, or production-verification task, consult `server.md` first.
+`server.md` is the source of truth for Dokploy access, SSH commands, server paths, and test execution location.
+
 ## Project shape
 
 - Framework: Next.js 15 App Router
@@ -58,6 +61,12 @@ npm run test:e2e
 npm run build
 npm run bot:dev
 ```
+
+## Server-first testing
+
+- Do not run project tests locally by default.
+- Run validation, smoke checks, and test commands on the deploy server described in `server.md`.
+- Before deploy-related changes, check current server access details and runtime paths in `server.md`.
 
 ## Documentation expectations
 
