@@ -5,7 +5,7 @@ services:
     volumes:
       - .:/workspace
     command: >
-      bash -lc "rm -rf node_modules && npm ci && npm run lint"
+      bash -lc "rm -rf /tmp/platformaai-test && mkdir -p /tmp/platformaai-test && cp -a /workspace/. /tmp/platformaai-test/ && cd /tmp/platformaai-test && npm ci && npm run lint"
 
   vitest:
     image: node:20-bookworm-slim
@@ -13,7 +13,7 @@ services:
     volumes:
       - .:/workspace
     command: >
-      bash -lc "rm -rf node_modules && npm ci && npm test"
+      bash -lc "rm -rf /tmp/platformaai-test && mkdir -p /tmp/platformaai-test && cp -a /workspace/. /tmp/platformaai-test/ && cd /tmp/platformaai-test && npm ci && npm test"
 
   playwright:
     image: mcr.microsoft.com/playwright:v1.54.2-jammy
@@ -23,4 +23,4 @@ services:
     volumes:
       - .:/workspace
     command: >
-      bash -lc "rm -rf node_modules && npm ci && npm run test:e2e"
+      bash -lc "rm -rf /tmp/platformaai-test && mkdir -p /tmp/platformaai-test && cp -a /workspace/. /tmp/platformaai-test/ && cd /tmp/platformaai-test && npm ci && npm run test:e2e"
