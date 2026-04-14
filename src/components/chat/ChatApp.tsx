@@ -195,7 +195,7 @@ export default function ChatApp() {
       return "Try another model or try again later.";
     }
     if (error.toLowerCase().includes("balance")) {
-      return "Top up balance or switch to free model.";
+      return "Top up balance to continue.";
     }
     return "Check connection and try again.";
   }, [error]);
@@ -1236,7 +1236,11 @@ export default function ChatApp() {
           <div className="flex items-center gap-3 rounded-lg border border-black/10 bg-black/5 px-3 py-2">
             <div
               className="size-8 rounded-full bg-gray-300 ring-2 ring-black/10 flex items-center justify-center text-text-secondary font-bold"
-              style={{ backgroundImage: `url(${currentUser?.image})`, backgroundSize: "cover" }}
+              style={
+                currentUser?.image
+                  ? { backgroundImage: `url(${currentUser.image})`, backgroundSize: "cover" }
+                  : undefined
+              }
             >
               {!currentUser?.image && (currentUser?.displayName?.[0] || "U")}
             </div>
@@ -1562,7 +1566,14 @@ export default function ChatApp() {
                     </div>
 
                     {!isAI && (
-                      <div className="size-10 shrink-0 rounded-full bg-gray-200 flex items-center justify-center shadow-lg text-gray-500" style={{ backgroundImage: `url(${currentUser?.image})`, backgroundSize: 'cover' }}>
+                      <div
+                        className="size-10 shrink-0 rounded-full bg-gray-200 flex items-center justify-center shadow-lg text-gray-500"
+                        style={
+                          currentUser?.image
+                            ? { backgroundImage: `url(${currentUser.image})`, backgroundSize: "cover" }
+                            : undefined
+                        }
+                      >
                         {!currentUser?.image && <span className="material-symbols-outlined text-[20px]">person</span>}
                       </div>
                     )}
