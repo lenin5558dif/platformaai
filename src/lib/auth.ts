@@ -1,13 +1,23 @@
+import "@/lib/env";
+
 import NextAuth from "next-auth";
 import type { Session } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import type { EmailConfig, OIDCConfig } from "@auth/core/providers";
 import { PrismaAdapter } from "@auth/prisma-adapter";
+import { EmailSignInError } from "@auth/core/errors";
+import { headers } from "next/headers";
+import { AuditAction, Prisma, UserRole } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { logAudit } from "@/lib/audit";
 import { sendMagicLink } from "@/lib/unisender";
 import { verifyTelegramLogin, type TelegramAuthPayload } from "@/lib/telegram";
+import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
+import {
+  evaluateAuthEmailGuardrails,
+  loadAuthEmailGuardrails,
+} from "@/lib/auth-ui";
 import { z } from "zod";
-import { Prisma, UserRole } from "@prisma/client";
 
 const telegramSchema = z.object({
   id: z.number(),
@@ -18,6 +28,41 @@ const telegramSchema = z.object({
   auth_date: z.number(),
   hash: z.string(),
 });
+
+const authEmailGuardrails = loadAuthEmailGuardrails();
+const EMAIL_SIGNIN_DOMAIN_LIMIT = 20;
+const EMAIL_SIGNIN_DOMAIN_WINDOW_MS = 15 * 60 * 1000;
+const EMAIL_SIGNIN_SUSPICIOUS_DOMAIN_LIMIT = 5;
+const emailAuthConfigured =
+  Boolean(process.env.UNISENDER_API_KEY) &&
+  Boolean(process.env.UNISENDER_SENDER_EMAIL);
+
+async function logAuthSecurityAudit(params: {
+  stage: "email_signin" | "invite_create" | "invite_resend" | "invite_accept";
+  reason: string;
+  email: string;
+  domain: string | null;
+  clientIp?: string | null;
+  userAgent?: string | null;
+  blocked?: boolean;
+  suspicious?: boolean;
+}) {
+  await logAudit({
+    action: AuditAction.POLICY_BLOCKED,
+    ip: params.clientIp ?? undefined,
+    userAgent: params.userAgent ?? undefined,
+    metadata: {
+      auth: {
+        stage: params.stage,
+        reason: params.reason,
+        email: params.email,
+        domain: params.domain,
+        blocked: params.blocked ?? false,
+        suspicious: params.suspicious ?? false,
+      },
+    },
+  });
+}
 
 const ssoProvider: OIDCConfig<Record<string, unknown>> | null =
   process.env.SSO_ISSUER &&
@@ -34,21 +79,79 @@ const ssoProvider: OIDCConfig<Record<string, unknown>> | null =
       }
     : null;
 
-const nextAuth = NextAuth({
-  adapter: PrismaAdapter(prisma),
-  session: { strategy: "database" },
-  trustHost: true,
-  providers: [
-    {
+const emailProvider: EmailConfig | null = emailAuthConfigured
+  ? ({
       id: "email",
       name: "Email",
       type: "email",
       from: process.env.UNISENDER_SENDER_EMAIL,
       maxAge: 10 * 60,
       sendVerificationRequest: async ({ identifier, url }) => {
-        await sendMagicLink({ email: identifier, url });
+        const normalizedEmail = identifier.trim().toLowerCase();
+        const authDecision = evaluateAuthEmailGuardrails(
+          normalizedEmail,
+          authEmailGuardrails
+        );
+        const requestHeaders = await headers();
+        const clientIp = getClientIp(requestHeaders);
+        const userAgent = requestHeaders.get("user-agent");
+
+        if (authDecision.blocked) {
+          await logAuthSecurityAudit({
+            stage: "email_signin",
+            reason: "blocked_email_domain",
+            email: authDecision.normalizedEmail,
+            domain: authDecision.domain,
+            clientIp,
+            userAgent,
+            blocked: true,
+          });
+
+          throw new EmailSignInError("Unable to send verification email");
+        }
+
+        if (authDecision.domain) {
+          const domainRateLimit = await checkRateLimit({
+            key: `auth:email-domain:${authDecision.domain}`,
+            limit: authDecision.suspicious
+              ? EMAIL_SIGNIN_SUSPICIOUS_DOMAIN_LIMIT
+              : EMAIL_SIGNIN_DOMAIN_LIMIT,
+            windowMs: EMAIL_SIGNIN_DOMAIN_WINDOW_MS,
+          });
+
+          if (!domainRateLimit.ok) {
+            await logAuthSecurityAudit({
+              stage: "email_signin",
+              reason: authDecision.suspicious
+                ? "suspicious_domain_throttled"
+                : "domain_throttled",
+              email: authDecision.normalizedEmail,
+              domain: authDecision.domain,
+              clientIp,
+              userAgent,
+              blocked: true,
+              suspicious: authDecision.suspicious,
+            });
+
+            throw new EmailSignInError("Rate limited");
+          }
+        }
+
+        try {
+          await sendMagicLink({ email: normalizedEmail, url });
+        } catch {
+          throw new EmailSignInError("Unable to send verification email");
+        }
       },
-    } satisfies EmailConfig,
+    } satisfies EmailConfig)
+  : null;
+
+const nextAuth = NextAuth({
+  adapter: PrismaAdapter(prisma),
+  session: { strategy: "database" },
+  trustHost: true,
+  providers: [
+    ...(emailProvider ? [emailProvider] : []),
     CredentialsProvider({
       name: "Telegram",
       credentials: {
@@ -108,7 +211,30 @@ const nextAuth = NextAuth({
     ...(ssoProvider ? [ssoProvider] : []),
   ],
   callbacks: {
-    signIn: async ({ user, account, profile }) => {
+    signIn: async ({ user, account, email, profile }) => {
+      if (
+        account?.provider === "email" &&
+        email?.verificationRequest &&
+        user?.email
+      ) {
+        const clientIp = getClientIp(await headers());
+        const rate = await checkRateLimit({
+          key: `auth:email:${user.email.trim().toLowerCase()}`,
+          limit: 5,
+          windowMs: 15 * 60 * 1000,
+        });
+
+        const ipRate = await checkRateLimit({
+          key: `auth:email-ip:${clientIp}`,
+          limit: 20,
+          windowMs: 15 * 60 * 1000,
+        });
+
+        if (!rate.ok || !ipRate.ok) {
+          throw new EmailSignInError("Rate limited");
+        }
+      }
+
       if (!user?.email) return true;
       if (!user?.id) return true;
 
@@ -118,7 +244,7 @@ const nextAuth = NextAuth({
       });
 
       if (dbUser && dbUser.isActive === false) {
-        return false;
+        return "/login?error=AccountDisabled";
       }
 
       const domain = user.email.split("@")[1]?.toLowerCase();

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { verifyTelegramLogin } from "@/lib/telegram";
-import { checkRateLimit } from "@/lib/rate-limit";
+import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 
 const schema = z.object({
   id: z.number(),
@@ -22,8 +22,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false }, { status: 401 });
   }
 
-  const rate = checkRateLimit({
-    key: `tg-link:${session.user.id}`,
+  const clientIp = getClientIp(request);
+  const rate = await checkRateLimit({
+    key: `tg-link:${session.user.id}:${clientIp}`,
     limit: 10,
     windowMs: 60 * 1000,
   });

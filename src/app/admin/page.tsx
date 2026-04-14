@@ -1,4 +1,6 @@
+import Link from "next/link";
 import { auth } from "@/lib/auth";
+import { isGlobalAdminSession } from "@/lib/admin-access";
 import { prisma } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
@@ -31,7 +33,7 @@ export default async function AdminPage() {
     );
   }
 
-  if (session.user.role !== "ADMIN") {
+  if (!isGlobalAdminSession(session)) {
     return (
       <div className="min-h-screen flex items-center justify-center px-6">
         <div className="rounded-2xl bg-white/80 border border-white/50 shadow-glass-sm p-6 text-center">
@@ -39,7 +41,7 @@ export default async function AdminPage() {
             Недостаточно прав
           </h1>
           <p className="text-sm text-text-secondary">
-            Админ‑панель доступна только администраторам.
+            Админ‑панель доступна только платформенным администраторам.
           </p>
         </div>
       </div>
@@ -92,12 +94,59 @@ export default async function AdminPage() {
     <div className="min-h-screen px-6 py-10">
       <div className="max-w-5xl mx-auto space-y-6">
         <div className="rounded-2xl bg-white/80 border border-white/50 shadow-glass-sm p-6">
-          <h1 className="text-2xl font-semibold text-text-main mb-2 font-display">
-            Админ‑панель
-          </h1>
-          <p className="text-sm text-text-secondary">
-            Обзор потребления токенов и используемых моделей.
-          </p>
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="max-w-2xl">
+              <h1 className="text-2xl font-semibold text-text-main mb-2 font-display">
+                Админ‑панель
+              </h1>
+              <p className="text-sm text-text-secondary">
+                Обзор потребления токенов и используемых моделей. Отсюда удобно перейти к org,
+                аудиту и событиям, если нужно разбирать расход или доступы.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Link
+                href="/org"
+                className="rounded-full border border-gray-200 bg-white/80 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-white"
+              >
+                Org
+              </Link>
+              <Link
+                href="/audit"
+                className="rounded-full border border-gray-200 bg-white/80 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-white"
+              >
+                Audit
+              </Link>
+              <Link
+                href="/events"
+                className="rounded-full border border-gray-200 bg-white/80 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-white"
+              >
+                Events
+              </Link>
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            {[
+              {
+                title: "Проверить org",
+                text: "Если расход выглядит неожиданно, откройте управление организацией и проверьте роли.",
+              },
+              {
+                title: "Сверить аудит",
+                text: "Аудит помогает быстро понять, кто менял доступы и почему вырос расход.",
+              },
+              {
+                title: "Сопоставить модели",
+                text: "Смотрите на модели с высоким токен-объёмом, чтобы ловить перекосы в usage.",
+              },
+            ].map((item) => (
+              <div key={item.title} className="rounded-xl border border-gray-200 bg-white/70 p-4">
+                <p className="text-sm font-semibold text-text-main">{item.title}</p>
+                <p className="mt-1 text-xs text-text-secondary">{item.text}</p>
+              </div>
+            ))}
+          </div>
         </div>
 
         <div className="grid gap-4 md:grid-cols-3">
@@ -155,9 +204,14 @@ export default async function AdminPage() {
               </table>
             </div>
           ) : (
-            <p className="text-sm text-text-secondary">
-              Пока нет данных по использованию.
-            </p>
+            <div className="rounded-xl border border-dashed border-gray-300 bg-white/60 px-4 py-4">
+              <p className="text-sm font-medium text-text-main">Пока нет данных по использованию</p>
+              <p className="mt-1 text-xs text-text-secondary">
+                Когда появятся сообщения, здесь начнут расти счётчики по моделям, токенам и
+                кредитам. Если цифры пустые слишком долго, проверьте, что пользователи реально
+                отправляют запросы в чат.
+              </p>
+            </div>
           )}
         </div>
       </div>

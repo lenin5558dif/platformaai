@@ -1,13 +1,16 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { signIn } from "next-auth/react";
 import SsoLoginButton from "@/components/auth/SsoLoginButton";
 import TelegramLoginButton from "@/components/auth/TelegramLoginButton";
 import {
+  evaluateAuthEmailGuardrails,
   getModeText,
   mapLoginError,
   type AuthCapabilities,
+  type AuthEmailGuardrails,
   type AuthMode,
   type AuthViewState,
 } from "@/lib/auth-ui";
@@ -16,6 +19,7 @@ type LoginFormProps = {
   initialMode: AuthMode;
   initialError?: string;
   capabilities: AuthCapabilities;
+  emailGuardrails: AuthEmailGuardrails;
 };
 
 type AuthFeedback = {
@@ -59,6 +63,7 @@ export default function LoginForm({
   initialMode,
   initialError,
   capabilities,
+  emailGuardrails,
 }: LoginFormProps) {
   const initialFeedback = useMemo(() => mapLoginError(initialError), [initialError]);
   const [mode, setMode] = useState<AuthMode>(initialMode);
@@ -73,6 +78,29 @@ export default function LoginForm({
   const modeText = useMemo(() => getModeText(mode), [mode]);
   const hasAnyMethod = capabilities.email || capabilities.sso || capabilities.telegram;
   const canUseTelegram = capabilities.telegram && !telegramUnavailable;
+  const accessCards = [
+    {
+      key: "email",
+      title: "Email link",
+      enabled: capabilities.email,
+      text:
+        mode === "register"
+          ? "Создаст web-аккаунт и завершит регистрацию через магическую ссылку."
+          : "Быстрый вход без пароля и без отдельного сброса credentials.",
+    },
+    {
+      key: "sso",
+      title: "SSO",
+      enabled: capabilities.sso,
+      text: "Подходит для корпоративного входа через ваш identity provider.",
+    },
+    {
+      key: "telegram",
+      title: "Telegram",
+      enabled: capabilities.telegram,
+      text: "Дополнительный канал входа, который можно подключить позже.",
+    },
+  ];
 
   useEffect(() => {
     if (!initialFeedback) {
@@ -99,6 +127,21 @@ export default function LoginForm({
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     if (!email || !capabilities.email) return;
+
+    const emailDecision = evaluateAuthEmailGuardrails(email, emailGuardrails);
+    if (emailDecision.blocked) {
+      const nextFeedback: AuthFeedback = {
+        state: "error",
+        title: "Email ограничен политикой доступа",
+        message:
+          "Для этого адреса или домена вход временно ограничен. Используйте другой корпоративный email или обратитесь к администратору.",
+        action: "contact_admin",
+      };
+      setStatus(nextFeedback.state);
+      setFeedback(nextFeedback);
+      emitAuthEvent("failure", "email");
+      return;
+    }
 
     setStatus("submitting");
     setFeedback(null);
@@ -146,6 +189,22 @@ export default function LoginForm({
           {modeText.title}
         </h1>
         <p className="text-sm text-text-secondary">{modeText.subtitle}</p>
+      </div>
+
+      <div className="grid gap-2 sm:grid-cols-3">
+        {accessCards.map((card) => (
+          <div
+            key={card.key}
+            className={`rounded-xl border px-3 py-3 text-xs ${
+              card.enabled
+                ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                : "border-gray-200 bg-gray-50 text-gray-400"
+            }`}
+          >
+            <p className="font-semibold">{card.title}</p>
+            <p className="mt-1 leading-5">{card.text}</p>
+          </div>
+        ))}
       </div>
 
       <div
@@ -279,6 +338,30 @@ export default function LoginForm({
             Вход через Telegram временно недоступен в этом окружении. Используйте email или SSO.
           </p>
         )}
+
+        <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-text-secondary">
+            После входа
+          </p>
+          <div className="mt-2 grid gap-2 text-xs text-text-secondary sm:grid-cols-2">
+            <p>Откройте чат или сразу перейдите в организацию для управления командой.</p>
+            <p>Если письмо с доступом пришло от коллег, используйте тот же email при входе.</p>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Link
+              href="/org"
+              className="rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-white hover:bg-primary-hover"
+            >
+              Открыть org
+            </Link>
+            <Link
+              href="/"
+              className="rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-white"
+            >
+              В чат
+            </Link>
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -14,6 +14,10 @@ const state = vi.hoisted(() => ({
   rateLimitOk: true,
   rateLimitRemaining: 9,
   rateLimitResetAt: Date.now() + 3600000,
+  rateLimitOverrides: new Map<
+    string,
+    { ok: boolean; remaining: number; resetAt: number }
+  >(),
 }));
 
 function makeSession() {
@@ -32,6 +36,17 @@ function makeSession() {
 
 function jsonResponse(res: Response) {
   return res.json() as Promise<any>;
+}
+
+function setRateLimitOverride(
+  key: string,
+  result: Partial<{ ok: boolean; remaining: number; resetAt: number }>
+) {
+  state.rateLimitOverrides.set(key, {
+    ok: result.ok ?? true,
+    remaining: result.remaining ?? state.rateLimitRemaining,
+    resetAt: result.resetAt ?? state.rateLimitResetAt,
+  });
 }
 
 const db = {
@@ -81,7 +96,21 @@ const prisma = {
           if (args.where.revokedAt === null && inv.revokedAt !== null) continue;
         }
         if (args.where?.expiresAt?.gt && !(inv.expiresAt > args.where.expiresAt.gt)) continue;
-        return args.select ? { id: inv.id } : inv;
+        if (!args.select) return inv;
+        return {
+          id: inv.id,
+          orgId: inv.orgId,
+          email: inv.email,
+          roleId: inv.roleId,
+          defaultCostCenterId: inv.defaultCostCenterId,
+          tokenHash: inv.tokenHash,
+          tokenPrefix: inv.tokenPrefix,
+          expiresAt: inv.expiresAt,
+          usedAt: inv.usedAt,
+          revokedAt: inv.revokedAt,
+          createdAt: inv.createdAt,
+          role: inv.role ? { id: inv.role.id, name: inv.role.name } : undefined,
+        };
       }
       return null;
     }),
@@ -188,18 +217,26 @@ vi.mock("@/lib/audit", () => ({
   logAudit: vi.fn(async () => undefined),
 }));
 vi.mock("@/lib/rate-limit", () => ({
-  checkRateLimit: vi.fn(() => ({
-    ok: state.rateLimitOk,
-    remaining: state.rateLimitRemaining,
-    resetAt: state.rateLimitResetAt,
+  checkRateLimit: vi.fn(async (args: { key: string }) => {
+    return (
+      state.rateLimitOverrides.get(args.key) ?? {
+        ok: state.rateLimitOk,
+        remaining: state.rateLimitRemaining,
+        resetAt: state.rateLimitResetAt,
+      }
+    );
+  }),
+  getClientIp: vi.fn((request: Request) => {
+    const forwardedFor = request.headers.get("x-forwarded-for") ?? "unknown";
+    return forwardedFor.split(",")[0]?.trim() || "unknown";
+  }),
+  getRateLimitHeaders: vi.fn(({ limit, remaining, resetAt }: any) => ({
+    "x-ratelimit-limit": String(limit),
+    "x-ratelimit-remaining": String(remaining),
+    "x-ratelimit-reset": String(Math.ceil(resetAt / 1000)),
   })),
-  getRateLimitHeaders: vi.fn(() => ({
-    "x-ratelimit-limit": "10",
-    "x-ratelimit-remaining": String(state.rateLimitRemaining),
-    "x-ratelimit-reset": String(Math.ceil(state.rateLimitResetAt / 1000)),
-  })),
-  getRetryAfterHeader: vi.fn(() => ({
-    "retry-after": String(Math.ceil((state.rateLimitResetAt - Date.now()) / 1000)),
+  getRetryAfterHeader: vi.fn((resetAt: number) => ({
+    "retry-after": String(Math.ceil((resetAt - Date.now()) / 1000)),
   })),
 }));
 vi.mock("@/lib/authorize", () => {
@@ -249,6 +286,9 @@ describe("org invites routes", () => {
     state.rateLimitOk = true;
     state.rateLimitRemaining = 9;
     state.rateLimitResetAt = Date.now() + 3600000;
+    state.rateLimitOverrides.clear();
+    delete process.env.AUTH_EMAIL_BLOCKLIST;
+    delete process.env.AUTH_EMAIL_SUSPICIOUS_DOMAINS;
     db.roles.set("role_1", { id: "role_1", orgId: "org_1", name: "Member" });
     db.costCenters.set("cc_1", { id: "cc_1", orgId: "org_1", name: "Main" });
     db.costCenters.set("cc_other", { id: "cc_other", orgId: "org_2", name: "Other" });
@@ -278,6 +318,15 @@ describe("org invites routes", () => {
     expect(listBody.data).toHaveLength(1);
   });
 
+  test("list invites returns auth errors through shared error handler", async () => {
+    state.authenticated = false;
+    const { GET } = await import("../src/app/api/org/invites/route");
+    const res = await GET();
+    expect(res.status).toBe(401);
+    const body = await jsonResponse(res);
+    expect(body.code).toBe("UNAUTHORIZED");
+  });
+
   test("duplicate pending invite is rejected", async () => {
     const { POST } = await import("../src/app/api/org/invites/route");
 
@@ -299,6 +348,101 @@ describe("org invites routes", () => {
     expect(res2.status).toBe(409);
     const body2 = await jsonResponse(res2);
     expect(body2.code).toBe("INVITE_EXISTS");
+  });
+
+  test("create blocks configured email domains and audits them", async () => {
+    process.env.AUTH_EMAIL_BLOCKLIST = "blocked.example";
+    vi.resetModules();
+
+    const { POST } = await import("../src/app/api/org/invites/route");
+    const res = await POST(
+      new Request("http://localhost/api/org/invites", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: "person@blocked.example", roleId: "role_1" }),
+      })
+    );
+
+    expect(res.status).toBe(403);
+    const body = await jsonResponse(res);
+    expect(body.code).toBe("EMAIL_DOMAIN_BLOCKED");
+    expect(logAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: AuditAction.POLICY_BLOCKED,
+        metadata: expect.objectContaining({
+          auth: expect.objectContaining({
+            stage: "invite_create",
+            reason: "blocked_email_domain",
+            email: "person@blocked.example",
+            domain: "blocked.example",
+            blocked: true,
+          }),
+        }),
+      })
+    );
+  });
+
+  test("create throttles suspicious domains", async () => {
+    process.env.AUTH_EMAIL_SUSPICIOUS_DOMAINS = "suspicious-create.example";
+    vi.resetModules();
+
+    setRateLimitOverride(`invite:create:${state.userId}:${state.orgId}`, {
+      ok: true,
+      remaining: 9,
+      resetAt: state.rateLimitResetAt,
+    });
+    setRateLimitOverride(
+      `invite:create-domain:${state.orgId}:suspicious-create.example`,
+      {
+        ok: false,
+        remaining: 0,
+        resetAt: state.rateLimitResetAt,
+      }
+    );
+
+    const { POST } = await import("../src/app/api/org/invites/route");
+    const res = await POST(
+      new Request("http://localhost/api/org/invites", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          email: "person@suspicious-create.example",
+          roleId: "role_1",
+        }),
+      })
+    );
+
+    expect(res.status).toBe(429);
+    const body = await jsonResponse(res);
+    expect(body.code).toBe("RATE_LIMITED");
+    expect(logAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: AuditAction.POLICY_BLOCKED,
+        metadata: expect.objectContaining({
+          auth: expect.objectContaining({
+            stage: "invite_create",
+            reason: "suspicious_domain_throttled",
+            suspicious: true,
+          }),
+        }),
+      })
+    );
+    delete process.env.AUTH_EMAIL_SUSPICIOUS_DOMAINS;
+    vi.resetModules();
+  });
+
+  test("create rejects unknown roles", async () => {
+    const { POST } = await import("../src/app/api/org/invites/route");
+    const res = await POST(
+      new Request("http://localhost/api/org/invites", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: "norole@test.com", roleId: "missing" }),
+      })
+    );
+    expect(res.status).toBe(404);
+    const body = await jsonResponse(res);
+    expect(body.code).toBe("ROLE_NOT_FOUND");
   });
 
   test("can create new invite after previous was revoked", async () => {
@@ -345,6 +489,28 @@ describe("org invites routes", () => {
       })
     );
     expect(second.status).toBe(201);
+  });
+
+  test("create omits token payload outside test NODE_ENV", async () => {
+    const previousNodeEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    vi.resetModules();
+
+    const { POST } = await import("../src/app/api/org/invites/route");
+    const res = await POST(
+      new Request("http://localhost/api/org/invites", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: "prod@test.com", roleId: "role_1" }),
+      })
+    );
+    expect(res.status).toBe(201);
+    const body = await jsonResponse(res);
+    expect(body.data.token).toBeUndefined();
+    expect(body.data.acceptUrl).toBeUndefined();
+
+    process.env.NODE_ENV = previousNodeEnv;
+    vi.resetModules();
   });
 
   test("create rejects out-of-org defaultCostCenterId", async () => {
@@ -397,6 +563,82 @@ describe("org invites routes", () => {
       })
     );
     expect(accepted.status).toBe(410);
+  });
+
+  test("revoke returns 404 for missing invite", async () => {
+    const { POST: revoke } = await import(
+      "../src/app/api/org/invites/[id]/revoke/route"
+    );
+    const res = await revoke(
+      new Request("http://localhost/api/org/invites/missing/revoke", {
+        method: "POST",
+      }),
+      { params: Promise.resolve({ id: "missing" }) }
+    );
+    expect(res.status).toBe(404);
+    const body = await jsonResponse(res);
+    expect(body.code).toBe("NOT_FOUND");
+  });
+
+  test("revoke returns 409 for used invite", async () => {
+    const { POST: create } = await import("../src/app/api/org/invites/route");
+    const created = await create(
+      new Request("http://localhost/api/org/invites", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: "used@b.com", roleId: "role_1" }),
+      })
+    );
+    const createdBody = await jsonResponse(created);
+    const inviteId = createdBody.data.id;
+    db.invites.get(inviteId)!.usedAt = new Date();
+
+    const { POST: revoke } = await import(
+      "../src/app/api/org/invites/[id]/revoke/route"
+    );
+    const res = await revoke(
+      new Request("http://localhost/api/org/invites/used/revoke", {
+        method: "POST",
+      }),
+      { params: Promise.resolve({ id: inviteId }) }
+    );
+    expect(res.status).toBe(409);
+    const body = await jsonResponse(res);
+    expect(body.code).toBe("INVITE_ALREADY_USED");
+  });
+
+  test("revoke is a no-op for already revoked invite", async () => {
+    const { POST: create } = await import("../src/app/api/org/invites/route");
+    const created = await create(
+      new Request("http://localhost/api/org/invites", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: "revoked@b.com", roleId: "role_1" }),
+      })
+    );
+    const createdBody = await jsonResponse(created);
+    const inviteId = createdBody.data.id;
+
+    const { POST: revoke } = await import(
+      "../src/app/api/org/invites/[id]/revoke/route"
+    );
+    const first = await revoke(
+      new Request("http://localhost/api/org/invites/revoked/revoke", {
+        method: "POST",
+      }),
+      { params: Promise.resolve({ id: inviteId }) }
+    );
+    expect(first.status).toBe(200);
+    expect(prisma.orgInvite.update).toHaveBeenCalledTimes(1);
+
+    const second = await revoke(
+      new Request("http://localhost/api/org/invites/revoked/revoke", {
+        method: "POST",
+      }),
+      { params: Promise.resolve({ id: inviteId }) }
+    );
+    expect(second.status).toBe(200);
+    expect(prisma.orgInvite.update).toHaveBeenCalledTimes(1);
   });
 
   test("accept requires auth and enforces email lock", async () => {
@@ -675,7 +917,6 @@ describe("org invites routes", () => {
     state.rateLimitRemaining = 0;
     state.rateLimitResetAt = Date.now() + 1800000;
 
-    vi.resetModules();
     const { POST: resend } = await import(
       "../src/app/api/org/invites/[id]/resend/route"
     );
@@ -688,6 +929,202 @@ describe("org invites routes", () => {
     expect(body.code).toBe("RATE_LIMITED");
     expect(res.headers.get("x-ratelimit-limit")).toBe("10");
     expect(res.headers.get("retry-after")).toBeTruthy();
+  });
+
+  test("resend returns 404 for missing invite", async () => {
+    const { POST: resend } = await import(
+      "../src/app/api/org/invites/[id]/resend/route"
+    );
+    const res = await resend(
+      new Request("http://localhost/api/org/invites/missing/resend", {
+        method: "POST",
+      }),
+      { params: Promise.resolve({ id: "missing" }) }
+    );
+    expect(res.status).toBe(404);
+    const body = await jsonResponse(res);
+    expect(body.code).toBe("NOT_FOUND");
+  });
+
+  test("resend returns 409 for used invite", async () => {
+    const { POST: create } = await import("../src/app/api/org/invites/route");
+    const created = await create(
+      new Request("http://localhost/api/org/invites", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: "usedresend@test.com", roleId: "role_1" }),
+      })
+    );
+    const createdBody = await jsonResponse(created);
+    const inviteId = createdBody.data.id;
+    db.invites.get(inviteId)!.usedAt = new Date();
+
+    const { POST: resend } = await import(
+      "../src/app/api/org/invites/[id]/resend/route"
+    );
+    const res = await resend(
+      new Request("http://localhost/api/org/invites/used/resend", {
+        method: "POST",
+      }),
+      { params: Promise.resolve({ id: inviteId }) }
+    );
+    expect(res.status).toBe(409);
+    const body = await jsonResponse(res);
+    expect(body.code).toBe("INVITE_ALREADY_USED");
+  });
+
+  test("resend returns 410 for revoked invite", async () => {
+    const { POST: create } = await import("../src/app/api/org/invites/route");
+    const created = await create(
+      new Request("http://localhost/api/org/invites", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: "revokedresend@test.com", roleId: "role_1" }),
+      })
+    );
+    const createdBody = await jsonResponse(created);
+    const inviteId = createdBody.data.id;
+    db.invites.get(inviteId)!.revokedAt = new Date();
+
+    const { POST: resend } = await import(
+      "../src/app/api/org/invites/[id]/resend/route"
+    );
+    const res = await resend(
+      new Request("http://localhost/api/org/invites/revoked/resend", {
+        method: "POST",
+      }),
+      { params: Promise.resolve({ id: inviteId }) }
+    );
+    expect(res.status).toBe(410);
+    const body = await jsonResponse(res);
+    expect(body.code).toBe("INVITE_REVOKED");
+  });
+
+  test("resend returns 410 for expired invite", async () => {
+    const { POST: create } = await import("../src/app/api/org/invites/route");
+    const created = await create(
+      new Request("http://localhost/api/org/invites", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: "expiredresend@test.com", roleId: "role_1" }),
+      })
+    );
+    const createdBody = await jsonResponse(created);
+    const inviteId = createdBody.data.id;
+    db.invites.get(inviteId)!.expiresAt = new Date(Date.now() - 60_000);
+
+    const { POST: resend } = await import(
+      "../src/app/api/org/invites/[id]/resend/route"
+    );
+    const res = await resend(
+      new Request("http://localhost/api/org/invites/expired/resend", {
+        method: "POST",
+      }),
+      { params: Promise.resolve({ id: inviteId }) }
+    );
+    expect(res.status).toBe(410);
+    const body = await jsonResponse(res);
+    expect(body.code).toBe("INVITE_EXPIRED");
+  });
+
+  test("resend blocks configured email domains and audits them", async () => {
+    const { POST: create } = await import("../src/app/api/org/invites/route");
+    const created = await create(
+      new Request("http://localhost/api/org/invites", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          email: "person@resend-block.example",
+          roleId: "role_1",
+        }),
+      })
+    );
+    const createdBody = await jsonResponse(created);
+    const inviteId = createdBody.data.id;
+
+    process.env.AUTH_EMAIL_BLOCKLIST = "resend-block.example";
+    vi.resetModules();
+
+    const { POST: resend } = await import(
+      "../src/app/api/org/invites/[id]/resend/route"
+    );
+    const res = await resend(
+      new Request("http://localhost/api/org/invites/blocked/resend", {
+        method: "POST",
+      }),
+      { params: Promise.resolve({ id: inviteId }) }
+    );
+    expect(res.status).toBe(403);
+    const body = await jsonResponse(res);
+    expect(body.code).toBe("EMAIL_DOMAIN_BLOCKED");
+    expect(logAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: AuditAction.POLICY_BLOCKED,
+        metadata: expect.objectContaining({
+          auth: expect.objectContaining({
+            stage: "invite_resend",
+            reason: "blocked_email_domain",
+          }),
+        }),
+      })
+    );
+  });
+
+  test("resend throttles suspicious domains", async () => {
+    process.env.AUTH_EMAIL_SUSPICIOUS_DOMAINS = "suspicious.example";
+    vi.resetModules();
+
+    const { POST: create } = await import("../src/app/api/org/invites/route");
+    const created = await create(
+      new Request("http://localhost/api/org/invites", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          email: "user@suspicious.example",
+          roleId: "role_1",
+        }),
+      })
+    );
+    const createdBody = await jsonResponse(created);
+    const inviteId = createdBody.data.id;
+
+    setRateLimitOverride(`invite:resend:${state.userId}:${state.orgId}`, {
+      ok: true,
+      remaining: 9,
+      resetAt: state.rateLimitResetAt,
+    });
+    setRateLimitOverride(`invite:resend-domain:${state.orgId}:suspicious.example`, {
+      ok: false,
+      remaining: 0,
+      resetAt: state.rateLimitResetAt,
+    });
+
+    const { POST: resend } = await import(
+      "../src/app/api/org/invites/[id]/resend/route"
+    );
+    const res = await resend(
+      new Request("http://localhost/api/org/invites/throttle/resend", {
+        method: "POST",
+      }),
+      { params: Promise.resolve({ id: inviteId }) }
+    );
+    expect(res.status).toBe(429);
+    const body = await jsonResponse(res);
+    expect(body.code).toBe("RATE_LIMITED");
+    expect(logAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: AuditAction.POLICY_BLOCKED,
+        metadata: expect.objectContaining({
+          auth: expect.objectContaining({
+            stage: "invite_resend",
+            reason: "suspicious_domain_throttled",
+            suspicious: true,
+          }),
+        }),
+      })
+    );
+    delete process.env.AUTH_EMAIL_SUSPICIOUS_DOMAINS;
+    vi.resetModules();
   });
 
   test("accept rate limit returns 429 and audit called with ORG_INVITE_ACCEPT_RATE_LIMITED", async () => {
@@ -708,7 +1145,6 @@ describe("org invites routes", () => {
     state.rateLimitResetAt = Date.now() + 900000; // 15 min
 
     state.email = "acceptrate@test.com";
-    vi.resetModules();
     const { POST: accept } = await import("../src/app/api/org/invites/accept/route");
     const res = await accept(
       new Request("http://localhost/api/org/invites/accept", {
@@ -735,6 +1171,203 @@ describe("org invites routes", () => {
     );
   });
 
+  test("accept rate limit keys are based on invite prefix and client IP", async () => {
+    const { POST: create } = await import("../src/app/api/org/invites/route");
+    const created = await create(
+      new Request("http://localhost/api/org/invites", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: "prefix@test.com", roleId: "role_1" }),
+      })
+    );
+    const createdBody = await jsonResponse(created);
+    const token = createdBody.data.token;
+
+    const { POST: accept } = await import("../src/app/api/org/invites/accept/route");
+    await accept(
+      new Request("http://localhost/api/org/invites/accept", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-forwarded-for": "198.51.100.7",
+        },
+        body: JSON.stringify({ token }),
+      })
+    );
+
+    expect(checkRateLimit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        key: expect.stringContaining("invite:accept:"),
+        limit: 5,
+        windowMs: 15 * 60 * 1000,
+      })
+    );
+    expect(checkRateLimit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        key: "invite:accept-ip:198.51.100.7",
+        limit: 30,
+        windowMs: 15 * 60 * 1000,
+      })
+    );
+  });
+
+  test("accept returns 400 for invalid token", async () => {
+    const { POST: accept } = await import("../src/app/api/org/invites/accept/route");
+    const res = await accept(
+      new Request("http://localhost/api/org/invites/accept", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ token: "not-a-real-token" }),
+      })
+    );
+    expect(res.status).toBe(400);
+    const body = await jsonResponse(res);
+    expect(body.code).toBe("INVALID_TOKEN");
+  });
+
+  test("accept rejects accounts without an email identity", async () => {
+    const { POST: create } = await import("../src/app/api/org/invites/route");
+    const created = await create(
+      new Request("http://localhost/api/org/invites", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: "missingemail@test.com", roleId: "role_1" }),
+      })
+    );
+    const { token } = (await jsonResponse(created)).data;
+
+    state.email = null as unknown as string;
+
+    const { POST: accept } = await import("../src/app/api/org/invites/accept/route");
+    const res = await accept(
+      new Request("http://localhost/api/org/invites/accept", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ token }),
+      })
+    );
+    expect(res.status).toBe(401);
+    const body = await jsonResponse(res);
+    expect(body.code).toBe("EMAIL_REQUIRED");
+  });
+
+  test("accept blocks configured email domains", async () => {
+    const { POST: create } = await import("../src/app/api/org/invites/route");
+    const created = await create(
+      new Request("http://localhost/api/org/invites", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          email: "acceptblocked@example.com",
+          roleId: "role_1",
+        }),
+      })
+    );
+    const { token } = (await jsonResponse(created)).data;
+
+    process.env.AUTH_EMAIL_BLOCKLIST = "acceptblocked.example";
+    vi.resetModules();
+    state.email = "acceptblocked@acceptblocked.example";
+
+    const { POST: accept } = await import("../src/app/api/org/invites/accept/route");
+    const res = await accept(
+      new Request("http://localhost/api/org/invites/accept", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ token }),
+      })
+    );
+    expect(res.status).toBe(403);
+    const body = await jsonResponse(res);
+    expect(body.code).toBe("EMAIL_DOMAIN_BLOCKED");
+    delete process.env.AUTH_EMAIL_BLOCKLIST;
+    vi.resetModules();
+  });
+
+  test("accept returns 410 for expired invite", async () => {
+    const { POST: create } = await import("../src/app/api/org/invites/route");
+    const created = await create(
+      new Request("http://localhost/api/org/invites", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: "expiredaccept@test.com", roleId: "role_1" }),
+      })
+    );
+    const createdBody = await jsonResponse(created);
+    const inviteId = createdBody.data.id;
+    const token = createdBody.data.token;
+    db.invites.get(inviteId)!.expiresAt = new Date(Date.now() - 60_000);
+    state.email = "expiredaccept@test.com";
+
+    const { POST: accept } = await import("../src/app/api/org/invites/accept/route");
+    const res = await accept(
+      new Request("http://localhost/api/org/invites/accept", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ token }),
+      })
+    );
+    expect(res.status).toBe(410);
+    const body = await jsonResponse(res);
+    expect(body.code).toBe("INVITE_EXPIRED");
+  });
+
+  test("accept returns 409 for org mismatch", async () => {
+    const { POST: create } = await import("../src/app/api/org/invites/route");
+    const created = await create(
+      new Request("http://localhost/api/org/invites", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: "mismatch@test.com", roleId: "role_1" }),
+      })
+    );
+    const { token } = (await jsonResponse(created)).data;
+
+    state.orgId = "org_other";
+    state.email = "mismatch@test.com";
+
+    const { POST: accept } = await import("../src/app/api/org/invites/accept/route");
+    const res = await accept(
+      new Request("http://localhost/api/org/invites/accept", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ token }),
+      })
+    );
+    expect(res.status).toBe(409);
+    const body = await jsonResponse(res);
+    expect(body.code).toBe("ORG_MISMATCH");
+  });
+
+  test("accept creates user org membership when user has no org", async () => {
+    const { POST: create } = await import("../src/app/api/org/invites/route");
+    const created = await create(
+      new Request("http://localhost/api/org/invites", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: "neworg@test.com", roleId: "role_1" }),
+      })
+    );
+    const createdBody = await jsonResponse(created);
+    const inviteId = createdBody.data.id;
+    const token = createdBody.data.token;
+
+    state.orgId = null;
+    state.email = "neworg@test.com";
+
+    const { POST: accept } = await import("../src/app/api/org/invites/accept/route");
+    const res = await accept(
+      new Request("http://localhost/api/org/invites/accept", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ token }),
+      })
+    );
+    expect(res.status).toBe(200);
+    expect(db.invites.get(inviteId)?.usedAt).not.toBeNull();
+    expect(db.users.get(state.userId)?.orgId).toBe("org_1");
+  });
+
   test("audit event emission for resend", async () => {
     const { POST: create } = await import("../src/app/api/org/invites/route");
     const created = await create(
@@ -747,7 +1380,6 @@ describe("org invites routes", () => {
     const createdBody = await jsonResponse(created);
     const inviteId = createdBody.data.id;
 
-    vi.resetModules();
     const { POST: resend } = await import(
       "../src/app/api/org/invites/[id]/resend/route"
     );
@@ -791,7 +1423,6 @@ describe("org invites routes", () => {
     state.email = "auditunverified@test.com";
     state.emailVerifiedByProvider = false;
 
-    vi.resetModules();
     const { POST: accept } = await import("../src/app/api/org/invites/accept/route");
     await accept(
       new Request("http://localhost/api/org/invites/accept", {
@@ -817,5 +1448,7 @@ describe("org invites routes", () => {
         }),
       })
     );
+    delete process.env.AUTH_EMAIL_BLOCKLIST;
+    vi.resetModules();
   });
 });

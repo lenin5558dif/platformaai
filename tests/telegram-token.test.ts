@@ -87,6 +87,15 @@ describe("telegram token route", () => {
     expect(await res.json()).toEqual({ error: "Unauthorized" });
   });
 
+  test("GET returns 401 if not authenticated", async () => {
+    state.authenticated = false;
+    const { GET } = await import("../src/app/api/telegram/token/route");
+    const res = await GET(new Request("http://localhost/api/telegram/token"));
+
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "Unauthorized" });
+  });
+
   test("returns 429 when rate limit exceeded", async () => {
     state.rateLimitOk = false;
     const { POST } = await import("../src/app/api/telegram/token/route");
@@ -241,5 +250,72 @@ describe("telegram token route", () => {
     expect(res.status).toBe(200);
     expect(json.state).toBe("error");
     expect(json.code).toBe("TOKEN_USED_OR_CONFLICT");
+  });
+
+  test("GET without a token returns idle state and null profile hints", async () => {
+    (state as any).userEmail = null;
+    (state as any).userOrgName = null;
+    state.userTelegramId = null;
+
+    const { GET } = await import("../src/app/api/telegram/token/route");
+    const req = new Request("http://localhost/api/telegram/token");
+
+    const res = await GET(req);
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.state).toBe("idle");
+    expect(json.telegramId).toBeNull();
+    expect(json.maskedEmail).toBeNull();
+    expect(json.orgName).toBeNull();
+  });
+
+  test("GET returns linked state when a missing token belongs to a linked account", async () => {
+    state.userTelegramId = "123456";
+    state.tokenRecord = null;
+
+    const { GET } = await import("../src/app/api/telegram/token/route");
+    const req = new Request(`http://localhost/api/telegram/token?token=${mockToken}`);
+
+    const res = await GET(req);
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.state).toBe("linked");
+    expect(json.code).toBeUndefined();
+    expect(json.telegramId).toBe("123456");
+  });
+
+  test("GET returns linked state when a used token belongs to a linked account", async () => {
+    state.userTelegramId = "123456";
+    state.tokenRecord = {
+      id: "token_1",
+      usedAt: new Date("2025-01-01T00:05:00.000Z"),
+      expiresAt: new Date("2025-01-01T00:10:00.000Z"),
+    };
+
+    const { GET } = await import("../src/app/api/telegram/token/route");
+    const req = new Request(`http://localhost/api/telegram/token?token=${mockToken}`);
+
+    const res = await GET(req);
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.state).toBe("linked");
+    expect(json.code).toBeUndefined();
+    expect(json.telegramId).toBe("123456");
+  });
+
+  test("POST returns null profile hints when user profile data is missing", async () => {
+    (state as any).userEmail = null;
+    (state as any).userOrgName = null;
+
+    const { POST } = await import("../src/app/api/telegram/token/route");
+    const res = await POST();
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.maskedEmail).toBeNull();
+    expect(json.orgName).toBeNull();
   });
 });

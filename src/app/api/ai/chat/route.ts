@@ -48,7 +48,7 @@ export async function POST(request: Request) {
   }
   const userId = session.user.id;
 
-  const rate = checkRateLimit({
+  const rate = await checkRateLimit({
     key: `ai:${session.user.id}`,
     limit: 30,
     windowMs: 60 * 1000,

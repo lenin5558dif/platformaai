@@ -52,7 +52,7 @@ export default function UserMenu({
   const name = displayName?.trim() || email?.trim() || "Пользователь";
   const plan = planName?.trim() || "Pro Plan";
   const initial = resolveInitial(email ?? displayName);
-  const navItems = getNavItems(role);
+  const navItems = getNavItems(role, email);
 
   return (
     <div className="relative" ref={menuRef}>

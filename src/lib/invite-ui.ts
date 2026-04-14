@@ -5,7 +5,9 @@ export type InviteApiErrorCode =
   | "INVITE_REVOKED"
   | "INVITE_ALREADY_USED"
   | "INVITE_EMAIL_MISMATCH"
+  | "EMAIL_REQUIRED"
   | "EMAIL_NOT_VERIFIED"
+  | "EMAIL_DOMAIN_BLOCKED"
   | "ROLE_NOT_FOUND"
   | "NOT_FOUND"
   | "INVALID_TOKEN"
@@ -77,11 +79,25 @@ export function mapInviteError(code?: InviteApiErrorCode): InviteUiMessage {
         message: "Войдите под тем email, на который отправлен инвайт, и повторите попытку.",
         tone: "error",
       };
+    case "EMAIL_REQUIRED":
+      return {
+        title: "Нужен аккаунт с email",
+        message:
+          "Для принятия приглашения нужен web-аккаунт с тем же email, на который пришёл инвайт. Войдите через magic link или SSO и повторите попытку.",
+        tone: "warning",
+      };
     case "EMAIL_NOT_VERIFIED":
       return {
         title: "Email не подтвержден",
         message: "Подтвердите email у провайдера входа и повторите принятие инвайта.",
         tone: "warning",
+      };
+    case "EMAIL_DOMAIN_BLOCKED":
+      return {
+        title: "Email ограничен политикой",
+        message:
+          "Для этого email или домена доступ временно ограничен. Используйте другой корпоративный адрес или обратитесь к администратору.",
+        tone: "error",
       };
     case "ROLE_NOT_FOUND":
       return {

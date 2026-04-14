@@ -1,10 +1,18 @@
 export type MetricLabels = Record<string, string>;
 
+function escapePrometheusText(value: string) {
+  return value
+    .replaceAll("\\", "\\\\")
+    .replaceAll("\n", "\\n")
+    .replaceAll("\r", "\\r")
+    .replaceAll('"', '\\"');
+}
+
 function serializeLabels(labels: MetricLabels | undefined) {
   if (!labels) return "";
   const keys = Object.keys(labels).sort();
   if (keys.length === 0) return "";
-  const parts = keys.map((k) => `${k}="${labels[k].replaceAll('"', '\\"')}"`);
+  const parts = keys.map((k) => `${k}="${escapePrometheusText(labels[k])}"`);
   return `{${parts.join(",")}}`;
 }
 
@@ -157,7 +165,7 @@ class MetricsRegistry {
   renderPrometheus() {
     const lines: string[] = [];
     for (const def of this.metrics.values()) {
-      lines.push(`# HELP ${def.name} ${def.help}`);
+      lines.push(`# HELP ${def.name} ${escapePrometheusText(def.help)}`);
       lines.push(`# TYPE ${def.name} ${def.type}`);
 
       if (def.type === "counter" || def.type === "gauge") {
@@ -183,11 +191,9 @@ class MetricsRegistry {
             }
           }
 
-          let cumulative = 0;
           for (let i = 0; i < def.buckets.length; i++) {
-            cumulative += counts[i];
             lines.push(
-              `${def.name}_bucket${serializeLabels({ ...labels, le: String(def.buckets[i]) })} ${cumulative}`
+              `${def.name}_bucket${serializeLabels({ ...labels, le: String(def.buckets[i]) })} ${counts[i]}`
             );
           }
           lines.push(

@@ -217,17 +217,29 @@ export default function TelegramLinkSection(params: {
 
   return (
     <div className="mt-6 rounded-xl border border-gray-200 bg-white/70 p-4">
-      <p className="text-sm font-medium text-text-main mb-2">Привязка Telegram</p>
-      <p className="text-xs text-text-secondary mb-3">
-        Сгенерируйте одноразовую ссылку и перейдите по ней в Telegram. Подтвердите действие в
-        боте, после чего статус обновится автоматически.
-      </p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="text-sm font-medium text-text-main mb-2">Привязка Telegram</p>
+          <p className="text-xs text-text-secondary">
+            Одноразовая ссылка привязывает профиль к Telegram, чтобы вы могли получать доступ к
+            боту и управлять аккаунтом без лишних шагов.
+          </p>
+        </div>
+        <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-[11px] text-text-secondary">
+          {telegramId ? "Telegram уже подключён" : "Telegram пока не подключён"}
+        </div>
+      </div>
 
-      {telegramId ? (
-        <p className="text-xs text-text-secondary mb-3">Текущий Telegram ID: {telegramId}</p>
-      ) : (
-        <p className="text-xs text-text-secondary mb-3">Telegram не привязан.</p>
-      )}
+      <div className="mt-3 rounded-xl border border-gray-200 bg-white/80 px-4 py-3 text-xs text-text-secondary">
+        {telegramId ? (
+          <p>Текущий Telegram ID: {telegramId}</p>
+        ) : (
+          <p>
+            Если Telegram не привязан, начните с генерации ссылки. Это занимает один шаг и не
+            влияет на email-вход.
+          </p>
+        )}
+      </div>
 
       {(viewState === "awaiting_bot_confirmation" || token) && (
         <p className="mb-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-700">
@@ -243,20 +255,34 @@ export default function TelegramLinkSection(params: {
 
 
       {deepLink ? (
-        <div className="mb-3 text-xs text-text-main">
-          <span className="font-medium">Deep link:</span>{" "}
-          <a className="text-primary underline" href={deepLink}>
+        <div className="mb-3 rounded-xl border border-gray-200 bg-white/80 px-4 py-3 text-xs text-text-main">
+          <p className="font-medium">Ссылка для Telegram</p>
+          <a className="mt-1 block break-all text-primary underline" href={deepLink}>
             {deepLink}
           </a>
           {expiresAt ? (
-            <div className="mt-1 text-xs text-text-secondary">Действует до: {expiresAt}</div>
+            <div className="mt-2 text-xs text-text-secondary">Действует до: {expiresAt}</div>
           ) : null}
         </div>
       ) : (
-        <p className="text-xs text-text-secondary mb-3">Активной ссылки нет.</p>
+        <p className="text-xs text-text-secondary mb-3">
+          Активной ссылки нет. Нажмите генерацию, чтобы создать новую.
+        </p>
       )}
 
       <MessageBanner message={message} />
+
+      <div className="mb-3 grid gap-2 md:grid-cols-3 text-[11px] text-text-secondary">
+        <div className="rounded-lg border border-gray-200 bg-white/70 px-3 py-2">
+          1. Сгенерируйте link
+        </div>
+        <div className="rounded-lg border border-gray-200 bg-white/70 px-3 py-2">
+          2. Откройте Telegram и подтвердите
+        </div>
+        <div className="rounded-lg border border-gray-200 bg-white/70 px-3 py-2">
+          3. Проверьте статус или отключите при необходимости
+        </div>
+      </div>
 
       <div className="flex gap-2">
         <button
@@ -265,7 +291,7 @@ export default function TelegramLinkSection(params: {
           onClick={generate}
           className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-hover disabled:opacity-50"
         >
-          Сгенерировать ссылку
+          {telegramId ? "Сгенерировать новую ссылку" : "Сгенерировать ссылку"}
         </button>
 
         <button
@@ -283,7 +309,7 @@ export default function TelegramLinkSection(params: {
           onClick={unlink}
           className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-text-main hover:bg-gray-50 disabled:opacity-50"
         >
-          Отключить Telegram
+          {telegramId ? "Отключить Telegram" : "Telegram не подключён"}
         </button>
       </div>
     </div>

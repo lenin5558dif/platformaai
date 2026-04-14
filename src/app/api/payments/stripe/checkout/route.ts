@@ -15,7 +15,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const rate = checkRateLimit({
+  const rate = await checkRateLimit({
     key: `stripe:${session.user.id}`,
     limit: 5,
     windowMs: 60 * 1000,

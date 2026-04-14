@@ -190,16 +190,36 @@ export default function InviteManager({
 
   return (
     <div className="rounded-2xl bg-white/80 border border-white/50 shadow-glass-sm p-6 space-y-4">
-      <h2 className="text-lg font-semibold text-text-main font-display">
-        Email-locked приглашения
-      </h2>
-      <p className="text-xs text-text-secondary">
-        Инвайт привязан к конкретному email. Принятие доступно только из аккаунта с этим email.
-      </p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="max-w-2xl">
+          <h2 className="text-lg font-semibold text-text-main font-display">
+            Email-locked приглашения
+          </h2>
+          <p className="mt-1 text-xs text-text-secondary">
+            Инвайт привязан к конкретному email. Это снижает ошибки доступа и делает ротацию
+            сотрудников понятной: создайте invite, дождитесь принятия, затем при необходимости
+            resend или revoke.
+          </p>
+        </div>
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+          <p className="font-semibold">Когда нужен revoke</p>
+          <p className="mt-1">Если email ушёл не тому человеку или роль поменялась.</p>
+        </div>
+      </div>
 
       <MessageBanner message={message} />
 
-      <form onSubmit={handleCreate} className="grid gap-3 md:grid-cols-4" aria-label="Создание приглашения">
+      {!hasRoles && (
+        <div className="rounded-xl border border-dashed border-gray-300 bg-white/60 px-4 py-4 text-sm text-text-secondary">
+          Сначала заведите хотя бы одну роль в RBAC, иначе создать приглашение не получится.
+        </div>
+      )}
+
+      <form
+        onSubmit={handleCreate}
+        className="grid gap-3 md:grid-cols-4"
+        aria-label="Создание приглашения"
+      >
         <input
           type="email"
           value={email}
@@ -239,14 +259,30 @@ export default function InviteManager({
           className="md:col-span-4 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-hover disabled:opacity-60"
           disabled={isSubmitting || !hasRoles}
         >
-          {isSubmitting ? "Отправляем..." : "Отправить приглашение"}
+          {isSubmitting ? "Отправляем..." : "Создать и отправить invite"}
         </button>
       </form>
 
+      <div className="rounded-xl border border-gray-200 bg-white/60 px-4 py-3 text-xs text-text-secondary">
+        <p className="font-semibold text-text-main">Что увидит админ после создания</p>
+        <p className="mt-1">
+          Свежие invites появляются в списке ниже. Отсюда же их можно resend, если письмо не
+          дошло, или revoke, если доступ больше не нужен.
+        </p>
+      </div>
+
       <div className="space-y-2" aria-live="polite">
-        {isLoading && <p className="text-xs text-text-secondary">Загружаем активные приглашения...</p>}
+        {isLoading && (
+          <p className="text-xs text-text-secondary">Загружаем активные приглашения...</p>
+        )}
         {!isLoading && sortedInvites.length === 0 && (
-          <p className="text-xs text-text-secondary">Активных приглашений пока нет.</p>
+          <div className="rounded-xl border border-dashed border-gray-300 bg-white/60 px-4 py-4">
+            <p className="text-sm font-medium text-text-main">Активных приглашений пока нет</p>
+            <p className="mt-1 text-xs text-text-secondary">
+              Создайте invite для нового сотрудника или внешнего подрядчика. После принятия запись
+              автоматически исчезнет из этого списка.
+            </p>
+          </div>
         )}
 
         {!isLoading &&
@@ -254,12 +290,15 @@ export default function InviteManager({
             <div
               key={invite.id}
               className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white/70 px-4 py-3"
-            >
+              >
               <div>
                 <p className="text-sm font-medium text-text-main">{invite.email}</p>
                 <p className="text-xs text-text-secondary">
                   Роль: {invite.role?.name ?? "-"} • Префикс: {invite.tokenPrefix} • Истекает: {" "}
                   {new Date(invite.expiresAt).toLocaleString("ru-RU")}
+                </p>
+                <p className="mt-1 text-[11px] text-text-secondary">
+                  Resend помогает, если письмо потерялось. Revoke закрывает приглашение сразу.
                 </p>
               </div>
               <div className="flex items-center gap-2">

@@ -16,6 +16,13 @@ export default function ScimTokenManager() {
   const [createdToken, setCreatedToken] = useState<string | null>(null);
   const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
 
+  function formatDate(value?: string | null) {
+    if (!value) return "—";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleString("ru-RU");
+  }
+
   async function loadTokens() {
     try {
       const response = await fetch("/api/scim/tokens");
@@ -65,6 +72,14 @@ export default function ScimTokenManager() {
 
   return (
     <div className="space-y-4">
+      <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-xs text-sky-700">
+        <p className="font-semibold">SCIM нужен для provisioning</p>
+        <p className="mt-1">
+          Используйте токен, чтобы синхронизировать пользователей и группы из IdP. Новый токен
+          показывается один раз, затем хранится только в вашем менеджере секретов.
+        </p>
+      </div>
+
       <div className="flex flex-wrap items-end gap-3">
         <div className="flex-1 min-w-[220px]">
           <label className="block text-xs text-text-secondary">Название токена</label>
@@ -97,7 +112,12 @@ export default function ScimTokenManager() {
 
       <div className="space-y-2">
         {tokens.length === 0 && (
-          <p className="text-xs text-text-secondary">Токены еще не созданы.</p>
+          <div className="rounded-xl border border-dashed border-gray-300 bg-white/60 px-4 py-4">
+            <p className="text-sm font-medium text-text-main">Токены еще не созданы</p>
+            <p className="mt-1 text-xs text-text-secondary">
+              Создайте первый токен, если будете подключать Okta, Azure AD или другой IdP.
+            </p>
+          </div>
         )}
         {tokens.map((token) => (
           <div
@@ -107,7 +127,7 @@ export default function ScimTokenManager() {
             <div>
               <p className="text-sm font-medium text-text-main">{token.name}</p>
               <p className="text-xs text-text-secondary">
-                Префикс: {token.tokenPrefix} • Последнее использование: {token.lastUsedAt ?? "—"}
+                Префикс: {token.tokenPrefix} • Последнее использование: {formatDate(token.lastUsedAt)}
               </p>
             </div>
             <button

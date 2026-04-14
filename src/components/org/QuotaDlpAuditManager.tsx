@@ -92,6 +92,8 @@ export default function QuotaDlpAuditManager({
   const [centerBudgets, setCenterBudgets] = useState<Record<string, { budget: number; spent: number }>>(
     {}
   );
+  const [centerBudgetDrafts, setCenterBudgetDrafts] = useState<Record<string, string>>({});
+  const [activeCenterId, setActiveCenterId] = useState<string | null>(null);
   const [activeLimitUserId, setActiveLimitUserId] = useState<string | null>(null);
 
   const [dlpPolicy, setDlpPolicy] = useState<DlpPolicy>(initialDlpPolicy);
@@ -141,7 +143,11 @@ export default function QuotaDlpAuditManager({
         })
       );
 
-      setCenterBudgets(Object.fromEntries(entries));
+      const nextBudgets = Object.fromEntries(entries);
+      setCenterBudgets(nextBudgets);
+      setCenterBudgetDrafts(
+        Object.fromEntries(entries.map(([centerId, value]) => [centerId, String(value.budget)]))
+      );
     } catch {
       // Non-blocking for main UI
     }
@@ -255,6 +261,64 @@ export default function QuotaDlpAuditManager({
       emitGovernanceEvent("org-quota-governance-ui", "update-limit", "failure");
     } finally {
       setActiveLimitUserId(null);
+    }
+  }
+
+  async function updateCostCenterBudget(centerId: string, rawBudget: string) {
+    if (!canManageLimits) {
+      setMessage(mapGovernanceError("FORBIDDEN"));
+      return;
+    }
+
+    setActiveCenterId(centerId);
+    setMessage(null);
+    emitGovernanceEvent("org-quota-governance-ui", "update-center-budget", "submit");
+    try {
+      const trimmedBudget = rawBudget.trim();
+      const parsedBudget = trimmedBudget ? Number(trimmedBudget) : null;
+
+      if (parsedBudget !== null && !Number.isFinite(parsedBudget)) {
+        setMessage(mapGovernanceError("INVALID_INPUT"));
+        emitGovernanceEvent("org-quota-governance-ui", "update-center-budget", "failure");
+        return;
+      }
+
+      const response = await fetch(`/api/org/cost-centers/${centerId}/budget`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ budget: parsedBudget }),
+      });
+
+      const body = (await response.json()) as {
+        code?: string;
+        data?: { budget: number; spent: number };
+      };
+      if (!response.ok) {
+        setMessage(mapGovernanceError(body.code));
+        emitGovernanceEvent("org-quota-governance-ui", "update-center-budget", "failure");
+        return;
+      }
+
+      setCenterBudgets((current) => ({
+        ...current,
+        [centerId]: body.data ?? { budget: 0, spent: 0 },
+      }));
+      setCenterBudgetDrafts((current) => ({
+        ...current,
+        [centerId]: String(body.data?.budget ?? 0),
+      }));
+
+      setMessage({
+        tone: "success",
+        title: "Бюджет cost center обновлен",
+        message: "Изменения применены после серверной проверки.",
+      });
+      emitGovernanceEvent("org-quota-governance-ui", "update-center-budget", "success");
+    } catch {
+      setMessage(mapGovernanceError());
+      emitGovernanceEvent("org-quota-governance-ui", "update-center-budget", "failure");
+    } finally {
+      setActiveCenterId(null);
     }
   }
 
@@ -406,21 +470,66 @@ export default function QuotaDlpAuditManager({
 
         <div className="rounded-xl border border-gray-200 bg-white/70 px-4 py-3">
           <p className="text-sm font-medium text-text-main mb-2">Cost centers</p>
-          <div className="space-y-1">
+          <p className="text-xs text-text-secondary mb-3">
+            Бюджет можно редактировать прямо здесь. Пустое значение отключает лимит.
+          </p>
+          <div className="space-y-3">
             {costCenters.map((center) => {
               const budget = centerBudgets[center.id]?.budget ?? 0;
               const spent = centerBudgets[center.id]?.spent ?? 0;
               const status = normalizeQuotaStatus(budget, spent);
               return (
-                <p key={center.id} className="text-xs text-text-secondary flex items-center gap-2">
-                  <span>{center.name}</span>
-                  <span>
-                    {spent.toFixed(2)} / {budget.toFixed(2)}
-                  </span>
-                  <span className={`rounded-full px-2 py-0.5 text-[10px] ${statusBadgeClass(status)}`}>
-                    {statusLabel(status)}
-                  </span>
-                </p>
+                <form
+                  key={center.id}
+                  className="rounded-lg border border-gray-200 bg-white px-3 py-2 space-y-2"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void updateCostCenterBudget(center.id, centerBudgetDrafts[center.id] ?? "");
+                  }}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-medium text-text-main">{center.name}</p>
+                      <p className="text-[11px] text-text-secondary">
+                        {spent.toFixed(2)} / {budget.toFixed(2)}
+                      </p>
+                    </div>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[10px] ${statusBadgeClass(status)}`}
+                    >
+                      {statusLabel(status)}
+                    </span>
+                  </div>
+                  <div className="flex flex-col gap-2 md:flex-row md:items-end">
+                    <label className="flex-1 text-[11px] text-text-secondary">
+                      Budget
+                      <input
+                        name="budget"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={centerBudgetDrafts[center.id] ?? String(budget)}
+                        onChange={(event) =>
+                          setCenterBudgetDrafts((current) => ({
+                            ...current,
+                            [center.id]: event.target.value,
+                          }))
+                        }
+                        placeholder="0"
+                        className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs"
+                        aria-label={`Budget for ${center.name}`}
+                        disabled={!canManageLimits || activeCenterId === center.id}
+                      />
+                    </label>
+                    <button
+                      type="submit"
+                      className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-white disabled:opacity-60"
+                      disabled={!canManageLimits || activeCenterId === center.id}
+                    >
+                      {activeCenterId === center.id ? "Сохраняем..." : "Обновить бюджет"}
+                    </button>
+                  </div>
+                </form>
               );
             })}
           </div>

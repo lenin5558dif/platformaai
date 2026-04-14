@@ -1,19 +1,20 @@
-import { NextResponse } from "next/server";
 import { metricsRegistry } from "@/lib/metrics";
+import { requireCronSecret } from "@/lib/internal-http";
 
-function unauthorized() {
-  return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
-}
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export async function GET(req: Request) {
-  const expected = process.env.CRON_SECRET;
-  if (!expected) return unauthorized();
-
-  const provided = req.headers.get("x-cron-secret");
-  if (!provided || provided !== expected) return unauthorized();
+  const unauthorized = requireCronSecret(req);
+  if (unauthorized) return unauthorized;
 
   return new Response(metricsRegistry.renderPrometheus(), {
     status: 200,
-    headers: { "content-type": "text/plain; version=0.0.4" },
+    headers: {
+      "content-type": "text/plain; version=0.0.4; charset=utf-8",
+      "cache-control": "no-store",
+      pragma: "no-cache",
+      "x-robots-tag": "noindex",
+    },
   });
 }
