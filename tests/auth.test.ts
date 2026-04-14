@@ -414,6 +414,45 @@ describe("auth module", () => {
     expect(result?.name).toBe("Telegram User");
   });
 
+  test("registers temp access provider and authorizes by token", async () => {
+    process.env.TEMP_ACCESS_TOKEN = "smoke-token";
+    process.env.NEXT_PUBLIC_TEMP_ACCESS_ENABLED = "1";
+    process.env.TEMP_ACCESS_EMAIL = "smoke@example.com";
+    process.env.TEMP_ACCESS_ROLE = "ADMIN";
+    state.prisma.user.upsert.mockResolvedValue({
+      id: "u-temp",
+      email: "smoke@example.com",
+      role: "ADMIN",
+      orgId: null,
+      balance: { toString: () => "100" },
+    });
+
+    await loadAuthModule();
+
+    expect(
+      state.nextAuthConfig.providers.some(
+        (provider: { id?: string }) => provider.id === "temp-access"
+      )
+    ).toBe(true);
+
+    const tempProvider = state.nextAuthConfig.providers.find(
+      (provider: { id?: string }) => provider.id === "temp-access"
+    );
+
+    await expect(tempProvider.authorize({ token: "bad-token" })).resolves.toBeNull();
+
+    await expect(
+      tempProvider.authorize({ token: "smoke-token" })
+    ).resolves.toEqual({
+      id: "u-temp",
+      email: "smoke@example.com",
+      name: "Temporary Access",
+      role: "ADMIN",
+      orgId: null,
+      balance: "100",
+    });
+  });
+
   test("signIn callback enforces inactive user and sso-only domain policy", async () => {
     await loadAuthModule();
     const signInCallback = state.nextAuthConfig.callbacks.signIn;

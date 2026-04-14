@@ -26,12 +26,14 @@ describe("auth-ui helpers", () => {
       NEXT_PUBLIC_TELEGRAM_LOGIN_BOT_NAME: "platforma_bot",
       TELEGRAM_LOGIN_BOT_NAME: "platforma_bot",
       TELEGRAM_BOT_TOKEN: "telegram-token",
+      NEXT_PUBLIC_TEMP_ACCESS_ENABLED: "1",
     });
 
     expect(capabilities).toEqual({
       email: true,
       sso: true,
       telegram: true,
+      tempAccess: true,
     });
   });
 
@@ -44,6 +46,7 @@ describe("auth-ui helpers", () => {
 
     expect(capabilities.sso).toBe(true);
     expect(capabilities.telegram).toBe(false);
+    expect(capabilities.tempAccess).toBe(false);
   });
 
   it("hides methods when their server configuration is incomplete", () => {
@@ -58,6 +61,7 @@ describe("auth-ui helpers", () => {
       email: false,
       sso: false,
       telegram: false,
+      tempAccess: false,
     });
   });
 
@@ -70,6 +74,7 @@ describe("auth-ui helpers", () => {
     });
 
     expect(capabilities.sso).toBe(false);
+    expect(capabilities.tempAccess).toBe(false);
   });
 
   it("maps verification errors to expired state", () => {

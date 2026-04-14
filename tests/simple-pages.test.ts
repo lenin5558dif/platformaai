@@ -77,6 +77,7 @@ describe("simple pages", () => {
       email: true,
       sso: false,
       telegram: true,
+      tempAccess: false,
     });
     mocks.authUi.loadAuthEmailGuardrails.mockReturnValue({
       blockedEntries: ["blocked.example"],
@@ -104,6 +105,7 @@ describe("simple pages", () => {
         email: true,
         sso: false,
         telegram: true,
+        tempAccess: false,
       },
       emailGuardrails: {
         blockedEntries: ["blocked.example"],
@@ -119,6 +121,7 @@ describe("simple pages", () => {
       email: false,
       sso: true,
       telegram: false,
+      tempAccess: false,
     });
     mocks.authUi.loadAuthEmailGuardrails.mockReturnValue({
       blockedEntries: [],

@@ -146,6 +146,53 @@ const emailProvider: EmailConfig | null = emailAuthConfigured
     } satisfies EmailConfig)
   : null;
 
+const tempAccessProvider =
+  process.env.TEMP_ACCESS_TOKEN && process.env.NEXT_PUBLIC_TEMP_ACCESS_ENABLED === "1"
+    ? CredentialsProvider({
+        id: "temp-access",
+        name: "Temporary access",
+        credentials: {
+          token: { label: "Access token", type: "password" },
+        },
+        authorize: async (credentials) => {
+          const token =
+            typeof credentials?.token === "string" ? credentials.token.trim() : "";
+
+          if (!token || token !== process.env.TEMP_ACCESS_TOKEN) {
+            return null;
+          }
+
+          const user = await prisma.user.upsert({
+            where: {
+              email:
+                process.env.TEMP_ACCESS_EMAIL?.trim().toLowerCase() ??
+                "temp-access@platforma.local",
+            },
+            update: {
+              role: (process.env.TEMP_ACCESS_ROLE as UserRole | undefined) ?? "ADMIN",
+              isActive: true,
+            },
+            create: {
+              email:
+                process.env.TEMP_ACCESS_EMAIL?.trim().toLowerCase() ??
+                "temp-access@platforma.local",
+              role: (process.env.TEMP_ACCESS_ROLE as UserRole | undefined) ?? "ADMIN",
+              isActive: true,
+            },
+          });
+
+          return {
+            id: user.id,
+            email: user.email ?? undefined,
+            name: "Temporary Access",
+            role: user.role,
+            orgId: user.orgId,
+            balance: user.balance.toString(),
+          };
+        },
+      })
+    : null;
+
 const nextAuth = NextAuth({
   adapter: PrismaAdapter(prisma),
   session: { strategy: "database" },
@@ -208,6 +255,7 @@ const nextAuth = NextAuth({
         };
       },
     }),
+    ...(tempAccessProvider ? [tempAccessProvider] : []),
     ...(ssoProvider ? [ssoProvider] : []),
   ],
   callbacks: {

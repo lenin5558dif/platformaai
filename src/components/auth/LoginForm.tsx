@@ -73,10 +73,15 @@ export default function LoginForm({
   );
   const [feedback, setFeedback] = useState<AuthFeedback | null>(initialFeedback);
   const [telegramUnavailable, setTelegramUnavailable] = useState(false);
+  const [tempAccessToken, setTempAccessToken] = useState("");
   const emailRef = useRef<HTMLInputElement>(null);
 
   const modeText = useMemo(() => getModeText(mode), [mode]);
-  const hasAnyMethod = capabilities.email || capabilities.sso || capabilities.telegram;
+  const hasAnyMethod =
+    capabilities.email ||
+    capabilities.sso ||
+    capabilities.telegram ||
+    capabilities.tempAccess;
   const canUseTelegram = capabilities.telegram && !telegramUnavailable;
   const accessCards = [
     {
@@ -122,6 +127,49 @@ export default function LoginForm({
     setFeedback(null);
     emitAuthEvent("retry", "email");
     emailRef.current?.focus();
+  }
+
+  async function handleTempAccessSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    if (!capabilities.tempAccess || !tempAccessToken.trim()) return;
+
+    setStatus("submitting");
+    setFeedback(null);
+    emitAuthEvent("submit", "temp-access");
+
+    try {
+      const result = await signIn("temp-access", {
+        token: tempAccessToken.trim(),
+        redirect: false,
+        callbackUrl: "/",
+      });
+
+      if (result?.error) {
+        const nextFeedback: AuthFeedback = {
+          state: "error",
+          title: "Временный токен не принят",
+          message: "Проверьте токен доступа и попробуйте снова.",
+          action: "retry",
+        };
+        setStatus(nextFeedback.state);
+        setFeedback(nextFeedback);
+        emitAuthEvent("failure", "temp-access");
+        return;
+      }
+
+      emitAuthEvent("success", "temp-access");
+      window.location.assign(result?.url || "/");
+    } catch {
+      const nextFeedback: AuthFeedback = {
+        state: "error",
+        title: "Временный вход недоступен",
+        message: "Не удалось выполнить временный вход. Попробуйте еще раз.",
+        action: "retry",
+      };
+      setStatus(nextFeedback.state);
+      setFeedback(nextFeedback);
+      emitAuthEvent("failure", "temp-access");
+    }
   }
 
   async function handleSubmit(event: React.FormEvent) {
@@ -337,6 +385,35 @@ export default function LoginForm({
           <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
             Вход через Telegram временно недоступен в этом окружении. Используйте email или SSO.
           </p>
+        )}
+
+        {capabilities.tempAccess && (
+          <form
+            className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/80 p-4"
+            onSubmit={handleTempAccessSubmit}
+          >
+            <div>
+              <p className="text-sm font-semibold text-text-main">Временный вход для тестирования</p>
+              <p className="mt-1 text-xs text-text-secondary">
+                Используйте одноразовый токен доступа, пока основной Telegram login недоступен.
+              </p>
+            </div>
+            <input
+              type="password"
+              value={tempAccessToken}
+              onChange={(event) => setTempAccessToken(event.target.value)}
+              placeholder="Введите временный токен"
+              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+              autoComplete="off"
+            />
+            <button
+              type="submit"
+              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-text-main hover:bg-slate-100 disabled:opacity-60"
+              disabled={status === "submitting" || !tempAccessToken.trim()}
+            >
+              {status === "submitting" ? "Входим..." : "Войти по временному токену"}
+            </button>
+          </form>
         )}
 
         <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4">
