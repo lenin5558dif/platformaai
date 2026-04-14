@@ -16,25 +16,25 @@ export default async function ModelsPage() {
       title="Модели"
       subtitle="Список моделей OpenRouter и базовые цены."
     >
-      <div className="mx-auto max-w-4xl rounded-2xl bg-white/80 border border-white/50 shadow-glass-sm p-6">
+      <div className="mx-auto max-w-4xl rounded-2xl border border-slate-200 bg-white/92 p-6 shadow-glass-sm">
         {error ? (
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
             {error}
           </div>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-2.5">
             {models.map((model) => (
               <div
                 key={model.id}
-                className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white/70 px-4 py-3"
+                className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white/95 px-4 py-3 shadow-[0_2px_10px_rgba(15,23,42,0.04)] transition-colors hover:bg-white"
               >
                 <div>
                   <p className="text-sm font-medium text-text-main">
                     {model.name}
                   </p>
-                  <p className="text-xs text-text-secondary">{model.id}</p>
+                  <p className="text-xs text-slate-500">{model.id}</p>
                 </div>
-                <div className="text-xs text-text-secondary">
+                <div className="text-xs text-slate-600">
                   Prompt: {model.pricing?.prompt ?? "—"} • Completion:{" "}
                   {model.pricing?.completion ?? "—"}
                 </div>

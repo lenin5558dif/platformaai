@@ -12,7 +12,7 @@ export default async function LoginPage({
 
   return (
     <div className="min-h-screen flex items-center justify-center px-6">
-      <div className="w-full max-w-md rounded-2xl bg-white/80 border border-white/50 shadow-glass-sm p-6">
+      <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white/92 p-6 shadow-glass-sm">
         <LoginForm
           initialMode={mode}
           initialError={params?.error}

@@ -28,7 +28,7 @@ export default function AppShell({
       <aside className="hidden md:flex w-[280px] flex-col flex-shrink-0 z-20 transition-all duration-300 m-4 rounded-xl glass-panel shadow-glass-lg">
         <div className="p-3 pb-2">
           <Link
-            className="group flex w-full items-center gap-3 rounded-lg border border-gray-200 bg-white/70 px-3 py-2.5 text-sm font-semibold text-gray-700 shadow-sm transition-all hover:bg-white hover:text-gray-900 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+            className="group flex w-full items-center gap-3 rounded-lg border border-gray-200 bg-white/90 px-3 py-2.5 text-sm font-semibold text-gray-700 shadow-sm transition-all hover:bg-white hover:text-gray-900 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
             href="/"
           >
             <span className="material-symbols-outlined text-[20px] text-gray-500 group-hover:text-primary transition-colors">
@@ -38,7 +38,7 @@ export default function AppShell({
           </Link>
         </div>
         <div className="flex-1 overflow-y-auto px-3 py-2 text-xs text-text-secondary">
-          <div className="rounded-lg border border-white/60 bg-white/60 px-3 py-3">
+          <div className="rounded-lg border border-gray-200 bg-white/88 px-3 py-3">
             <p className="font-medium text-text-main">Быстрый доступ</p>
             <p className="mt-1 text-[11px] text-text-secondary">
               Возвращайтесь в чат и проверяйте ответы без лишних шагов.
@@ -64,8 +64,8 @@ export default function AppShell({
         </div>
       </aside>
 
-      <main className="flex-1 flex flex-col h-full relative m-4 rounded-xl glass-panel shadow-glass-lg overflow-hidden">
-        <header className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 bg-white/50 px-4 py-3 backdrop-blur-sm rounded-t-xl">
+      <main className="relative m-4 flex h-full flex-1 flex-col overflow-hidden rounded-xl glass-panel shadow-glass-lg">
+        <header className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 rounded-t-xl bg-white/82 px-4 py-3 backdrop-blur-md">
           <div className="flex min-w-0 flex-1 flex-col">
             <h1 className="truncate text-lg font-semibold text-text-main sm:text-xl font-display">
               {title}
