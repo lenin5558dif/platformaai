@@ -28,6 +28,19 @@ export type ResolvedPlan = {
   isCustom: boolean;
 };
 
+type DecimalLike = number | { toString(): string } | null | undefined;
+
+type SubscriptionPlanSnapshot = {
+  code?: string | null;
+  name?: string | null;
+  monthlyPriceUsd?: DecimalLike;
+  includedCreditsPerMonth?: DecimalLike;
+} | null;
+
+type SubscriptionSnapshot = {
+  plan?: SubscriptionPlanSnapshot;
+} | null;
+
 const DEFAULT_USD_PER_CREDIT = 0.01;
 
 function envNumber(name: string, fallback: number) {
@@ -130,6 +143,14 @@ function readString(settings: Record<string, unknown>, key: string): string | nu
 function readNumber(settings: Record<string, unknown>, key: string): number | null {
   const value = settings[key];
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function decimalToNumber(value: DecimalLike): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (!value) return null;
+
+  const parsed = Number(value.toString());
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 export function getBillingPlan(planId: BillingPlanId | null | undefined) {
@@ -241,6 +262,43 @@ export function resolvePlanFromSettings(settings: unknown): ResolvedPlan | null 
     name: customName,
     monthlyPriceUsd: readNumber(data, "planPrice"),
     includedCreditsPerMonth: readNumber(data, "includedCreditsPerMonth"),
+    topUpAllowed: true,
+    renewalEnabled: true,
+    description: null,
+    features: [],
+    isCustom: true,
+  };
+}
+
+export function resolvePlanFromSubscription(subscription: SubscriptionSnapshot): ResolvedPlan | null {
+  const plan = subscription?.plan;
+  if (!plan?.name) {
+    return null;
+  }
+
+  const planId = resolveBillingPlanId(plan.code);
+  const staticPlan = getBillingPlan(planId);
+
+  if (staticPlan) {
+    return {
+      id: staticPlan.id,
+      name: plan.name,
+      monthlyPriceUsd: decimalToNumber(plan.monthlyPriceUsd) ?? staticPlan.monthlyPriceUsd,
+      includedCreditsPerMonth:
+        decimalToNumber(plan.includedCreditsPerMonth) ?? staticPlan.includedCreditsPerMonth,
+      topUpAllowed: staticPlan.topUpAllowed,
+      renewalEnabled: staticPlan.renewalEnabled,
+      description: staticPlan.description,
+      features: staticPlan.features,
+      isCustom: false,
+    };
+  }
+
+  return {
+    id: null,
+    name: plan.name,
+    monthlyPriceUsd: decimalToNumber(plan.monthlyPriceUsd),
+    includedCreditsPerMonth: decimalToNumber(plan.includedCreditsPerMonth),
     topUpAllowed: true,
     renewalEnabled: true,
     description: null,

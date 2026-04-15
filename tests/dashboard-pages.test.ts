@@ -277,6 +277,7 @@ describe("dashboard pages", () => {
       settings: { planName: "Creator", planPrice: 29 },
       orgId: null,
       role: "USER",
+      subscription: null,
     });
     mocks.prisma.message.aggregate.mockResolvedValue({
       _sum: { tokenCount: 0, cost: 0 },
@@ -303,6 +304,7 @@ describe("dashboard pages", () => {
       settings: { planName: "Omni Pro", planPrice: 59 },
       orgId: "org-1",
       role: "ADMIN",
+      subscription: null,
     });
     mocks.prisma.message.aggregate.mockResolvedValue({
       _sum: { tokenCount: 0, cost: 0 },
@@ -327,6 +329,7 @@ describe("dashboard pages", () => {
       settings: { planName: "Omni Pro", planPrice: 59 },
       orgId: "org-1",
       role: "ADMIN",
+      subscription: null,
     });
     mocks.prisma.message.aggregate.mockResolvedValue({
       _sum: { tokenCount: 125000, cost: 17.5 },
@@ -375,6 +378,7 @@ describe("dashboard pages", () => {
       settings: { planName: "Omni Pro", planPrice: 59 },
       orgId: "org-1",
       role: "ADMIN",
+      subscription: null,
     });
     mocks.prisma.message.aggregate.mockResolvedValue({
       _sum: { tokenCount: 125000, cost: 17.5 },
@@ -389,6 +393,43 @@ describe("dashboard pages", () => {
     const html = render(await BillingPage());
 
     expect(html).not.toContain("Подробная статистика");
+  });
+
+  test("renders billing page from active subscription instead of legacy settings", async () => {
+    mocks.auth.mockResolvedValue(createSession());
+    mocks.prisma.user.findUnique.mockResolvedValue({
+      balance: 12,
+      email: "solo@example.com",
+      settings: { planName: "Legacy Pro", planPrice: 199 },
+      orgId: null,
+      role: "USER",
+      subscription: {
+        status: "ACTIVE",
+        currentPeriodStart: new Date("2026-04-01T00:00:00.000Z"),
+        currentPeriodEnd: new Date("2026-05-01T00:00:00.000Z"),
+        includedCredits: 100,
+        includedCreditsUsed: 25,
+        cancelAtPeriodEnd: false,
+        plan: {
+          code: "creator",
+          name: "Креатор",
+          monthlyPriceUsd: 29,
+          includedCreditsPerMonth: 100,
+        },
+      },
+    });
+    mocks.prisma.message.aggregate.mockResolvedValue({
+      _sum: { tokenCount: 3200, cost: 25 },
+      _count: { _all: 3 },
+    });
+    mocks.prisma.transaction.findMany.mockResolvedValue([]);
+
+    const html = render(await BillingPage());
+
+    expect(html).toContain("Подписка активна");
+    expect(html).toContain("Креатор");
+    expect(html).toContain("Остаток включенных кредитов: 75,00 кр.");
+    expect(html).not.toContain("Legacy Pro");
   });
 
   test("renders profile page states and telegram linkage", async () => {

@@ -5,7 +5,8 @@ import { isGlobalAdminSession } from "@/lib/admin-access";
 import { prisma } from "@/lib/db";
 import { getSettingsObject } from "@/lib/user-settings";
 import TopUpForm from "@/components/billing/TopUpForm";
-import { resolvePlanFromSettings } from "@/lib/plans";
+import { resolvePlanFromSettings, resolvePlanFromSubscription } from "@/lib/plans";
+import { getIncludedCreditsRemaining, isSubscriptionActive } from "@/lib/subscriptions";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +32,31 @@ export default async function BillingPage() {
   const [user, usage, transactions] = await Promise.all([
     prisma.user.findUnique({
       where: { id: session.user.id },
-      select: { balance: true, email: true, settings: true, orgId: true, role: true },
+      select: {
+        balance: true,
+        email: true,
+        settings: true,
+        orgId: true,
+        role: true,
+        subscription: {
+          select: {
+            status: true,
+            currentPeriodStart: true,
+            currentPeriodEnd: true,
+            includedCredits: true,
+            includedCreditsUsed: true,
+            cancelAtPeriodEnd: true,
+            plan: {
+              select: {
+                code: true,
+                name: true,
+                monthlyPriceUsd: true,
+                includedCreditsPerMonth: true,
+              },
+            },
+          },
+        },
+      },
     }),
     prisma.message.aggregate({
       where: {
@@ -56,13 +81,21 @@ export default async function BillingPage() {
     : null;
 
   const settings = getSettingsObject(user?.settings ?? null);
-  const resolvedPlan = resolvePlanFromSettings(settings);
+  const resolvedPlan =
+    resolvePlanFromSubscription(user?.subscription) ??
+    resolvePlanFromSettings(settings);
   const isB2B = user?.role && user.role !== "USER";
   const isAdmin = user?.role === "ADMIN";
+  const hasActiveSubscription = isSubscriptionActive(user?.subscription);
 
   const usedTokens = Number(usage._sum?.tokenCount ?? 0);
   const spentCredits = Number(usage._sum?.cost ?? 0);
-  const includedCredits = resolvedPlan?.includedCreditsPerMonth ?? null;
+  const includedCredits = hasActiveSubscription
+    ? Number(user?.subscription?.includedCredits ?? 0)
+    : resolvedPlan?.includedCreditsPerMonth ?? null;
+  const includedCreditsRemaining = hasActiveSubscription
+    ? getIncludedCreditsRemaining(user?.subscription)
+    : includedCredits;
   const creditPercent =
     includedCredits && includedCredits > 0
       ? Math.min(100, (spentCredits / includedCredits) * 100)
@@ -133,7 +166,11 @@ export default async function BillingPage() {
                       <div>
                         <div className="mb-3 inline-flex items-center gap-2 rounded-md border border-green-200 bg-green-50 px-2.5 py-1 text-xs font-semibold uppercase tracking-wide text-green-700">
                           <span className="size-1.5 rounded-full bg-green-500" />
-                          {resolvedPlan ? "Подписка активна" : "Подписка не назначена"}
+                          {hasActiveSubscription
+                            ? "Подписка активна"
+                            : resolvedPlan
+                              ? "Тариф назначен"
+                              : "Подписка не назначена"}
                         </div>
                         <h3 className="font-display text-3xl font-bold text-slate-900">
                           {resolvedPlan?.name ?? "Подписка не назначена"}
@@ -213,6 +250,11 @@ export default async function BillingPage() {
                         ? `${Math.round(creditPercent)}% от включенного лимита за период.`
                         : "Включенный лимит для этого тарифа пока не указан."}
                     </p>
+                    {includedCreditsRemaining !== null && (
+                      <p className="text-xs text-slate-500">
+                        Остаток включенных кредитов: {formatCredits(includedCreditsRemaining)}
+                      </p>
+                    )}
                     <p className="text-xs text-slate-500">
                       Использовано токенов: {formatNumber(usedTokens)}
                     </p>
