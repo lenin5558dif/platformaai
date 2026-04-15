@@ -39,7 +39,7 @@ type SubscriptionPlanSnapshot = {
 
 type SubscriptionSnapshot = {
   plan?: SubscriptionPlanSnapshot;
-} | null;
+} | null | undefined;
 
 const DEFAULT_USD_PER_CREDIT = 0.01;
 

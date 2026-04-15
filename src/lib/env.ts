@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { hasRealConfiguredValue } from "@/lib/config-values";
 
 const requiredText = (name: string) =>
   z.string().trim().min(1, `${name} is required`);
@@ -138,9 +139,15 @@ const envSchema = z
       }
     }
 
+    const telegramBotTokenConfigured = hasRealConfiguredValue(env.TELEGRAM_BOT_TOKEN);
+    const telegramLoginBotNameConfigured = hasRealConfiguredValue(env.TELEGRAM_LOGIN_BOT_NAME);
+    const telegramPublicBotNameConfigured = hasRealConfiguredValue(
+      env.NEXT_PUBLIC_TELEGRAM_LOGIN_BOT_NAME
+    );
+
     if (
-      env.TELEGRAM_LOGIN_BOT_NAME &&
-      env.NEXT_PUBLIC_TELEGRAM_LOGIN_BOT_NAME &&
+      telegramLoginBotNameConfigured &&
+      telegramPublicBotNameConfigured &&
       env.TELEGRAM_LOGIN_BOT_NAME !== env.NEXT_PUBLIC_TELEGRAM_LOGIN_BOT_NAME
     ) {
       ctx.addIssue({
@@ -152,9 +159,9 @@ const envSchema = z
     }
 
     if (
-      env.TELEGRAM_BOT_TOKEN ||
-      env.TELEGRAM_LOGIN_BOT_NAME ||
-      env.NEXT_PUBLIC_TELEGRAM_LOGIN_BOT_NAME
+      telegramBotTokenConfigured ||
+      telegramLoginBotNameConfigured ||
+      telegramPublicBotNameConfigured
     ) {
       const telegramValues = [
         ["TELEGRAM_BOT_TOKEN", env.TELEGRAM_BOT_TOKEN],
@@ -166,7 +173,7 @@ const envSchema = z
       ] as const;
 
       for (const [key, value] of telegramValues) {
-        if (value) {
+        if (hasRealConfiguredValue(value)) {
           continue;
         }
 

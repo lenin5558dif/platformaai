@@ -396,4 +396,16 @@ describe("internal runtime ops routes", () => {
       "NEXT_PUBLIC_TELEGRAM_LOGIN_BOT_NAME: NEXT_PUBLIC_TELEGRAM_LOGIN_BOT_NAME must be set together with the other Telegram auth values"
     );
   });
+
+  test("env module ignores telegram placeholder values", async () => {
+    applyEnv({
+      TELEGRAM_BOT_TOKEN: "REPLACE_ME",
+      TELEGRAM_LOGIN_BOT_NAME: undefined,
+      NEXT_PUBLIC_TELEGRAM_LOGIN_BOT_NAME: undefined,
+    });
+
+    const { env } = await importFresh<typeof import("../src/lib/env")>("../src/lib/env");
+
+    expect(env.TELEGRAM_BOT_TOKEN).toBe("REPLACE_ME");
+  });
 });
