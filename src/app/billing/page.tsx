@@ -22,6 +22,15 @@ function formatCredits(value: number) {
   return `${formatter.format(value)} кр.`;
 }
 
+function formatUsd(value: number) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
 export default async function BillingPage() {
   const session = await requirePageSession();
 
@@ -423,6 +432,13 @@ export default async function BillingPage() {
                         {transactions.map((tx) => {
                           const amount = Number(tx.amount ?? 0);
                           const isRefill = tx.type === "REFILL";
+                          const isSpend = tx.type === "SPEND";
+                          const isSubscriptionCharge =
+                            tx.type === "SUBSCRIPTION_PURCHASE" ||
+                            tx.type === "SUBSCRIPTION_RENEWAL";
+                          const amountLabel = isSubscriptionCharge
+                            ? formatUsd(amount)
+                            : `${isRefill ? "+" : "-"}${formatCredits(amount)}`;
                           return (
                             <tr key={tx.id} className="group transition-colors hover:bg-slate-50">
                               <td className="whitespace-nowrap px-6 py-4 text-slate-900">
@@ -436,18 +452,25 @@ export default async function BillingPage() {
                                 {tx.description}
                               </td>
                               <td className="whitespace-nowrap px-6 py-4 text-slate-900">
-                                {isRefill ? "+" : "-"}
-                                {formatCredits(amount)}
+                                {amountLabel}
                               </td>
                               <td className="whitespace-nowrap px-6 py-4">
                                 <span
                                   className={`inline-flex items-center rounded border px-2 py-0.5 text-xs font-medium ${
-                                    isRefill
+                                    isSubscriptionCharge
+                                      ? "border-blue-200 bg-blue-50 text-blue-700"
+                                      : isRefill
                                       ? "border-green-200 bg-green-50 text-green-700"
                                       : "border-amber-200 bg-amber-50 text-amber-700"
                                   }`}
                                 >
-                                  {isRefill ? "Оплачено" : "Списание"}
+                                  {isSubscriptionCharge
+                                    ? "Подписка"
+                                    : isRefill
+                                      ? "Оплачено"
+                                      : isSpend
+                                        ? "Списание"
+                                        : "Операция"}
                                 </span>
                               </td>
                               <td className="whitespace-nowrap px-6 py-4 text-right">

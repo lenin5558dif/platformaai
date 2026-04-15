@@ -350,6 +350,13 @@ describe("dashboard pages", () => {
         description: "Usage",
         createdAt: new Date("2026-04-02T12:00:00.000Z"),
       },
+      {
+        id: "tx-3",
+        type: "SUBSCRIPTION_RENEWAL",
+        amount: "29.00",
+        description: "Stripe продление подписки",
+        createdAt: new Date("2026-04-03T12:00:00.000Z"),
+      },
     ]);
     mocks.prisma.organization.findUnique.mockResolvedValue({
       name: "Acme LLC",
@@ -365,6 +372,8 @@ describe("dashboard pages", () => {
     expect(html).toContain("Подробная статистика");
     expect(html).toContain("Оплачено");
     expect(html).toContain("Списание");
+    expect(html).toContain("Подписка");
+    expect(html).toContain("$29.00");
   });
 
   test("hides admin analytics links for non-global admins", async () => {

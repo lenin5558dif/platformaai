@@ -18,7 +18,7 @@
 - [x] 7. Убрать dead-end на generic payments routes при YooKassa env
 - [x] 8. Сделать production-safe заполнение `BillingPlan`
 - [x] 9. Перевести billing UI на `UserSubscription` как source of truth
-- [ ] 10. Развести денежные subscription transactions и credit ledger
+- [x] 10. Развести денежные subscription transactions и credit ledger
 - [ ] 11. Починить детерминированное определение плана по `priceId` в webhook
 
 ## Release Checks
