@@ -7,6 +7,7 @@ import {
   getUtcMonthPeriod,
 } from "@/lib/quota-manager";
 import type { QuotaReserveResult } from "@/lib/quota-manager";
+import { getIncludedCreditsRemaining, getSpendableCredits } from "@/lib/subscriptions";
 
 export async function preflightCredits(params: {
   userId: string;
@@ -23,6 +24,14 @@ export async function preflightCredits(params: {
       monthlySpent: true,
       dailyResetAt: true,
       monthlyResetAt: true,
+      subscription: {
+        select: {
+          status: true,
+          currentPeriodEnd: true,
+          includedCredits: true,
+          includedCreditsUsed: true,
+        },
+      },
       org: {
         select: {
           budget: true,
@@ -36,8 +45,11 @@ export async function preflightCredits(params: {
     throw new Error("USER_NOT_FOUND");
   }
 
-  const currentBalance = user.balance ?? 0;
-  if (Number(currentBalance) < minAmount) {
+  const availableCredits = getSpendableCredits({
+    balance: user.balance,
+    subscription: user.subscription,
+  });
+  if (availableCredits.total < minAmount) {
     throw new Error("INSUFFICIENT_BALANCE");
   }
 
@@ -94,6 +106,15 @@ export async function spendCredits(params: {
         dailyResetAt: true,
         monthlyResetAt: true,
         costCenterId: true,
+        subscription: {
+          select: {
+            id: true,
+            status: true,
+            currentPeriodEnd: true,
+            includedCredits: true,
+            includedCreditsUsed: true,
+          },
+        },
         org: {
           select: {
             id: true,
@@ -108,10 +129,20 @@ export async function spendCredits(params: {
       throw new Error("USER_NOT_FOUND");
     }
 
-    const currentBalance = user.balance ?? 0;
-    if (Number(currentBalance) < params.amount) {
+    const availableCredits = getSpendableCredits({
+      balance: user.balance,
+      subscription: user.subscription,
+      now,
+    });
+    if (availableCredits.total < params.amount) {
       throw new Error("INSUFFICIENT_BALANCE");
     }
+
+    const includedToSpend = Math.min(
+      params.amount,
+      getIncludedCreditsRemaining(user.subscription, now)
+    );
+    const balanceToSpend = params.amount - includedToSpend;
 
     const resets = applyLimitResets({
       dailySpent: Number(user.dailySpent ?? 0),
@@ -159,13 +190,30 @@ export async function spendCredits(params: {
       },
     });
 
+    if (includedToSpend > 0 && user.subscription) {
+      const currentIncludedUsed = Number(user.subscription.includedCreditsUsed ?? 0);
+      const updatedSubscription = await tx.userSubscription.updateMany({
+        where: {
+          id: user.subscription.id,
+          includedCreditsUsed: currentIncludedUsed,
+        },
+        data: {
+          includedCreditsUsed: { increment: includedToSpend },
+        },
+      });
+
+      if (updatedSubscription.count !== 1) {
+        throw new Error("INSUFFICIENT_BALANCE");
+      }
+    }
+
     const updated = await tx.user.update({
       where: {
         id: params.userId,
-        balance: { gte: params.amount },
+        ...(balanceToSpend > 0 ? { balance: { gte: balanceToSpend } } : {}),
       },
       data: {
-        balance: { decrement: params.amount },
+        ...(balanceToSpend > 0 ? { balance: { decrement: balanceToSpend } } : {}),
         dailySpent:
           resets.dailyResetAt.getTime() !== (user.dailyResetAt ?? new Date(0)).getTime()
             ? wouldBeDailySpent
@@ -328,6 +376,14 @@ export async function reserveAiQuotaHold(params: {
       monthlySpent: true,
       dailyResetAt: true,
       monthlyResetAt: true,
+      subscription: {
+        select: {
+          status: true,
+          currentPeriodEnd: true,
+          includedCredits: true,
+          includedCreditsUsed: true,
+        },
+      },
       org: {
         select: { id: true, budget: true, spent: true },
       },
@@ -336,8 +392,11 @@ export async function reserveAiQuotaHold(params: {
 
   if (!user) throw new Error("USER_NOT_FOUND");
 
-  const currentBalance = user.balance ?? 0;
-  if (Number(currentBalance) < params.amount) {
+  const availableCredits = getSpendableCredits({
+    balance: user.balance,
+    subscription: user.subscription,
+  });
+  if (availableCredits.total < params.amount) {
     throw new Error("INSUFFICIENT_BALANCE");
   }
 

@@ -16,6 +16,7 @@ export default function TelegramLoginButton({
   const onStartedRef = useRef(onStarted);
   const onErrorRef = useRef(onError);
   const [isUnavailable, setIsUnavailable] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
     onStartedRef.current = onStarted;
@@ -32,12 +33,46 @@ export default function TelegramLoginButton({
     }
 
     (window as typeof window & { onTelegramAuth?: (user: unknown) => void }).onTelegramAuth =
-      (user) => {
+      async (user) => {
         onStartedRef.current?.();
-        void signIn("telegram", {
-          data: JSON.stringify(user),
-          callbackUrl: "/",
-        });
+        setMessage(null);
+
+        try {
+          const verifyResponse = await fetch("/api/auth/telegram/verify", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(user),
+          });
+          const verifyBody = (await verifyResponse.json().catch(() => null)) as {
+            error?: string;
+            code?: string;
+          } | null;
+
+          if (!verifyResponse.ok) {
+            if (verifyBody?.code === "ACCOUNT_NOT_LINKED") {
+              setMessage(
+                "Этот Telegram еще не привязан. Войдите по email и подключите Telegram в профиле."
+              );
+              return;
+            }
+
+            if (verifyResponse.status === 503) {
+              setIsUnavailable(true);
+              onErrorRef.current?.();
+              return;
+            }
+
+            setMessage(verifyBody?.error ?? "Не удалось проверить Telegram вход.");
+            return;
+          }
+
+          void signIn("telegram", {
+            data: JSON.stringify(user),
+            callbackUrl: "/",
+          });
+        } catch {
+          setMessage("Не удалось проверить Telegram вход.");
+        }
       };
 
     if (!ref.current) {
@@ -90,6 +125,7 @@ export default function TelegramLoginButton({
   return (
     <div className="space-y-2">
       <div ref={ref} />
+      {message ? <p className="text-xs text-amber-700">{message}</p> : null}
     </div>
   );
 }

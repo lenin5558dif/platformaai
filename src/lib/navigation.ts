@@ -1,4 +1,6 @@
-type NavItem = {
+import { isGlobalAdminEmail } from "@/lib/admin-access";
+
+export type NavItem = {
   href: string;
   label: string;
   icon: string;
@@ -6,7 +8,11 @@ type NavItem = {
 
 const B2C_ITEMS: NavItem[] = [
   { href: "/", label: "Чаты", icon: "chat" },
+  { href: "/prompts", label: "Библиотека промптов", icon: "library_books" },
+  { href: "/models", label: "Модели", icon: "view_in_ar" },
+  { href: "/billing", label: "Биллинг", icon: "credit_card" },
   { href: "/settings", label: "Настройки", icon: "settings" },
+  { href: "/pricing", label: "Тарифы", icon: "sell" },
 ];
 
 const B2B_ITEMS: NavItem[] = [
@@ -20,7 +26,7 @@ const ADMIN_ITEMS: NavItem[] = [
   { href: "/audit", label: "Аудит", icon: "policy" },
 ];
 
-export function getNavItems(role?: string | null): NavItem[] {
+export function getNavItems(role?: string | null, email?: string | null): NavItem[] {
   const normalizedRole = role ?? "USER";
   const items = [...B2C_ITEMS];
 
@@ -29,7 +35,10 @@ export function getNavItems(role?: string | null): NavItem[] {
   }
 
   if (normalizedRole === "ADMIN") {
-    items.push(...ADMIN_ITEMS);
+    items.push(ADMIN_ITEMS[0], ADMIN_ITEMS[2]);
+    if (isGlobalAdminEmail(email)) {
+      items.push(ADMIN_ITEMS[1]);
+    }
   }
 
   return items;

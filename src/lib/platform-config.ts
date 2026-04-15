@@ -18,7 +18,21 @@ function normalizeModelIds(modelIds: string[]) {
   );
 }
 
+function defaultPlatformConfig(): PlatformConfigSnapshot {
+  return {
+    id: "default",
+    globalSystemPrompt: null,
+    disabledModelIds: [],
+    updatedAt: new Date(0),
+    updatedById: null,
+  };
+}
+
 export async function getPlatformConfig() {
+  if (!("platformConfig" in prisma) || !prisma.platformConfig) {
+    return defaultPlatformConfig();
+  }
+
   return prisma.platformConfig.upsert({
     where: { id: "default" },
     update: {},
@@ -42,6 +56,16 @@ export async function updatePlatformConfig(params: {
   disabledModelIds?: string[];
   updatedById?: string | null;
 }) {
+  if (!("platformConfig" in prisma) || !prisma.platformConfig) {
+    return {
+      ...defaultPlatformConfig(),
+      globalSystemPrompt: params.globalSystemPrompt?.trim() || null,
+      disabledModelIds: normalizeModelIds(params.disabledModelIds ?? []),
+      updatedById: params.updatedById ?? null,
+      updatedAt: new Date(),
+    };
+  }
+
   const existing = await getPlatformConfig();
 
   const nextPrompt =

@@ -1,5 +1,6 @@
 import { PrismaClient, UserRole } from "@prisma/client";
 import { ORG_PERMISSIONS, SYSTEM_ROLE_NAMES } from "../src/lib/org-permissions";
+import { BILLING_PLANS, getPlanStripePriceId } from "../src/lib/plans";
 
 const prisma = new PrismaClient();
 
@@ -64,6 +65,30 @@ async function seedPermissions() {
   await ensureOrgPermission(ORG_PERMISSIONS.ORG_SCIM_MANAGE, "Manage SCIM tokens and provisioning");
   await ensureOrgPermission(ORG_PERMISSIONS.ORG_COST_CENTER_MANAGE, "Manage cost centers");
   await ensureOrgPermission(ORG_PERMISSIONS.ORG_LIMITS_MANAGE, "Manage user limits and quotas");
+}
+
+async function seedBillingPlans() {
+  for (const plan of BILLING_PLANS) {
+    const stripePriceId = getPlanStripePriceId(plan.id, null);
+    await prisma.billingPlan.upsert({
+      where: { code: plan.id },
+      update: {
+        name: plan.name,
+        monthlyPriceUsd: plan.monthlyPriceUsd,
+        includedCreditsPerMonth: plan.includedCreditsPerMonth ?? 0,
+        stripePriceId,
+        isActive: true,
+      },
+      create: {
+        code: plan.id,
+        name: plan.name,
+        monthlyPriceUsd: plan.monthlyPriceUsd,
+        includedCreditsPerMonth: plan.includedCreditsPerMonth ?? 0,
+        stripePriceId,
+        isActive: true,
+      },
+    });
+  }
 }
 
 function systemRolePermissionKeys(name: string): string[] {
@@ -186,6 +211,7 @@ async function main() {
   }
 
   await seedPermissions();
+  await seedBillingPlans();
 
   const user = await prisma.user.upsert({
     where: { email: "demo@platforma.ai" },

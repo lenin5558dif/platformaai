@@ -48,7 +48,7 @@ export function buildTelegramLinkConfirmationPrompt(params: {
   };
 }
 
-function isTelegramAccessRevoked(params: { globalRevokeCounter: number }) {
+export function isTelegramAccessRevoked(params: { globalRevokeCounter: number }) {
   return params.globalRevokeCounter > 0;
 }
 

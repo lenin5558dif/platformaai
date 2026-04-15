@@ -15,7 +15,7 @@ export default function TopUpForm() {
     setError(null);
 
     try {
-      const response = await fetch("/api/payments/stripe/checkout", {
+      const response = await fetch("/api/payments/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ credits }),
@@ -44,7 +44,7 @@ export default function TopUpForm() {
   return (
     <form onSubmit={handleSubmit} className="space-y-3">
       <label className="block text-xs text-text-secondary">
-        Пополнение баланса (кредиты)
+        Докупить дополнительные кредиты
       </label>
       <div className="flex flex-wrap items-center gap-2">
         <input
@@ -60,7 +60,7 @@ export default function TopUpForm() {
           disabled={status === "loading"}
           className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-hover disabled:opacity-60"
         >
-          {status === "loading" ? "Создаем..." : "Оплатить"}
+          {status === "loading" ? "Создаем..." : "Докупить"}
         </button>
       </div>
       {error && <p className="text-xs text-red-500">{error}</p>}

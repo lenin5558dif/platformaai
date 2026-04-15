@@ -102,6 +102,34 @@ describe("session global revoke", () => {
     15000
   );
 
+  test("self revoke tolerates missing org id in audit metadata", async () => {
+    session.user.orgId = undefined;
+
+    const { POST: revokeAll } = await import("../src/app/api/auth/revoke-all/route");
+    const res = await revokeAll(
+      new Request("http://localhost/api/auth/revoke-all", { method: "POST" })
+    );
+
+    expect(res.status).toBe(200);
+    expect(prisma.auditLog.create).toHaveBeenCalled();
+    const call = prisma.auditLog.create.mock.calls[0]?.[0];
+    expect(call?.data?.orgId).toBeUndefined();
+
+    session.user.orgId = "org-1";
+  });
+
+  test("self revoke requires an authenticated session", async () => {
+    state.sessionActive = false;
+
+    const { POST: revokeAll } = await import("../src/app/api/auth/revoke-all/route");
+    const res = await revokeAll(
+      new Request("http://localhost/api/auth/revoke-all", { method: "POST" })
+    );
+
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ ok: false });
+  });
+
   test("admin revoke requires org:user.manage", async () => {
     state.membershipKeys = new Set();
 

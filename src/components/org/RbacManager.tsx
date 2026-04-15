@@ -71,12 +71,14 @@ export default function RbacManager({
   const [members, setMembers] = useState<RbacMemberView[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeUserId, setActiveUserId] = useState<string | null>(null);
+  const [activeSessionUserId, setActiveSessionUserId] = useState<string | null>(null);
   const [message, setMessage] = useState<RbacUiMessage | null>(null);
 
   const canChangeRoles = actorPermissionKeys.includes(ORG_PERMISSIONS.ORG_ROLE_CHANGE);
+  const canManageUsers = actorPermissionKeys.includes(ORG_PERMISSIONS.ORG_USER_MANAGE);
   const canReadRbac =
     canChangeRoles ||
-    actorPermissionKeys.includes(ORG_PERMISSIONS.ORG_USER_MANAGE) ||
+    canManageUsers ||
     actorPermissionKeys.includes(ORG_PERMISSIONS.ORG_AUDIT_READ) ||
     actorPermissionKeys.includes(ORG_PERMISSIONS.ORG_ANALYTICS_READ);
 
@@ -161,41 +163,100 @@ export default function RbacManager({
     }
   }
 
+  async function revokeMemberSessions(memberId: string) {
+    if (!canManageUsers) {
+      setMessage(mapRbacError("FORBIDDEN"));
+      emitRbacEvent("revoke-sessions", "forbidden");
+      return;
+    }
+
+    setActiveSessionUserId(memberId);
+    setMessage(null);
+    emitRbacEvent("revoke-sessions", "submit");
+
+    try {
+      const response = await fetch(`/api/org/users/${memberId}/revoke-sessions`, {
+        method: "POST",
+      });
+      const body = (await response.json().catch(() => null)) as { code?: string } | null;
+      if (!response.ok) {
+        setMessage(mapRbacError(body?.code));
+        emitRbacEvent(
+          "revoke-sessions",
+          body?.code === "FORBIDDEN" ? "forbidden" : "failure"
+        );
+        return;
+      }
+
+      setMessage({
+        tone: "success",
+        title: "Сессии отозваны",
+        message: "Все активные входы этого участника завершены.",
+      });
+      emitRbacEvent("revoke-sessions", "success");
+    } catch {
+      setMessage(mapRbacError());
+      emitRbacEvent("revoke-sessions", "failure");
+    } finally {
+      setActiveSessionUserId(null);
+    }
+  }
+
   return (
     <div className="rounded-2xl bg-white/80 border border-white/50 shadow-glass-sm p-6 space-y-4">
-      <h2 className="text-lg font-semibold text-text-main font-display">RBAC доступы</h2>
-      <p className="text-xs text-text-secondary">
-        Роли определяют базовые права. Контекстные ограничения (ABAC) показываются отдельно и
-        могут ограничивать действие даже при расширенной роли.
-      </p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="max-w-2xl">
+          <h2 className="text-lg font-semibold text-text-main font-display">RBAC доступы</h2>
+          <p className="mt-1 text-xs text-text-secondary">
+            Роли задают базовые права, а ограничения по лимитам и политикам уточняют, что можно
+            сделать прямо сейчас. Из этого блока удобно начинать ротацию ролей и отзыв сессий.
+          </p>
+        </div>
+        <div className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-[11px] text-sky-700">
+          <p className="font-semibold">Порядок работы</p>
+          <p className="mt-1">Проверьте роль, затем при необходимости отзовите сессии.</p>
+        </div>
+      </div>
 
       <MessageBanner message={message} />
 
       <div className="grid gap-3 md:grid-cols-2">
-        {roles.map((role) => (
-          <div key={role.id} className="rounded-xl border border-gray-200 bg-white/70 px-4 py-3">
-            <p className="text-sm font-semibold text-text-main">
-              {role.name} {role.isSystem ? "(Системная)" : ""}
-            </p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {RBAC_PERMISSION_GROUPS.map((group) => {
-                const allowed = roleHasGroupPermission(role, group);
-                return (
-                  <span
-                    key={group.id}
-                    className={`rounded-full px-2 py-1 text-[11px] font-medium ${
-                      allowed
-                        ? "bg-emerald-100 text-emerald-700"
-                        : "bg-gray-100 text-gray-500"
-                    }`}
-                  >
-                    {group.label}: {allowed ? "да" : "нет"}
-                  </span>
-                );
-              })}
-            </div>
+        {roles.length === 0 ? (
+          <div className="md:col-span-2 rounded-xl border border-dashed border-gray-300 bg-white/60 px-4 py-4 text-sm text-text-secondary">
+            Роли пока не настроены. Создайте хотя бы базовые «Владелец» и «Участник», чтобы инвайты и
+            управление участниками стали понятнее.
           </div>
-        ))}
+        ) : (
+          roles.map((role) => (
+            <div key={role.id} className="rounded-xl border border-gray-200 bg-white/70 px-4 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm font-semibold text-text-main">
+                  {role.name} {role.isSystem ? "(Системная)" : ""}
+                </p>
+                <span className="rounded-full border border-gray-200 bg-white px-2 py-1 text-[11px] font-medium text-text-secondary">
+                  {role.permissionKeys.length} прав
+                </span>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {RBAC_PERMISSION_GROUPS.map((group) => {
+                  const allowed = roleHasGroupPermission(role, group);
+                  return (
+                    <span
+                      key={group.id}
+                      className={`rounded-full px-2 py-1 text-[11px] font-medium ${
+                        allowed
+                          ? "bg-emerald-100 text-emerald-700"
+                          : "bg-gray-100 text-gray-500"
+                      }`}
+                    >
+                      {group.label}: {allowed ? "да" : "нет"}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          ))
+        )}
       </div>
 
       {!canReadRbac && (
@@ -208,52 +269,71 @@ export default function RbacManager({
         <div className="space-y-2" aria-live="polite">
           {isLoading && <p className="text-xs text-text-secondary">Загружаем участников...</p>}
           {!isLoading && members.length === 0 && (
-            <p className="text-xs text-text-secondary">Участники не найдены.</p>
+            <div className="rounded-xl border border-dashed border-gray-300 bg-white/60 px-4 py-4">
+              <p className="text-sm font-medium text-text-main">Участников пока нет</p>
+              <p className="mt-1 text-xs text-text-secondary">
+                Отправьте приглашение или подключите SCIM, чтобы список наполнился автоматически.
+              </p>
+            </div>
           )}
           {!isLoading &&
             members.map((member) => (
               <div
                 key={member.id}
-                className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white/70 px-4 py-3"
+                className="rounded-xl border border-gray-200 bg-white/70 px-4 py-3"
               >
-                <div>
-                  <p className="text-sm font-medium text-text-main">{member.email ?? member.id}</p>
-                  <p className="text-xs text-text-secondary">
-                    Роль: {member.role?.name ?? member.legacyRole} • Баланс: {member.balance} •{" "}
-                    {member.isActive ? "Активен" : "Отключен"}
-                  </p>
-                  <p className="text-[11px] text-text-secondary mt-1">
-                    ABAC: центр {" "}
-                    {member.defaultCostCenterId
-                      ? centerNameById.get(member.defaultCostCenterId) ?? "назначен"
-                      : "не назначен"}
-                    , лимиты D/M {member.dailyLimit ?? "-"}/{member.monthlyLimit ?? "-"}, DLP {" "}
-                    {policyContext.dlpEnabled ? `вкл. (${policyContext.dlpAction})` : "выкл."}, политика моделей{" "}
-                    {policyContext.modelPolicyMode} ({policyContext.modelModelsCount})
-                  </p>
-                </div>
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-text-main">
+                      {member.email ?? member.id}
+                    </p>
+                    <p className="text-xs text-text-secondary">
+                      Роль: {member.role?.name ?? member.legacyRole} • Баланс: {member.balance} •{" "}
+                      {member.isActive ? "Активен" : "Отключен"}
+                    </p>
+                    <p className="mt-1 text-[11px] text-text-secondary">
+                      ABAC: центр{" "}
+                      {member.defaultCostCenterId
+                        ? centerNameById.get(member.defaultCostCenterId) ?? "назначен"
+                        : "не назначен"}
+                      , лимиты D/M {member.dailyLimit ?? "-"}/{member.monthlyLimit ?? "-"}, DLP{" "}
+                      {policyContext.dlpEnabled ? `вкл (${policyContext.dlpAction})` : "выкл"}, политика моделей{" "}
+                      {policyContext.modelPolicyMode} ({policyContext.modelModelsCount})
+                    </p>
+                  </div>
 
-                <div className="flex items-center gap-2">
-                  <label className="text-xs text-text-secondary" htmlFor={`role-${member.id}`}>
-                    Назначить роль
-                  </label>
-                  <select
-                    id={`role-${member.id}`}
-                    className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs"
-                    value={member.role?.id ?? ""}
-                    disabled={!canChangeRoles || activeUserId === member.id}
-                    onChange={(event) => void updateMemberRole(member.id, event.target.value)}
-                  >
-                    {!member.role && <option value="">Роль не назначена</option>}
-                    {roles.map((role) => (
-                      <option key={role.id} value={role.id}>
-                        {role.name}
-                      </option>
-                    ))}
-                  </select>
-                  {!canChangeRoles && (
-                    <span className="text-[11px] text-amber-700">Только просмотр</span>
-                  )}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <label className="text-xs text-text-secondary" htmlFor={`role-${member.id}`}>
+                      Назначить роль
+                    </label>
+                    <select
+                      id={`role-${member.id}`}
+                      className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs"
+                      value={member.role?.id ?? ""}
+                      disabled={!canChangeRoles || activeUserId === member.id}
+                      onChange={(event) => void updateMemberRole(member.id, event.target.value)}
+                    >
+                      {!member.role && <option value="">Роль не назначена</option>}
+                      {roles.map((role) => (
+                        <option key={role.id} value={role.id}>
+                          {role.name}
+                        </option>
+                      ))}
+                    </select>
+                    {canManageUsers && (
+                      <button
+                        type="button"
+                        className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-white disabled:opacity-60"
+                        disabled={activeSessionUserId === member.id}
+                        onClick={() => void revokeMemberSessions(member.id)}
+                      >
+                        {activeSessionUserId === member.id ? "Отзываем..." : "Отозвать сессии"}
+                      </button>
+                    )}
+                    {!canChangeRoles && (
+                      <span className="text-[11px] text-amber-700">Только просмотр</span>
+                    )}
+                  </div>
                 </div>
               </div>
             ))}

@@ -1,15 +1,23 @@
-import { upstashCommand, upstashPipeline } from "@/lib/upstash-redis";
+import { prisma } from "@/lib/db";
 
 type RateEntry = {
   count: number;
   resetAt: number;
 };
 
-type RateLimitResult = {
+export type RateLimitResult = {
   ok: boolean;
   remaining: number;
   resetAt: number;
 };
+
+type HeaderSource = {
+  get(name: string): string | null;
+};
+
+type RequestLike = {
+  headers: HeaderSource;
+} | HeaderSource;
 
 const globalStore = globalThis as unknown as {
   rateLimitStore?: Map<string, RateEntry>;
@@ -20,7 +28,27 @@ if (!globalStore.rateLimitStore) {
   globalStore.rateLimitStore = store;
 }
 
-function checkRateLimitInMemory(params: {
+const memoryDriver =
+  process.env.RATE_LIMIT_DRIVER === "memory" ||
+  process.env.NODE_ENV === "test" ||
+  !process.env.DATABASE_URL;
+
+let cleanupCounter = 0;
+
+function cleanupMemoryStore(now: number) {
+  cleanupCounter += 1;
+  if (cleanupCounter % 100 !== 0) {
+    return;
+  }
+
+  for (const [key, entry] of store.entries()) {
+    if (entry.resetAt <= now) {
+      store.delete(key);
+    }
+  }
+}
+
+function checkRateLimitMemory(params: {
   key: string;
   limit: number;
   windowMs: number;
@@ -39,55 +67,86 @@ function checkRateLimitInMemory(params: {
 
   entry.count += 1;
   store.set(params.key, entry);
+  cleanupMemoryStore(now);
   return { ok: true, remaining: params.limit - entry.count, resetAt: entry.resetAt };
 }
 
-function toFiniteNumber(value: unknown) {
-  const parsed =
-    typeof value === "number"
-      ? value
-      : typeof value === "string"
-        ? Number(value)
-        : Number.NaN;
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-async function checkRateLimitInRedis(params: {
+async function checkRateLimitDatabase(params: {
   key: string;
   limit: number;
   windowMs: number;
-}): Promise<RateLimitResult | undefined> {
-  const redisKey = `rl:${params.key}`;
-  const result = await upstashPipeline([
-    ["INCR", redisKey],
-    ["PEXPIRE", redisKey, params.windowMs, "NX"],
-    ["PTTL", redisKey],
-  ]);
+}): Promise<RateLimitResult> {
+  const now = new Date();
+  const nextResetAt = new Date(now.getTime() + params.windowMs);
 
-  if (!result) {
-    return undefined;
+  const result = await prisma.$transaction(async (tx) => {
+    const existing = await tx.rateLimitBucket.findUnique({
+      where: { key: params.key },
+      select: { count: true, resetAt: true },
+    });
+
+    if (!existing || existing.resetAt <= now) {
+      const record = await tx.rateLimitBucket.upsert({
+        where: { key: params.key },
+        create: {
+          key: params.key,
+          count: 1,
+          resetAt: nextResetAt,
+        },
+        update: {
+          count: 1,
+          resetAt: nextResetAt,
+        },
+        select: {
+          count: true,
+          resetAt: true,
+        },
+      });
+
+      return {
+        ok: true,
+        remaining: Math.max(0, params.limit - record.count),
+        resetAt: record.resetAt.getTime(),
+      };
+    }
+
+    if (existing.count >= params.limit) {
+      return {
+        ok: false,
+        remaining: 0,
+        resetAt: existing.resetAt.getTime(),
+      };
+    }
+
+    const updated = await tx.rateLimitBucket.update({
+      where: { key: params.key },
+      data: {
+        count: {
+          increment: 1,
+        },
+      },
+      select: {
+        count: true,
+        resetAt: true,
+      },
+    });
+
+    return {
+      ok: updated.count <= params.limit,
+      remaining: Math.max(0, params.limit - updated.count),
+      resetAt: updated.resetAt.getTime(),
+    };
+  });
+
+  if (Math.random() < 0.01) {
+    void prisma.rateLimitBucket.deleteMany({
+      where: {
+        resetAt: { lte: now },
+      },
+    });
   }
 
-  const count = toFiniteNumber(result[0]);
-  let ttlMs = toFiniteNumber(result[2]);
-
-  if (!count || count < 1) {
-    throw new Error("Redis rate-limit returned invalid counter");
-  }
-
-  if (ttlMs === null || ttlMs <= 0) {
-    await upstashCommand(["PEXPIRE", redisKey, params.windowMs]);
-    ttlMs = params.windowMs;
-  }
-
-  const resetAt = Date.now() + ttlMs;
-  const remaining = Math.max(0, params.limit - count);
-
-  if (count > params.limit) {
-    return { ok: false, remaining: 0, resetAt };
-  }
-
-  return { ok: true, remaining, resetAt };
+  return result;
 }
 
 export async function checkRateLimit(params: {
@@ -95,16 +154,23 @@ export async function checkRateLimit(params: {
   limit: number;
   windowMs: number;
 }): Promise<RateLimitResult> {
-  try {
-    const redisResult = await checkRateLimitInRedis(params);
-    if (redisResult) {
-      return redisResult;
-    }
-  } catch {
-    // Fallback to process-local limiter if Redis is unavailable.
+  if (memoryDriver) {
+    return checkRateLimitMemory(params);
   }
 
-  return checkRateLimitInMemory(params);
+  return checkRateLimitDatabase(params);
+}
+
+export function getClientIp(request: RequestLike) {
+  const headers = "headers" in request ? request.headers : request;
+  const forwardedFor =
+    headers.get("x-forwarded-for") ?? headers.get("x-real-ip") ?? "";
+
+  if (!forwardedFor) {
+    return "unknown";
+  }
+
+  return forwardedFor.split(",")[0]?.trim() || "unknown";
 }
 
 export function getRateLimitHeaders(params: {

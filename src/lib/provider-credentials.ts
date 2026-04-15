@@ -1,4 +1,4 @@
-import { ProviderType } from "@prisma/client";
+import type { ProviderType } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import {
   decryptSecret,
@@ -10,6 +10,10 @@ export async function getOrgProviderCredential(params: {
   orgId: string;
   provider: ProviderType;
 }) {
+  if (!("orgProviderCredential" in prisma) || !prisma.orgProviderCredential) {
+    return null;
+  }
+
   return prisma.orgProviderCredential.findUnique({
     where: {
       orgId_provider: {
@@ -37,6 +41,10 @@ export async function upsertOrgProviderCredential(params: {
   isActive: boolean;
   updatedById?: string | null;
 }) {
+  if (!("orgProviderCredential" in prisma) || !prisma.orgProviderCredential) {
+    throw new Error("Org provider credentials are unavailable");
+  }
+
   const normalized = params.rawSecret
     .trim()
     .replace(/^Bearer\s+/i, "")
@@ -89,9 +97,10 @@ export async function resolveProviderSecret(params: {
 }
 
 export async function resolveOpenRouterApiKey(params: { orgId?: string | null }) {
+  const OPENROUTER_PROVIDER = "OPENROUTER" as ProviderType;
   const orgSecret = await resolveProviderSecret({
     orgId: params.orgId,
-    provider: ProviderType.OPENROUTER,
+    provider: OPENROUTER_PROVIDER,
   });
   if (orgSecret) return orgSecret;
   return process.env.OPENROUTER_API_KEY ?? null;

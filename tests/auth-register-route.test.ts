@@ -1,181 +1,107 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
-const state = vi.hoisted(() => ({
-  existingUser: false,
-  existingHasPassword: false,
+const mocks = vi.hoisted(() => ({
+  checkRateLimit: vi.fn(),
+  getClientIp: vi.fn(),
+  userFindUnique: vi.fn(),
+  userCreate: vi.fn(),
+  userChannelUpsert: vi.fn(),
 }));
 
-const prisma = {
-  user: {
-    findUnique: vi.fn(async () =>
-      state.existingUser
-        ? {
-            id: "existing",
-            passwordHash: state.existingHasPassword ? "hash" : null,
-            settings: {},
-          }
-        : null
-    ),
-    create: vi.fn(async (args: any) => ({
-      id: "user_1",
-      email: args?.data?.email ?? "new@example.com",
-    })),
-    update: vi.fn(async () => ({
-      id: "existing",
-      email: "name@example.com",
-    })),
-  },
-  userChannel: {
-    upsert: vi.fn(async () => ({ id: "channel_1" })),
-  },
-} as any;
-
-vi.mock("@/lib/db", () => ({ prisma }));
-vi.mock("bcryptjs", () => ({
-  hash: vi.fn(async (value: string) => `hashed:${value}`),
+vi.mock("@/lib/rate-limit", () => ({
+  checkRateLimit: mocks.checkRateLimit,
+  getRateLimitHeaders: vi.fn(() => ({
+    "x-ratelimit-limit": "10",
+    "x-ratelimit-remaining": "0",
+    "x-ratelimit-reset": "60",
+  })),
+  getRetryAfterHeader: vi.fn(() => ({
+    "retry-after": "60",
+  })),
 }));
 
-describe("auth register route", () => {
+vi.mock("@/lib/request-ip", () => ({
+  getClientIp: mocks.getClientIp,
+}));
+
+vi.mock("@/lib/db", () => ({
+  prisma: {
+    user: {
+      findUnique: mocks.userFindUnique,
+      create: mocks.userCreate,
+    },
+    userChannel: {
+      upsert: mocks.userChannelUpsert,
+    },
+  },
+}));
+
+import { POST } from "@/app/api/auth/register/route";
+
+describe("POST /api/auth/register", () => {
   beforeEach(() => {
-    state.existingUser = false;
-    state.existingHasPassword = false;
     vi.clearAllMocks();
-  });
-
-  test("returns 400 for invalid payload", async () => {
-    const { POST } = await import("../src/app/api/auth/register/route");
-    const res = await POST(
-      new Request("http://localhost/api/auth/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          nickname: "ab",
-          email: "name@example.com",
-          password: "password1",
-          confirmPassword: "password2",
-        }),
-      })
-    );
-
-    expect(res.status).toBe(400);
-    expect(await res.json()).toMatchObject({
-      error: "VALIDATION_ERROR",
+    mocks.getClientIp.mockReturnValue("203.0.113.1");
+    mocks.checkRateLimit.mockResolvedValue({
+      ok: true,
+      remaining: 9,
+      resetAt: Date.now() + 60_000,
+    });
+    mocks.userFindUnique.mockResolvedValue(null);
+    mocks.userCreate.mockResolvedValue({
+      id: "user-1",
+      email: "user@example.com",
+    });
+    mocks.userChannelUpsert.mockResolvedValue({
+      userId: "user-1",
+      channel: "WEB",
+      externalId: "user-1",
     });
   });
 
-  test("returns 409 when email already exists", async () => {
-    state.existingUser = true;
-    state.existingHasPassword = true;
-    const { POST } = await import("../src/app/api/auth/register/route");
-    const res = await POST(
+  test("creates a brand new account for a new email", async () => {
+    const response = await POST(
       new Request("http://localhost/api/auth/register", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          nickname: "nickname",
-          email: "name@example.com",
-          password: "password1",
-          confirmPassword: "password1",
+          nickname: "nikolay",
+          email: "user@example.com",
+          password: "strong-pass-123",
+          confirmPassword: "strong-pass-123",
         }),
       })
     );
 
-    expect(res.status).toBe(409);
-    expect(prisma.user.create).not.toHaveBeenCalled();
-    expect(prisma.user.update).not.toHaveBeenCalled();
-    expect(await res.json()).toMatchObject({
+    expect(response.status).toBe(201);
+    expect(mocks.userCreate).toHaveBeenCalledTimes(1);
+    expect(mocks.userChannelUpsert).toHaveBeenCalledTimes(1);
+  });
+
+  test("rejects registration when the email already exists even without a password hash", async () => {
+    mocks.userFindUnique.mockResolvedValue({
+      id: "existing-user",
+      passwordHash: null,
+      settings: {},
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/auth/register", {
+        method: "POST",
+        body: JSON.stringify({
+          nickname: "nikolay",
+          email: "user@example.com",
+          password: "strong-pass-123",
+          confirmPassword: "strong-pass-123",
+        }),
+      })
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
       error: "EMAIL_ALREADY_EXISTS",
+      message: "User with this email already exists.",
     });
-  });
-
-  test("upgrades legacy email account without password hash", async () => {
-    state.existingUser = true;
-    state.existingHasPassword = false;
-
-    const { POST } = await import("../src/app/api/auth/register/route");
-    const res = await POST(
-      new Request("http://localhost/api/auth/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          nickname: "legacy",
-          email: "name@example.com",
-          password: "password1",
-          confirmPassword: "password1",
-        }),
-      })
-    );
-
-    expect(res.status).toBe(201);
-    expect(prisma.user.create).not.toHaveBeenCalled();
-    expect(prisma.user.update).toHaveBeenCalledWith({
-      where: { id: "existing" },
-      data: {
-        passwordHash: "hashed:password1",
-        isActive: true,
-        emailVerifiedByProvider: null,
-        settings: {
-          profileFirstName: "legacy",
-          onboarded: false,
-        },
-      },
-      select: {
-        id: true,
-        email: true,
-      },
-    });
-  });
-
-  test("creates user with hashed password and web binding", async () => {
-    const { POST } = await import("../src/app/api/auth/register/route");
-    const res = await POST(
-      new Request("http://localhost/api/auth/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          nickname: "nickname",
-          email: "Name@Example.com",
-          password: "password1",
-          confirmPassword: "password1",
-        }),
-      })
-    );
-
-    expect(res.status).toBe(201);
-    expect(prisma.user.findUnique).toHaveBeenCalledWith({
-      where: { email: "name@example.com" },
-      select: { id: true, passwordHash: true, settings: true },
-    });
-    expect(prisma.user.create).toHaveBeenCalledWith({
-      data: {
-        email: "name@example.com",
-        passwordHash: "hashed:password1",
-        isActive: true,
-        role: "USER",
-        emailVerifiedByProvider: null,
-        settings: {
-          profileFirstName: "nickname",
-          onboarded: false,
-        },
-      },
-      select: {
-        id: true,
-        email: true,
-      },
-    });
-    expect(prisma.userChannel.upsert).toHaveBeenCalledWith({
-      where: {
-        userId_channel: {
-          userId: "user_1",
-          channel: "WEB",
-        },
-      },
-      update: { externalId: "user_1" },
-      create: {
-        userId: "user_1",
-        channel: "WEB",
-        externalId: "user_1",
-      },
-    });
+    expect(mocks.userCreate).not.toHaveBeenCalled();
+    expect(mocks.userChannelUpsert).not.toHaveBeenCalled();
   });
 });

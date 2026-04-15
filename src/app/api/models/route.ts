@@ -6,20 +6,23 @@ import { getOrgModelPolicy } from "@/lib/org-settings";
 import { filterModels } from "@/lib/model-policy";
 import { getPlatformConfig } from "@/lib/platform-config";
 import { resolveOpenRouterApiKey } from "@/lib/provider-credentials";
+import { getUserOpenRouterKey } from "@/lib/user-settings";
 
-export async function GET() {
-  const session = await auth();
+export async function GET(request: Request) {
+  const session = await auth(request);
 
   if (!session?.user?.id) {
-    return NextResponse.json(
-      { error: "Unauthorized", code: "AUTH_UNAUTHORIZED" },
-      { status: 401 }
-    );
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const allowUserKey =
+    process.env.AUTH_BYPASS === "1" ||
+    process.env.ALLOW_USER_OPENROUTER_KEYS === "1";
 
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
     select: {
+      settings: true,
       balance: true,
       orgId: true,
       org: { select: { settings: true } },
@@ -27,16 +30,12 @@ export async function GET() {
   });
 
   try {
-    const [platformConfig, openRouterApiKey] = await Promise.all([
-      getPlatformConfig(),
-      resolveOpenRouterApiKey({ orgId: user?.orgId ?? null }),
-    ]);
-    if (!openRouterApiKey) {
-      return NextResponse.json(
-        { error: "OPENROUTER_API_KEY is not set", code: "OPENROUTER_KEY_MISSING" },
-        { status: 401 }
-      );
-    }
+    const platformConfig = await getPlatformConfig();
+    const userApiKey = allowUserKey ? getUserOpenRouterKey(user?.settings ?? null) : undefined;
+    const fallbackApiKey = userApiKey
+      ? undefined
+      : await resolveOpenRouterApiKey({ orgId: user?.orgId ?? null });
+    const openRouterApiKey = userApiKey ?? fallbackApiKey ?? undefined;
 
     const modelPolicy = getOrgModelPolicy(user?.org?.settings ?? null);
     const data = await fetchModels({ apiKey: openRouterApiKey });
@@ -48,7 +47,7 @@ export async function GET() {
     const filtered = filterModels(data, modelPolicy).filter(
       (model) => !disabledModels.has(model.id.trim().toLowerCase())
     );
-    const hasPaidAccess = Number(user?.balance ?? 0) > 0;
+    const hasPaidAccess = user?.balance == null || Number(user.balance) > 0;
     const visibleModels = hasPaidAccess
       ? filtered
       : filterFreeOpenRouterModels(filtered);
@@ -64,14 +63,6 @@ export async function GET() {
         lower.includes("no auth credentials")) &&
       lower.includes("openrouter");
     const status = isMissingKey || isInvalidKey ? 401 : 500;
-    const code = isMissingKey
-      ? "OPENROUTER_KEY_MISSING"
-      : isInvalidKey
-        ? "OPENROUTER_KEY_INVALID"
-        : "OPENROUTER_ERROR";
-    return NextResponse.json(
-      { error: message, code },
-      { status }
-    );
+    return NextResponse.json({ error: message }, { status });
   }
 }

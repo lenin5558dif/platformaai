@@ -1,4 +1,5 @@
 import { PromptVisibility, UserRole } from "@prisma/client";
+import { isGlobalAdminEmail } from "@/lib/admin-access";
 
 /**
  * Resolves the effective prompt visibility based on user permissions.
@@ -14,14 +15,17 @@ import { PromptVisibility, UserRole } from "@prisma/client";
  */
 export function resolvePromptVisibility(
   requestedVisibility: PromptVisibility,
-  user: { role: UserRole; orgId: string | null } | null
+  user: { role: UserRole; orgId: string | null; email?: string | null } | null
 ): PromptVisibility {
   if (requestedVisibility === "ORG" && !user?.orgId) {
     return "PRIVATE";
   }
 
   // Platform-global operation: only platform ADMIN can set GLOBAL visibility
-  if (requestedVisibility === "GLOBAL" && user?.role !== "ADMIN") {
+  if (
+    requestedVisibility === "GLOBAL" &&
+    (user?.role !== "ADMIN" || !isGlobalAdminEmail(user.email))
+  ) {
     return "PRIVATE";
   }
 

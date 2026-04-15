@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { resolvePlanFromSettings } from "@/lib/plans";
 
 export async function GET() {
   const session = await auth();
@@ -30,10 +31,13 @@ export async function GET() {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
+  const resolvedPlan = resolvePlanFromSettings(user.settings);
+
   return NextResponse.json({
     data: {
       ...user,
       balance: user.balance.toString(),
+      ...(resolvedPlan ? { resolvedPlan } : {}),
       channels: user.channelBindings.map((binding) => ({
         channel: binding.channel,
         linkedAt: binding.createdAt.toISOString(),

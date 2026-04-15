@@ -51,9 +51,9 @@ export default function UserMenu({
   }, [isOpen]);
 
   const name = displayName?.trim() || email?.trim() || "Пользователь";
-  const plan = planName?.trim() || "Тариф Pro";
+  const plan = planName?.trim() || "Тариф не назначен";
   const initial = resolveInitial(email ?? displayName);
-  const navItems = getNavItems(role);
+  const navItems = getNavItems(role, email);
 
   return (
     <div className="relative" ref={menuRef}>

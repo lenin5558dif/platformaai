@@ -92,6 +92,8 @@ export default function QuotaDlpAuditManager({
   const [centerBudgets, setCenterBudgets] = useState<Record<string, { budget: number; spent: number }>>(
     {}
   );
+  const [centerBudgetDrafts, setCenterBudgetDrafts] = useState<Record<string, string>>({});
+  const [activeCenterId, setActiveCenterId] = useState<string | null>(null);
   const [activeLimitUserId, setActiveLimitUserId] = useState<string | null>(null);
 
   const [dlpPolicy, setDlpPolicy] = useState<DlpPolicy>(initialDlpPolicy);
@@ -141,7 +143,11 @@ export default function QuotaDlpAuditManager({
         })
       );
 
-      setCenterBudgets(Object.fromEntries(entries));
+      const nextBudgets = Object.fromEntries(entries);
+      setCenterBudgets(nextBudgets);
+      setCenterBudgetDrafts(
+        Object.fromEntries(entries.map(([centerId, value]) => [centerId, String(value.budget)]))
+      );
     } catch {
       // Non-blocking for main UI
     }
@@ -258,6 +264,64 @@ export default function QuotaDlpAuditManager({
     }
   }
 
+  async function updateCostCenterBudget(centerId: string, rawBudget: string) {
+    if (!canManageLimits) {
+      setMessage(mapGovernanceError("FORBIDDEN"));
+      return;
+    }
+
+    setActiveCenterId(centerId);
+    setMessage(null);
+    emitGovernanceEvent("org-quota-governance-ui", "update-center-budget", "submit");
+    try {
+      const trimmedBudget = rawBudget.trim();
+      const parsedBudget = trimmedBudget ? Number(trimmedBudget) : null;
+
+      if (parsedBudget !== null && !Number.isFinite(parsedBudget)) {
+        setMessage(mapGovernanceError("INVALID_INPUT"));
+        emitGovernanceEvent("org-quota-governance-ui", "update-center-budget", "failure");
+        return;
+      }
+
+      const response = await fetch(`/api/org/cost-centers/${centerId}/budget`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ budget: parsedBudget }),
+      });
+
+      const body = (await response.json()) as {
+        code?: string;
+        data?: { budget: number; spent: number };
+      };
+      if (!response.ok) {
+        setMessage(mapGovernanceError(body.code));
+        emitGovernanceEvent("org-quota-governance-ui", "update-center-budget", "failure");
+        return;
+      }
+
+      setCenterBudgets((current) => ({
+        ...current,
+        [centerId]: body.data ?? { budget: 0, spent: 0 },
+      }));
+      setCenterBudgetDrafts((current) => ({
+        ...current,
+        [centerId]: String(body.data?.budget ?? 0),
+      }));
+
+      setMessage({
+        tone: "success",
+        title: "Бюджет cost center обновлен",
+        message: "Изменения применены после серверной проверки.",
+      });
+      emitGovernanceEvent("org-quota-governance-ui", "update-center-budget", "success");
+    } catch {
+      setMessage(mapGovernanceError());
+      emitGovernanceEvent("org-quota-governance-ui", "update-center-budget", "failure");
+    } finally {
+      setActiveCenterId(null);
+    }
+  }
+
   async function savePolicy(type: "dlp" | "model") {
     if (!canManagePolicy) {
       setMessage(mapGovernanceError("FORBIDDEN"));
@@ -316,8 +380,8 @@ export default function QuotaDlpAuditManager({
       <div className="rounded-2xl bg-white/80 border border-white/50 shadow-glass-sm p-6 space-y-4">
         <h2 className="text-lg font-semibold text-text-main font-display">Управление квотами</h2>
         <p className="text-xs text-text-secondary">
-          Статусы нормализованы: ok / warning / blocked / unknown. Обновления лимитов применяются
-          только после подтверждения сервера.
+          Статусы нормализованы: норма / предупреждение / блокировка / неизвестно. Обновления
+          лимитов применяются только после подтверждения сервера.
         </p>
 
         <div className="rounded-xl border border-gray-200 bg-white/70 px-4 py-3">
@@ -376,7 +440,7 @@ export default function QuotaDlpAuditManager({
                     type="number"
                     step="0.01"
                     defaultValue={member.dailyLimit ?? ""}
-                    placeholder="день"
+                    placeholder="дневной"
                     className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs"
                     aria-label="Дневной лимит"
                     disabled={!canManageLimits || activeLimitUserId === member.id}
@@ -386,7 +450,7 @@ export default function QuotaDlpAuditManager({
                     type="number"
                     step="0.01"
                     defaultValue={member.monthlyLimit ?? ""}
-                    placeholder="месяц"
+                    placeholder="месячный"
                     className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs"
                     aria-label="Месячный лимит"
                     disabled={!canManageLimits || activeLimitUserId === member.id}
@@ -406,21 +470,66 @@ export default function QuotaDlpAuditManager({
 
         <div className="rounded-xl border border-gray-200 bg-white/70 px-4 py-3">
           <p className="text-sm font-medium text-text-main mb-2">Центры затрат</p>
-          <div className="space-y-1">
+          <p className="text-xs text-text-secondary mb-3">
+            Бюджет можно редактировать прямо здесь. Пустое значение отключает лимит.
+          </p>
+          <div className="space-y-3">
             {costCenters.map((center) => {
               const budget = centerBudgets[center.id]?.budget ?? 0;
               const spent = centerBudgets[center.id]?.spent ?? 0;
               const status = normalizeQuotaStatus(budget, spent);
               return (
-                <p key={center.id} className="text-xs text-text-secondary flex items-center gap-2">
-                  <span>{center.name}</span>
-                  <span>
-                    {spent.toFixed(2)} / {budget.toFixed(2)}
-                  </span>
-                  <span className={`rounded-full px-2 py-0.5 text-[10px] ${statusBadgeClass(status)}`}>
-                    {statusLabel(status)}
-                  </span>
-                </p>
+                <form
+                  key={center.id}
+                  className="rounded-lg border border-gray-200 bg-white px-3 py-2 space-y-2"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void updateCostCenterBudget(center.id, centerBudgetDrafts[center.id] ?? "");
+                  }}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-medium text-text-main">{center.name}</p>
+                      <p className="text-[11px] text-text-secondary">
+                        {spent.toFixed(2)} / {budget.toFixed(2)}
+                      </p>
+                    </div>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[10px] ${statusBadgeClass(status)}`}
+                    >
+                      {statusLabel(status)}
+                    </span>
+                  </div>
+                  <div className="flex flex-col gap-2 md:flex-row md:items-end">
+                    <label className="flex-1 text-[11px] text-text-secondary">
+                      Бюджет
+                      <input
+                        name="budget"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={centerBudgetDrafts[center.id] ?? String(budget)}
+                        onChange={(event) =>
+                          setCenterBudgetDrafts((current) => ({
+                            ...current,
+                            [center.id]: event.target.value,
+                          }))
+                        }
+                        placeholder="0"
+                        className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs"
+                        aria-label={`Budget for ${center.name}`}
+                        disabled={!canManageLimits || activeCenterId === center.id}
+                      />
+                    </label>
+                    <button
+                      type="submit"
+                      className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-white disabled:opacity-60"
+                      disabled={!canManageLimits || activeCenterId === center.id}
+                    >
+                      {activeCenterId === center.id ? "Сохраняем..." : "Обновить бюджет"}
+                    </button>
+                  </div>
+                </form>
               );
             })}
           </div>
@@ -504,8 +613,8 @@ export default function QuotaDlpAuditManager({
               }
               disabled={!canManagePolicy || policyBusy !== null}
             >
-              <option value="allowlist">Список разрешенных</option>
-              <option value="denylist">Список запрещенных</option>
+              <option value="allowlist">Белый список</option>
+              <option value="denylist">Черный список</option>
             </select>
             <textarea
               rows={5}
@@ -550,7 +659,7 @@ export default function QuotaDlpAuditManager({
             <div className="grid gap-2 md:grid-cols-4">
               <input
                 className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs"
-                placeholder="кто"
+                placeholder="инициатор"
                 value={auditFilters.actor}
                 onChange={(event) =>
                   setAuditFilters((current) => ({ ...current, actor: event.target.value }))
@@ -575,8 +684,8 @@ export default function QuotaDlpAuditManager({
                 }
               >
                 <option value="">все каналы</option>
-                <option value="WEB">WEB</option>
-                <option value="TELEGRAM">TELEGRAM</option>
+                <option value="WEB">веб</option>
+                <option value="TELEGRAM">Telegram</option>
               </select>
               <select
                 className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs"
@@ -588,10 +697,10 @@ export default function QuotaDlpAuditManager({
                   }))
                 }
               >
-                <option value="">за все время</option>
-                <option value="24h">24h</option>
-                <option value="7d">7d</option>
-                <option value="30d">30d</option>
+                <option value="">за всё время</option>
+                <option value="24h">24 ч</option>
+                <option value="7d">7 д</option>
+                <option value="30d">30 д</option>
               </select>
             </div>
 
@@ -621,7 +730,7 @@ export default function QuotaDlpAuditManager({
                         {new Date(event.createdAt).toLocaleString("ru-RU")} • {event.channel ?? "-"}
                       </p>
                       <p className="text-[11px] text-text-secondary">
-                        {event.actorEmail ?? event.actorId ?? "неизвестный пользователь"}
+                        {event.actorEmail ?? event.actorId ?? "неизвестный инициатор"}
                       </p>
                     </button>
                   ))}
@@ -635,13 +744,13 @@ export default function QuotaDlpAuditManager({
                   <div className="space-y-2">
                     <p className="text-sm font-semibold text-text-main">{selectedAudit.action}</p>
                     <p className="text-xs text-text-secondary">
-                      Автор: {selectedAudit.actorEmail ?? selectedAudit.actorId ?? "-"}
+                      инициатор: {selectedAudit.actorEmail ?? selectedAudit.actorId ?? "-"}
                     </p>
                     <p className="text-xs text-text-secondary">
-                      Цель: {selectedAudit.targetType ?? "-"}/{selectedAudit.targetId ?? "-"}
+                      цель: {selectedAudit.targetType ?? "-"}/{selectedAudit.targetId ?? "-"}
                     </p>
                     <p className="text-xs text-text-secondary">
-                      Корреляция: {selectedAudit.correlationId ?? "-"}
+                      корреляция: {selectedAudit.correlationId ?? "-"}
                     </p>
                     <pre className="overflow-auto rounded-lg bg-slate-950 text-slate-100 p-3 text-[11px]">
                       {JSON.stringify(selectedAudit.metadata, null, 2)}

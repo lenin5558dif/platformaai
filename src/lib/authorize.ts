@@ -52,6 +52,21 @@ export async function requireSession(request?: Request): Promise<Session> {
   return session;
 }
 
+export async function requireActiveUser(session: Session) {
+  if (!session.user?.id) {
+    throw unauthorized();
+  }
+
+  const dbUser = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { isActive: true },
+  });
+
+  if (!dbUser || dbUser.isActive === false) {
+    throw unauthorized();
+  }
+}
+
 export function createAuthorizer(session: Session) {
   const userId = session.user.id;
   const orgId = session.user.orgId ?? null;

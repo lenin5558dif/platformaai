@@ -133,7 +133,7 @@ export default function InviteManager({
 
       setMessage({
         title: "Инвайт отправлен",
-        message: "Приглашение создано и отправлено на email сотрудника.",
+        message: "Приглашение создано и отправлено на почту сотрудника.",
         tone: "success",
       });
       setEmail("");
@@ -190,21 +190,41 @@ export default function InviteManager({
 
   return (
     <div className="rounded-2xl bg-white/80 border border-white/50 shadow-glass-sm p-6 space-y-4">
-      <h2 className="text-lg font-semibold text-text-main font-display">
-        Приглашения с привязкой к email
-      </h2>
-      <p className="text-xs text-text-secondary">
-        Приглашение привязано к конкретному email. Принятие доступно только из аккаунта с этим email.
-      </p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="max-w-2xl">
+          <h2 className="text-lg font-semibold text-text-main font-display">
+            Приглашения с привязкой к почте
+          </h2>
+          <p className="mt-1 text-xs text-text-secondary">
+            Инвайт привязан к конкретной почте. Это снижает ошибки доступа и делает ротацию
+            сотрудников понятной: создайте приглашение, дождитесь принятия, затем при необходимости
+            отправьте повторно или отзовите.
+          </p>
+        </div>
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+          <p className="font-semibold">Когда нужен отзыв</p>
+          <p className="mt-1">Если почта ушла не тому человеку или роль поменялась.</p>
+        </div>
+      </div>
 
       <MessageBanner message={message} />
 
-      <form onSubmit={handleCreate} className="grid gap-3 md:grid-cols-4" aria-label="Создание приглашения">
+      {!hasRoles && (
+        <div className="rounded-xl border border-dashed border-gray-300 bg-white/60 px-4 py-4 text-sm text-text-secondary">
+          Сначала заведите хотя бы одну роль в RBAC, иначе создать приглашение не получится.
+        </div>
+      )}
+
+      <form
+        onSubmit={handleCreate}
+        className="grid gap-3 md:grid-cols-4"
+        aria-label="Создание приглашения"
+      >
         <input
           type="email"
           value={email}
           onChange={(event) => setEmail(event.target.value)}
-          placeholder="user@company.ru"
+          placeholder="почта@company.ru"
           className="md:col-span-2 rounded-lg border border-gray-200 bg-white/70 px-3 py-2 text-sm"
           required
         />
@@ -239,14 +259,30 @@ export default function InviteManager({
           className="md:col-span-4 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-hover disabled:opacity-60"
           disabled={isSubmitting || !hasRoles}
         >
-          {isSubmitting ? "Отправляем..." : "Отправить приглашение"}
+          {isSubmitting ? "Отправляем..." : "Создать и отправить приглашение"}
         </button>
       </form>
 
+      <div className="rounded-xl border border-gray-200 bg-white/60 px-4 py-3 text-xs text-text-secondary">
+        <p className="font-semibold text-text-main">Что увидит админ после создания</p>
+        <p className="mt-1">
+          Свежие приглашения появляются в списке ниже. Отсюда же их можно отправить повторно, если
+          письмо не дошло, или отозвать, если доступ больше не нужен.
+        </p>
+      </div>
+
       <div className="space-y-2" aria-live="polite">
-        {isLoading && <p className="text-xs text-text-secondary">Загружаем активные приглашения...</p>}
+        {isLoading && (
+          <p className="text-xs text-text-secondary">Загружаем активные приглашения...</p>
+        )}
         {!isLoading && sortedInvites.length === 0 && (
-          <p className="text-xs text-text-secondary">Активных приглашений пока нет.</p>
+          <div className="rounded-xl border border-dashed border-gray-300 bg-white/60 px-4 py-4">
+            <p className="text-sm font-medium text-text-main">Активных приглашений пока нет</p>
+            <p className="mt-1 text-xs text-text-secondary">
+              Создайте приглашение для нового сотрудника или внешнего подрядчика. После принятия запись
+              автоматически исчезнет из этого списка.
+            </p>
+          </div>
         )}
 
         {!isLoading &&
@@ -254,12 +290,15 @@ export default function InviteManager({
             <div
               key={invite.id}
               className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white/70 px-4 py-3"
-            >
+              >
               <div>
                 <p className="text-sm font-medium text-text-main">{invite.email}</p>
                 <p className="text-xs text-text-secondary">
                   Роль: {invite.role?.name ?? "-"} • Префикс: {invite.tokenPrefix} • Истекает: {" "}
                   {new Date(invite.expiresAt).toLocaleString("ru-RU")}
+                </p>
+                <p className="mt-1 text-[11px] text-text-secondary">
+                  Повторная отправка помогает, если письмо потерялось. Отзыв закрывает приглашение сразу.
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -269,7 +308,7 @@ export default function InviteManager({
                   onClick={() => void runInviteAction(invite.id, "resend")}
                   disabled={activeActionId === invite.id}
                 >
-                  Повторить отправку
+                  Повторно отправить
                 </button>
                 <button
                   type="button"

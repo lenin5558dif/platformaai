@@ -12,6 +12,10 @@ describe("rbac-ui helpers", () => {
   it("maps known errors to safe messages", () => {
     expect(mapRbacError("FORBIDDEN").tone).toBe("warning");
     expect(mapRbacError("LAST_OWNER").title).toContain("Owner");
+    expect(mapRbacError("ROLE_NOT_FOUND").tone).toBe("error");
+    expect(mapRbacError("NOT_FOUND").title).toContain("не найдены");
+    expect(mapRbacError("RATE_LIMITED").tone).toBe("warning");
+    expect(mapRbacError("SYSTEM_ROLE_IMMUTABLE").title).toContain("защищена");
     expect(mapRbacError("UNAUTHORIZED").tone).toBe("warning");
   });
 

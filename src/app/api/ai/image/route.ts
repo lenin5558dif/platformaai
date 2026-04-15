@@ -4,6 +4,7 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getOpenRouterBaseUrl, getOpenRouterHeaders } from "@/lib/openrouter";
+import { getUserOpenRouterKey } from "@/lib/user-settings";
 import { calculateCreditsFromUsage } from "@/lib/pricing";
 import {
   commitAiQuotaHold,
@@ -22,13 +23,7 @@ import {
 import { findOwnedChat } from "@/lib/chat-ownership";
 import { resolveOrgCostCenterId } from "@/lib/cost-centers";
 import { HttpError } from "@/lib/http-error";
-import { fetchWithTimeout, isFetchTimeoutError } from "@/lib/fetch-timeout";
-import { logEvent } from "@/lib/telemetry";
-import { getPlatformConfig } from "@/lib/platform-config";
-import { resolveOpenRouterApiKey } from "@/lib/provider-credentials";
-import { getOpenRouterRateLimitPayload } from "@/lib/openrouter-metrics";
-
-const OPENROUTER_IMAGE_TIMEOUT_MS = 45_000;
+import { getSpendableCredits } from "@/lib/subscriptions";
 
 const requestSchema = z.object({
   attachmentId: z.string().min(1),
@@ -38,13 +33,10 @@ const requestSchema = z.object({
 });
 
 export async function POST(request: Request) {
-  const session = await auth();
+  const session = await auth(request);
 
   if (!session?.user?.id) {
-    return NextResponse.json(
-      { error: "Сессия истекла. Войдите снова.", code: "AUTH_UNAUTHORIZED" },
-      { status: 401 }
-    );
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const body = requestSchema.parse(await request.json());
@@ -71,6 +63,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
+  const allowUserKey =
+    process.env.AUTH_BYPASS === "1" ||
+    process.env.ALLOW_USER_OPENROUTER_KEYS === "1";
+
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
     select: {
@@ -79,10 +75,23 @@ export async function POST(request: Request) {
       org: { select: { settings: true } },
       orgId: true,
       costCenterId: true,
+      subscription: {
+        select: {
+          status: true,
+          currentPeriodEnd: true,
+          includedCredits: true,
+          includedCreditsUsed: true,
+        },
+      },
     },
   });
 
-  if (!user || Number(user.balance) <= 0) {
+  const spendableCredits = getSpendableCredits({
+    balance: user?.balance,
+    subscription: user?.subscription,
+  });
+
+  if (!user || spendableCredits.total <= 0) {
     return NextResponse.json({ error: "Insufficient balance" }, { status: 402 });
   }
 
@@ -124,19 +133,9 @@ export async function POST(request: Request) {
     }
   }
 
-  const [platformConfig, openRouterApiKey] = await Promise.all([
-    getPlatformConfig(),
-    resolveOpenRouterApiKey({ orgId: user.orgId }),
-  ]);
-
   const modelId = "openai/gpt-4o-mini";
   const modelPolicy = getOrgModelPolicy(user?.org?.settings ?? null);
   const dlpPolicy = getOrgDlpPolicy(user?.org?.settings ?? null);
-  const disabledModels = new Set(
-    platformConfig.disabledModelIds
-      .map((entry) => entry.trim().toLowerCase())
-      .filter((entry) => entry.length > 0)
-  );
 
   const modelValidation = await validateModelPolicy({
     modelId,
@@ -152,13 +151,6 @@ export async function POST(request: Request) {
     return NextResponse.json(
       { error: modelValidation.error },
       { status: modelValidation.status }
-    );
-  }
-
-  if (disabledModels.has(modelId.toLowerCase())) {
-    return NextResponse.json(
-      { error: "Модель временно отключена администратором платформы." },
-      { status: 403 }
     );
   }
 
@@ -184,19 +176,20 @@ export async function POST(request: Request) {
   }
 
   const safePrompt = dlpResult.content ?? prompt;
-  const finalPrompt = platformConfig.globalSystemPrompt?.trim()
-    ? `${platformConfig.globalSystemPrompt.trim()}\n\n${safePrompt}`
-    : safePrompt;
+
+  const userKey = allowUserKey
+    ? getUserOpenRouterKey(user?.settings ?? null)
+    : undefined;
 
   const idempotencyKey = crypto.randomUUID();
   let quotaHold = null;
 
   try {
-    const promptTokensEstimate = estimateTokensFromText(finalPrompt);
+    const promptTokensEstimate = estimateTokensFromText(safePrompt);
     const estimatedCredits = await estimateUpperBoundCredits({
       modelId,
       promptTokensEstimate,
-      apiKey: openRouterApiKey ?? undefined,
+      apiKey: userKey,
     });
 
     const reserveAmount = Math.max(1, estimatedCredits);
@@ -223,26 +216,8 @@ export async function POST(request: Request) {
   }
 
   let headers: Record<string, string>;
-  if (!openRouterApiKey) {
-    await releaseAiQuotaHold({ hold: quotaHold });
-    await logEvent({
-      type: "AI_ERROR",
-      userId: session.user.id,
-      chatId: body.chatId ?? null,
-      modelId,
-      message: "OPENROUTER_API_KEY is not set",
-      payload: {
-        source: "image",
-        orgId: user.orgId ?? null,
-      },
-    });
-    return NextResponse.json(
-      { error: "OpenRouter API key is not configured" },
-      { status: 401 }
-    );
-  }
   try {
-    headers = getOpenRouterHeaders(openRouterApiKey);
+    headers = getOpenRouterHeaders(userKey);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Missing config";
     await releaseAiQuotaHold({ hold: quotaHold });
@@ -253,97 +228,30 @@ export async function POST(request: Request) {
   const buffer = await readFile(attachment.storagePath);
   const base64 = buffer.toString("base64");
   const imageUrl = `data:${attachment.mimeType};base64,${base64}`;
-  const providerRequestStartedAt = Date.now();
 
-  let response: Response;
-  try {
-    response = await fetchWithTimeout(`${getOpenRouterBaseUrl()}/chat/completions`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        model: modelId,
-        messages: [
-          {
-            role: "user",
-            content: [
-              { type: "text", text: finalPrompt },
-              { type: "image_url", image_url: { url: imageUrl } },
-            ],
-          },
-        ],
-        stream: false,
-      }),
-      timeoutMs: OPENROUTER_IMAGE_TIMEOUT_MS,
-      timeoutLabel: "OpenRouter image description",
-    });
-  } catch (error) {
-    await releaseAiQuotaHold({ hold: quotaHold });
-    const message = isFetchTimeoutError(error) ? "OpenRouter timeout" : "OpenRouter error";
-    const status = isFetchTimeoutError(error) ? 504 : 502;
-    const durationMs = Date.now() - providerRequestStartedAt;
-    await logEvent({
-      type: "AI_REQUEST",
-      userId: session.user.id,
-      chatId: body.chatId ?? null,
-      modelId,
-      payload: {
-        source: "image",
-        model: modelId,
-        status,
-        durationMs,
-        error: true,
-      },
-    });
-    await logEvent({
-      type: "AI_ERROR",
-      userId: session.user.id,
-      chatId: body.chatId ?? null,
-      modelId,
-      message,
-      payload: {
-        source: "image",
-        durationMs,
-      },
-    });
-    return NextResponse.json({ error: message }, { status });
-  }
+  const response = await fetch(`${getOpenRouterBaseUrl()}/chat/completions`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      model: modelId,
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: safePrompt },
+            { type: "image_url", image_url: { url: imageUrl } },
+          ],
+        },
+      ],
+      stream: false,
+    }),
+  });
 
   if (!response.ok) {
     await releaseAiQuotaHold({ hold: quotaHold });
-    const status = response.status;
-    const durationMs = Date.now() - providerRequestStartedAt;
-    const rateLimitPayload = getOpenRouterRateLimitPayload(response.headers);
-    const details = await response.text();
-    await logEvent({
-      type: "AI_REQUEST",
-      userId: session.user.id,
-      chatId: body.chatId ?? null,
-      modelId,
-      payload: {
-        source: "image",
-        model: modelId,
-        status,
-        durationMs,
-        error: true,
-        ...rateLimitPayload,
-      },
-    });
-    await logEvent({
-      type: "AI_ERROR",
-      userId: session.user.id,
-      chatId: body.chatId ?? null,
-      modelId,
-      payload: {
-        source: "image",
-        status,
-        durationMs,
-        details: details.slice(0, 500),
-        ...rateLimitPayload,
-      },
-    });
     return NextResponse.json(
-      { error: "OpenRouter error", details },
-      { status }
+      { error: "OpenRouter error", details: await response.text() },
+      { status: response.status }
     );
   }
 
@@ -358,7 +266,7 @@ export async function POST(request: Request) {
         modelId,
         promptTokens: usage.prompt_tokens ?? 0,
         completionTokens: usage.completion_tokens ?? 0,
-        apiKey: openRouterApiKey ?? undefined,
+        apiKey: userKey,
       });
 
       if (creditsResult.credits > 0) {
@@ -401,21 +309,6 @@ export async function POST(request: Request) {
       data: { updatedAt: new Date() },
     });
   }
-
-  await logEvent({
-    type: "AI_REQUEST",
-    userId: session.user.id,
-    chatId: body.chatId ?? null,
-    modelId,
-    payload: {
-      source: "image",
-      model: modelId,
-      status: 200,
-      durationMs: Date.now() - providerRequestStartedAt,
-      totalTokens: usage?.total_tokens ?? 0,
-      ...getOpenRouterRateLimitPayload(response.headers),
-    },
-  });
 
   return NextResponse.json({ data: { description } });
 }
