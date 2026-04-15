@@ -115,14 +115,16 @@ export async function PATCH(request: Request) {
     const authorizer = createAuthorizer(session);
 
     const payload = updateSchema.parse(await request.json());
-
-    // Budget updates are quota/limits operations.
-    const membership = await authorizer.requireOrgPermission(
-      payload.budget === undefined
-        ? ORG_PERMISSIONS.ORG_SETTINGS_UPDATE
-        : ORG_PERMISSIONS.ORG_LIMITS_MANAGE
-    );
+    const membership = await authorizer.requireOrgMembership();
     const settings = payload.settings as Prisma.InputJsonValue | undefined;
+
+    if (payload.name !== undefined || payload.settings !== undefined) {
+      await authorizer.requireOrgPermission(ORG_PERMISSIONS.ORG_SETTINGS_UPDATE);
+    }
+
+    if (payload.budget !== undefined) {
+      await authorizer.requireOrgPermission(ORG_PERMISSIONS.ORG_LIMITS_MANAGE);
+    }
 
     const org = await prisma.organization.update({
       where: { id: membership.orgId },

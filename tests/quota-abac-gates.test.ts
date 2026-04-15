@@ -301,4 +301,98 @@ describe("ABAC gate - quota hold lifecycle", () => {
 
     fetchSpy.mockRestore();
   });
+
+  it("tries fallback model when the first provider request throws", async () => {
+    const dummyHold = {
+      orgId: "org-1",
+      idempotencyKey: "test-key",
+      daily: { reservations: [{ id: "r1" }] },
+    };
+    mockReserveAiQuotaHold.mockResolvedValue(dummyHold);
+    mockSpendCredits.mockResolvedValue({});
+
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch" as any)
+      .mockImplementationOnce(async () => {
+        throw new Error("Network error");
+      })
+      .mockImplementationOnce(async () => ({
+        ok: true,
+        status: 200,
+        headers: new Headers(),
+        json: async () => ({
+          choices: [{ message: { content: "Hello from fallback" } }],
+          usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+        }),
+      }));
+
+    const req = new Request("http://localhost/api/ai/chat", {
+      method: "POST",
+      body: JSON.stringify({
+        model: "openai/gpt-4o-mini",
+        fallbackModels: ["anthropic/claude-3-haiku"],
+        messages: [{ role: "user", content: "hi" }],
+        chatId: "chat-1",
+        stream: false,
+      }),
+    });
+
+    const res = await chatPost(req);
+
+    expect(res.status).toBe(200);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(mockCommitAiQuotaHold).toHaveBeenCalledTimes(1);
+    expect(mockReleaseAiQuotaHold).not.toHaveBeenCalled();
+
+    fetchSpy.mockRestore();
+  });
+
+  it("releases hold and skips persistence when the stream breaks", async () => {
+    const dummyHold = {
+      orgId: "org-1",
+      idempotencyKey: "test-key",
+      daily: { reservations: [{ id: "r1" }] },
+    };
+    mockReserveAiQuotaHold.mockResolvedValue(dummyHold);
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch" as any).mockImplementation(async () => {
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(
+            new TextEncoder().encode(
+              `data: ${JSON.stringify({
+                choices: [{ delta: { content: "partial" } }],
+              })}\n\n`
+            )
+          );
+          controller.error(new Error("stream interrupted"));
+        },
+      });
+
+      return new Response(stream, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
+    });
+
+    const req = new Request("http://localhost/api/ai/chat", {
+      method: "POST",
+      body: JSON.stringify({
+        model: "openai/gpt-4o-mini",
+        messages: [{ role: "user", content: "hi" }],
+        chatId: "chat-1",
+        stream: true,
+      }),
+    });
+
+    const res = await chatPost(req);
+    await res.text();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(mockReleaseAiQuotaHold).toHaveBeenCalledTimes(1);
+    expect(mockCommitAiQuotaHold).not.toHaveBeenCalled();
+    expect(mockPrismaDb.message.create).not.toHaveBeenCalled();
+
+    fetchSpy.mockRestore();
+  });
 });

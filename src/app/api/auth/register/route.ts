@@ -9,7 +9,6 @@ import {
   getRetryAfterHeader,
 } from "@/lib/rate-limit";
 import { getClientIp } from "@/lib/request-ip";
-import { getSettingsObject } from "@/lib/user-settings";
 
 const registerSchema = z
   .object({
@@ -111,64 +110,42 @@ export async function POST(request: Request) {
     });
   }
 
-  const passwordHash = await hash(parsed.data.password, 12);
-  const createData = {
-    email,
-    passwordHash,
-    isActive: true,
-    role: "USER",
-    emailVerifiedByProvider: null,
-    settings: {
-      profileFirstName: nickname,
-      onboarded: false,
-    },
-  } as unknown as Prisma.UserCreateInput;
-
   try {
     const existingLookup = {
       where: { email },
-      select: { id: true, passwordHash: true, settings: true },
+      select: { id: true },
     } as unknown as Parameters<typeof prisma.user.findUnique>[0];
 
     const existing = (await prisma.user.findUnique(existingLookup)) as {
       id: string;
-      passwordHash: string | null;
-      settings: Prisma.JsonValue;
     } | null;
-    if (existing?.passwordHash) {
+    if (existing) {
       return NextResponse.json(
         { error: "EMAIL_ALREADY_EXISTS", message: "User with this email already exists." },
         { status: 409 }
       );
     }
 
-    const existingSettings = existing ? getSettingsObject(existing.settings ?? null) : {};
+    const passwordHash = await hash(parsed.data.password, 12);
+    const createData = {
+      email,
+      passwordHash,
+      isActive: true,
+      role: "USER",
+      emailVerifiedByProvider: null,
+      settings: {
+        profileFirstName: nickname,
+        onboarded: false,
+      },
+    } as unknown as Prisma.UserCreateInput;
 
-    const user = existing
-      ? await prisma.user.update({
-          where: { id: existing.id },
-          data: {
-            passwordHash,
-            isActive: true,
-            emailVerifiedByProvider: null,
-            settings: {
-              ...existingSettings,
-              profileFirstName: existingSettings.profileFirstName ?? nickname,
-              onboarded: false,
-            },
-          } as unknown as Prisma.UserUpdateInput,
-          select: {
-            id: true,
-            email: true,
-          },
-        })
-      : await prisma.user.create({
-          data: createData,
-          select: {
-            id: true,
-            email: true,
-          },
-        });
+    const user = await prisma.user.create({
+      data: createData,
+      select: {
+        id: true,
+        email: true,
+      },
+    });
 
     await prisma.userChannel.upsert({
       where: {

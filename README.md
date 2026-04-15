@@ -103,7 +103,7 @@ tests/                    # 44 unit tests + E2E
 docs/                     # API documentation
 ```
 
-### Quick Start
+### Local Quick Start
 
 ```bash
 git clone https://github.com/lenin5558dif/platformaai.git
@@ -116,6 +116,15 @@ npm run prisma:migrate
 npm run prisma:seed
 npm run dev                   # http://localhost:3000
 ```
+
+### Production Bootstrap
+
+```bash
+npm run prisma:generate
+npm run prisma:migrate:deploy
+```
+
+Use `prisma:seed` only for local/dev bootstrap flows.
 
 Required environment variables:
 - `DATABASE_URL` — PostgreSQL connection string
@@ -250,7 +259,7 @@ tests/                    # 44 unit-теста + E2E
 docs/                     # Документация API
 ```
 
-### Быстрый старт
+### Локальный старт
 
 ```bash
 git clone https://github.com/lenin5558dif/platformaai.git
@@ -263,6 +272,15 @@ npm run prisma:migrate
 npm run prisma:seed
 npm run dev                   # http://localhost:3000
 ```
+
+### Production bootstrap
+
+```bash
+npm run prisma:generate
+npm run prisma:migrate:deploy
+```
+
+`prisma:seed` оставляйте только для локального/dev bootstrap.
 
 Обязательные переменные окружения:
 - `DATABASE_URL` — подключение к PostgreSQL

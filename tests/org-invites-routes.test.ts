@@ -42,10 +42,54 @@ const db = {
   costCenters: new Map<string, any>(),
 };
 
+const advisoryLocks = new Map<
+  string,
+  { locked: boolean; waiters: Array<() => void> }
+>();
+
 let idSeq = 0;
 function newId(prefix: string) {
   idSeq += 1;
   return `${prefix}_${idSeq}`;
+}
+
+function getInviteLockKey(args: any[]) {
+  const [query, ...values] = args;
+  if (!Array.isArray(query)) return null;
+  const sql = String(query[0] ?? "");
+  if (!sql.includes("pg_advisory_xact_lock")) return null;
+  return `${values[0]}:${values[1]}`;
+}
+
+async function acquireAdvisoryLock(lockKey: string) {
+  let entry = advisoryLocks.get(lockKey);
+  if (!entry) {
+    entry = { locked: false, waiters: [] };
+    advisoryLocks.set(lockKey, entry);
+  }
+  if (!entry.locked) {
+    entry.locked = true;
+    return;
+  }
+
+  await new Promise<void>((resolve) => {
+    entry!.waiters.push(() => {
+      entry!.locked = true;
+      resolve();
+    });
+  });
+}
+
+function releaseAdvisoryLock(lockKey: string) {
+  const entry = advisoryLocks.get(lockKey);
+  if (!entry) return;
+  const next = entry.waiters.shift();
+  if (next) {
+    entry.locked = false;
+    next();
+    return;
+  }
+  entry.locked = false;
 }
 
 const prisma = {
@@ -175,8 +219,24 @@ const prisma = {
     }),
   },
   $transaction: vi.fn(async (fn: any) => {
-    const tx = { ...prisma };
-    return fn(tx);
+    const acquiredLocks: string[] = [];
+    const tx = {
+      ...prisma,
+      $executeRaw: vi.fn(async (...args: any[]) => {
+        const lockKey = getInviteLockKey(args);
+        if (!lockKey) return undefined;
+        await acquireAdvisoryLock(lockKey);
+        acquiredLocks.push(lockKey);
+        return undefined;
+      }),
+    };
+    try {
+      return await fn(tx);
+    } finally {
+      while (acquiredLocks.length > 0) {
+        releaseAdvisoryLock(acquiredLocks.pop() as string);
+      }
+    }
   }),
 } as any;
 
@@ -239,6 +299,7 @@ describe("org invites routes", () => {
     db.users.clear();
     db.roles.clear();
     db.costCenters.clear();
+    advisoryLocks.clear();
     idSeq = 0;
     state.authenticated = true;
     state.orgId = "org_1";
@@ -299,6 +360,22 @@ describe("org invites routes", () => {
     expect(res2.status).toBe(409);
     const body2 = await jsonResponse(res2);
     expect(body2.code).toBe("INVITE_EXISTS");
+  });
+
+  test("concurrent create requests are serialized per org/email", async () => {
+    const { POST } = await import("../src/app/api/org/invites/route");
+
+    const makeRequest = () =>
+      new Request("http://localhost/api/org/invites", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: "race@b.com", roleId: "role_1" }),
+      });
+
+    const [first, second] = await Promise.all([POST(makeRequest()), POST(makeRequest())]);
+    const statuses = [first.status, second.status].sort();
+    expect(statuses).toEqual([201, 409]);
+    expect(db.invites.size).toBe(1);
   });
 
   test("can create new invite after previous was revoked", async () => {

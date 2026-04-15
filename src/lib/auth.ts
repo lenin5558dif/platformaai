@@ -44,7 +44,7 @@ const ssoProvider: OIDCConfig<Record<string, unknown>> | null =
         issuer: process.env.SSO_ISSUER,
         clientId: process.env.SSO_CLIENT_ID,
         clientSecret: process.env.SSO_CLIENT_SECRET,
-        allowDangerousEmailAccountLinking: true,
+        allowDangerousEmailAccountLinking: false,
       }
     : null;
 

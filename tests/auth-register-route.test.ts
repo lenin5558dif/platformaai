@@ -88,7 +88,7 @@ describe("auth register route", () => {
     });
   });
 
-  test("upgrades legacy email account without password hash", async () => {
+  test("rejects takeover of legacy email-only account", async () => {
     state.existingUser = true;
     state.existingHasPassword = false;
 
@@ -106,24 +106,9 @@ describe("auth register route", () => {
       })
     );
 
-    expect(res.status).toBe(201);
+    expect(res.status).toBe(409);
     expect(prisma.user.create).not.toHaveBeenCalled();
-    expect(prisma.user.update).toHaveBeenCalledWith({
-      where: { id: "existing" },
-      data: {
-        passwordHash: "hashed:password1",
-        isActive: true,
-        emailVerifiedByProvider: null,
-        settings: {
-          profileFirstName: "legacy",
-          onboarded: false,
-        },
-      },
-      select: {
-        id: true,
-        email: true,
-      },
-    });
+    expect(prisma.user.update).not.toHaveBeenCalled();
   });
 
   test("creates user with hashed password and web binding", async () => {
@@ -144,7 +129,7 @@ describe("auth register route", () => {
     expect(res.status).toBe(201);
     expect(prisma.user.findUnique).toHaveBeenCalledWith({
       where: { email: "name@example.com" },
-      select: { id: true, passwordHash: true, settings: true },
+      select: { id: true },
     });
     expect(prisma.user.create).toHaveBeenCalledWith({
       data: {

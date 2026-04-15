@@ -93,6 +93,11 @@ export async function POST(request: Request) {
       where: { email: payload.email },
       select: { id: true, orgId: true, role: true },
     });
+    const nextLegacyRole = payload.role ?? existingUser?.role ?? "EMPLOYEE";
+
+    if (nextLegacyRole === "ADMIN") {
+      await authorizer.requireOrgPermission(ORG_PERMISSIONS.ORG_ROLE_CHANGE);
+    }
 
     if (existingUser?.orgId && existingUser.orgId !== membership.orgId) {
       throw new HttpError(
@@ -102,7 +107,6 @@ export async function POST(request: Request) {
       );
     }
 
-    const nextLegacyRole = payload.role ?? existingUser?.role ?? "EMPLOYEE";
     const user = existingUser
       ? await prisma.user.update({
           where: { id: existingUser.id },

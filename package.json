@@ -13,6 +13,7 @@
     "bot:dev": "tsx src/bot/index.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
+    "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:seed": "prisma db seed"
   },
   "dependencies": {

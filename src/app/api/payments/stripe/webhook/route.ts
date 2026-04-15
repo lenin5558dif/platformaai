@@ -3,6 +3,25 @@ import { getStripe } from "@/lib/stripe";
 import { prisma } from "@/lib/db";
 import { recordStripeWebhookEvent } from "@/lib/stripe-webhook";
 
+function parseCompletedCheckoutMetadata(session: {
+  id?: string;
+  metadata?: Record<string, string>;
+}) {
+  const userId = session.metadata?.userId?.trim();
+  const creditsRaw = session.metadata?.credits?.trim();
+  const credits = Number(creditsRaw ?? Number.NaN);
+
+  if (!userId || !Number.isFinite(credits) || credits <= 0) {
+    throw new Error("Invalid checkout.session.completed metadata");
+  }
+
+  return {
+    userId,
+    credits,
+    sessionId: session.id ?? null,
+  };
+}
+
 export async function POST(request: Request) {
   const signature = request.headers.get("stripe-signature");
 
@@ -33,10 +52,23 @@ export async function POST(request: Request) {
       id?: string;
       metadata?: Record<string, string>;
     };
-    const credits = Number(session.metadata?.credits ?? 0);
-    const userId = session.metadata?.userId;
+    let checkout;
+    try {
+      checkout = parseCompletedCheckoutMetadata(session);
+    } catch (error) {
+      console.error("Stripe webhook rejected malformed checkout metadata", {
+        eventId: event.id,
+        sessionId: session.id ?? null,
+        error: error instanceof Error ? error.message : "Invalid metadata",
+      });
+      return NextResponse.json(
+        { error: "Invalid checkout metadata" },
+        { status: 500 }
+      );
+    }
+
     const eventId = event.id;
-    const sessionId = session.id ?? null;
+    const sessionId = checkout.sessionId;
     const result = await prisma.$transaction(async (tx) => {
       const recorded = await recordStripeWebhookEvent({
         eventId,
@@ -48,28 +80,30 @@ export async function POST(request: Request) {
         return { duplicate: true };
       }
 
-      if (credits > 0 && userId) {
-        const user = await tx.user.findUnique({
-          where: { id: userId },
-          select: { costCenterId: true },
-        });
+      const user = await tx.user.findUnique({
+        where: { id: checkout.userId },
+        select: { costCenterId: true },
+      });
 
-        await tx.user.update({
-          where: { id: userId },
-          data: { balance: { increment: credits } },
-        });
-
-        await tx.transaction.create({
-          data: {
-            userId,
-            costCenterId: user?.costCenterId ?? undefined,
-            amount: credits,
-            type: "REFILL",
-            description: "Stripe пополнение",
-            externalId: event.id,
-          },
-        });
+      if (!user) {
+        throw new Error("Stripe webhook references unknown user");
       }
+
+      await tx.user.update({
+        where: { id: checkout.userId },
+        data: { balance: { increment: checkout.credits } },
+      });
+
+      await tx.transaction.create({
+        data: {
+          userId: checkout.userId,
+          costCenterId: user.costCenterId ?? undefined,
+          amount: checkout.credits,
+          type: "REFILL",
+          description: "Stripe пополнение",
+          externalId: event.id,
+        },
+      });
 
       return { duplicate: false };
     });

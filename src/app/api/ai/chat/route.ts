@@ -508,6 +508,8 @@ export async function POST(request: Request) {
       userId: session.user.id,
     });
 
+    const streamMode = body.stream ?? true;
+
     await logEvent({
       type: "AI_REQUEST",
       userId: session.user.id,
@@ -516,13 +518,13 @@ export async function POST(request: Request) {
       payload: {
         source: "web",
         model: cached.modelId,
-        stream: body.stream ?? true,
+        stream: streamMode,
         messageCount: trimmedMessages.length,
         cacheHit: true,
       },
     });
 
-    if (!body.stream) {
+    if (!streamMode) {
       return NextResponse.json({
         choices: [{ message: { content: cached.content } }],
         usage: cached.usage ?? null,
@@ -552,12 +554,15 @@ export async function POST(request: Request) {
   }
 
   const providerRequestStartedAt = Date.now();
+  const streamMode = body.stream ?? true;
   let response: Response | null = null;
   let usedModel = body.model;
+  let lastFetchError: unknown = null;
 
-  try {
-    for (const modelId of modelsToTry) {
-      usedModel = modelId;
+  for (const [index, modelId] of modelsToTry.entries()) {
+    usedModel = modelId;
+
+    try {
       response = await fetchWithTimeout(`${baseUrl}/chat/completions`, {
         method: "POST",
         headers: requestHeaders,
@@ -566,27 +571,41 @@ export async function POST(request: Request) {
           messages: trimmedMessages,
           temperature: body.temperature,
           max_tokens: body.max_tokens,
-          stream: body.stream ?? true,
+          stream: streamMode,
           stream_options: { include_usage: true },
         }),
         timeoutMs: OPENROUTER_CHAT_TIMEOUT_MS,
         timeoutLabel: "OpenRouter chat completion",
       });
+      lastFetchError = null;
+    } catch (error) {
+      lastFetchError = error;
+      response = null;
 
-      if (response.ok) {
-        break;
+      if (index < modelsToTry.length - 1) {
+        await new Promise((resolve) => setTimeout(resolve, 400));
+        continue;
       }
-
-      if (![429, 503].includes(response.status)) {
-        break;
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, 400));
+      break;
     }
-  } catch (error) {
+
+    if (response.ok) {
+      break;
+    }
+
+    if (![429, 503].includes(response.status) || index === modelsToTry.length - 1) {
+      break;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 400));
+  }
+
+  if ((!response || !response.ok) && lastFetchError) {
     await releaseAiQuotaHold({ hold: quotaHold });
-    const message = error instanceof Error ? error.message : "OpenRouter error";
-    const status = isFetchTimeoutError(error) ? 504 : 502;
+    quotaHold = null;
+    const message =
+      lastFetchError instanceof Error ? lastFetchError.message : "OpenRouter error";
+    const status = isFetchTimeoutError(lastFetchError) ? 504 : 502;
     const durationMs = Date.now() - providerRequestStartedAt;
     await logEvent({
       type: "AI_REQUEST",
@@ -596,7 +615,7 @@ export async function POST(request: Request) {
       payload: {
         source: "web",
         model: usedModel,
-        stream: body.stream ?? true,
+        stream: streamMode,
         messageCount: trimmedMessages.length,
         status,
         durationMs,
@@ -615,7 +634,11 @@ export async function POST(request: Request) {
       },
     });
     return NextResponse.json(
-      { error: isFetchTimeoutError(error) ? "OpenRouter timeout" : "OpenRouter error" },
+      {
+        error: isFetchTimeoutError(lastFetchError)
+          ? "OpenRouter timeout"
+          : "OpenRouter error",
+      },
       { status }
     );
   }
@@ -638,7 +661,7 @@ export async function POST(request: Request) {
       payload: {
         source: "web",
         model: usedModel,
-        stream: body.stream ?? true,
+        stream: streamMode,
         messageCount: trimmedMessages.length,
         status,
         durationMs,
@@ -666,7 +689,7 @@ export async function POST(request: Request) {
     );
   }
 
-  if (!body.stream) {
+  if (!streamMode) {
     let data = await response.json();
     let usage = data?.usage;
     let assistantContent = data?.choices?.[0]?.message?.content ?? "";
@@ -808,6 +831,7 @@ export async function POST(request: Request) {
   let sentAny = false;
   let streamTelemetryHeaders: Headers | null = response.headers;
   const reader = response.body?.getReader();
+  let streamFailure: unknown = null;
 
   if (!reader) {
     await releaseAiQuotaHold({ hold: quotaHold });
@@ -872,6 +896,7 @@ export async function POST(request: Request) {
     } catch (error) {
       const message = error instanceof Error ? error.message : "Billing error";
       await releaseAiQuotaHold({ hold: quotaHold });
+      quotaHold = null;
       await logEvent({
         type: "BILLING_ERROR",
         userId,
@@ -879,6 +904,7 @@ export async function POST(request: Request) {
         modelId: usedModel,
         message,
       });
+      return;
     }
 
     await prisma.message.create({
@@ -1017,9 +1043,63 @@ export async function POST(request: Request) {
             }
           }
         }
+      } catch (error) {
+        streamFailure = error;
       } finally {
+        if (streamFailure) {
+          const durationMs = Date.now() - providerRequestStartedAt;
+          const rateLimitPayload = getOpenRouterRateLimitPayload(streamTelemetryHeaders);
+          await releaseAiQuotaHold({ hold: quotaHold });
+          quotaHold = null;
+          await logEvent({
+            type: "AI_REQUEST",
+            userId,
+            chatId,
+            modelId: usedModel,
+            payload: {
+              source: "web",
+              model: usedModel,
+              stream: true,
+              messageCount: trimmedMessages.length,
+              status: isFetchTimeoutError(streamFailure) ? 504 : 502,
+              durationMs,
+              error: true,
+              ...rateLimitPayload,
+            },
+          });
+          await logEvent({
+            type: "AI_ERROR",
+            userId,
+            chatId,
+            modelId: usedModel,
+            message:
+              streamFailure instanceof Error
+                ? streamFailure.message
+                : "OpenRouter stream interrupted",
+            payload: {
+              source: "web",
+              durationMs,
+              ...rateLimitPayload,
+            },
+          });
+
+          try {
+            controller.enqueue(
+              encoder.encode(
+                `event: error\ndata: ${JSON.stringify({
+                  error: "OpenRouter stream interrupted",
+                })}\n\n`
+              )
+            );
+            controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+          } catch {
+            // Ignore enqueue errors when the client disconnected early.
+          }
+        }
         controller.close();
-        void finalizeStream();
+        if (!streamFailure) {
+          void finalizeStream();
+        }
       }
     },
   });

@@ -118,42 +118,51 @@ export async function POST(request: Request) {
       }
     }
 
-    const existing = await prisma.orgInvite.findFirst({
-      where: {
-        orgId: membership.orgId,
-        email,
-        usedAt: null,
-        revokedAt: null,
-        expiresAt: { gt: now },
-      },
-      select: { id: true },
-    });
-    if (existing) {
-      throw new HttpError(409, "INVITE_EXISTS", "Invite already exists");
-    }
+    const { invite, token, tokenPrefix, expiresAt } = await prisma.$transaction(
+      async (tx) => {
+        // Serialize invite creation per org/email so concurrent POSTs cannot race.
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${membership.orgId}), hashtext(${email}))`;
 
-    const { token, tokenHash, tokenPrefix } = generateInviteToken();
-    const expiresAt = new Date(Date.now() + INVITE_TTL_MS);
+        const existing = await tx.orgInvite.findFirst({
+          where: {
+            orgId: membership.orgId,
+            email,
+            usedAt: null,
+            revokedAt: null,
+            expiresAt: { gt: now },
+          },
+          select: { id: true },
+        });
+        if (existing) {
+          throw new HttpError(409, "INVITE_EXISTS", "Invite already exists");
+        }
 
-    const invite = await prisma.orgInvite.create({
-      data: {
-        orgId: membership.orgId,
-        email,
-        roleId: role.id,
-        defaultCostCenterId,
-        tokenHash,
-        tokenPrefix,
-        expiresAt,
-        createdById: session.user.id,
-      },
-      select: {
-        id: true,
-        email: true,
-        roleId: true,
-        tokenPrefix: true,
-        expiresAt: true,
-      },
-    });
+        const { token, tokenHash, tokenPrefix } = generateInviteToken();
+        const expiresAt = new Date(Date.now() + INVITE_TTL_MS);
+
+        const invite = await tx.orgInvite.create({
+          data: {
+            orgId: membership.orgId,
+            email,
+            roleId: role.id,
+            defaultCostCenterId,
+            tokenHash,
+            tokenPrefix,
+            expiresAt,
+            createdById: session.user.id,
+          },
+          select: {
+            id: true,
+            email: true,
+            roleId: true,
+            tokenPrefix: true,
+            expiresAt: true,
+          },
+        });
+
+        return { invite, token, tokenPrefix, expiresAt };
+      }
+    );
 
     const acceptUrl = buildInviteAcceptUrl(token);
     await sendOrgInviteEmail({ email, acceptUrl });
