@@ -147,6 +147,7 @@ const envSchema = z
     const telegramAuthExplicitlyEnabled = env.NEXT_PUBLIC_TELEGRAM_AUTH_ENABLED === "1";
 
     if (
+      telegramAuthExplicitlyEnabled &&
       telegramLoginBotNameConfigured &&
       telegramPublicBotNameConfigured &&
       env.TELEGRAM_LOGIN_BOT_NAME !== env.NEXT_PUBLIC_TELEGRAM_LOGIN_BOT_NAME
@@ -159,11 +160,7 @@ const envSchema = z
       });
     }
 
-    if (
-      telegramAuthExplicitlyEnabled ||
-      telegramLoginBotNameConfigured ||
-      telegramPublicBotNameConfigured
-    ) {
+    if (telegramAuthExplicitlyEnabled) {
       const telegramValues = [
         ["TELEGRAM_BOT_TOKEN", env.TELEGRAM_BOT_TOKEN],
         ["TELEGRAM_LOGIN_BOT_NAME", env.TELEGRAM_LOGIN_BOT_NAME],

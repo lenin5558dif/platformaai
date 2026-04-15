@@ -342,6 +342,7 @@ describe("internal runtime ops routes", () => {
       NEXTAUTH_URL: "https://app.example",
       NEXT_PUBLIC_APP_URL: "https://other.example",
       APP_URL: "https://other-app.example",
+      NEXT_PUBLIC_TELEGRAM_AUTH_ENABLED: "1",
       TELEGRAM_LOGIN_BOT_NAME: "bot-a",
       NEXT_PUBLIC_TELEGRAM_LOGIN_BOT_NAME: "bot-b",
       SSO_ISSUER: "https://issuer.example",
@@ -421,5 +422,19 @@ describe("internal runtime ops routes", () => {
 
     expect(env.TELEGRAM_BOT_TOKEN).toBe("telegram-token");
     expect(env.NEXT_PUBLIC_TELEGRAM_AUTH_ENABLED).toBe("0");
+  });
+
+  test("env module allows stale telegram bot names when web auth is not explicitly enabled", async () => {
+    applyEnv({
+      TELEGRAM_BOT_TOKEN: "REPLACE_ME",
+      TELEGRAM_LOGIN_BOT_NAME: "platforma_bot",
+      NEXT_PUBLIC_TELEGRAM_LOGIN_BOT_NAME: "platforma_bot",
+      NEXT_PUBLIC_TELEGRAM_AUTH_ENABLED: undefined,
+    });
+
+    const { env } = await importFresh<typeof import("../src/lib/env")>("../src/lib/env");
+
+    expect(env.TELEGRAM_LOGIN_BOT_NAME).toBe("platforma_bot");
+    expect(env.NEXT_PUBLIC_TELEGRAM_LOGIN_BOT_NAME).toBe("platforma_bot");
   });
 });
