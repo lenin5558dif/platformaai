@@ -608,9 +608,8 @@ export default function ChatApp() {
   }, [selectedModel]);
 
   useEffect(() => {
-    if (isSending) {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-    }
+    if (!isSending) return;
+    messagesEndRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
   }, [messages, isSending]);
 
   async function createChat(title: string) {
@@ -864,38 +863,6 @@ export default function ChatApp() {
     } catch (err: unknown) {
       setError(getErrorMessage(err, "Не удалось отправить сообщение."));
     }
-  }
-
-  async function handleContinue() {
-    await sendQuickPrompt("Продолжи");
-  }
-
-  async function handleRegenerate() {
-    if (isSending || !messages.length) return;
-    const lastUserIndex = [...messages]
-      .map((message, index) => ({ message, index }))
-      .reverse()
-      .find((item) => item.message.role === "user")?.index;
-
-    if (lastUserIndex === undefined) return;
-    const chatId = activeChatId ?? (await ensureChatId("Новый чат"));
-    if (!chatId) return;
-
-    const lastUserMessage = messages[lastUserIndex];
-    if (lastUserMessage?.id) {
-      await fetch(`/api/messages/${lastUserMessage.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          content: lastUserMessage.content,
-          rollback: true,
-        }),
-      });
-    }
-
-    const trimmedMessages = messages.slice(0, lastUserIndex + 1);
-    setMessages(trimmedMessages);
-    await runAssistant(chatId, trimmedMessages);
   }
 
   function startEditMessage(message: ChatMessage) {
@@ -1588,29 +1555,6 @@ export default function ChatApp() {
             )}
           </div>
         </div>
-
-        {messages.length > 0 && (
-          <div className="px-4 pb-3 flex justify-center">
-            <div className="w-full max-w-[720px] flex justify-end gap-2">
-              <button
-                className="rounded-full border border-black/10 px-4 py-1.5 text-xs text-text-secondary hover:text-text-primary hover:border-black/20 disabled:opacity-50"
-                type="button"
-                onClick={handleContinue}
-                disabled={isSending}
-              >
-                Продолжить
-              </button>
-              <button
-                className="rounded-full bg-primary/15 px-4 py-1.5 text-xs font-semibold text-primary hover:bg-primary/25 disabled:opacity-50"
-                type="button"
-                onClick={handleRegenerate}
-                disabled={isSending}
-              >
-                Перегенерировать
-              </button>
-            </div>
-          </div>
-        )}
 
         {/* Input Area */}
         <div className="sticky bottom-6 left-0 right-0 px-4 flex justify-center z-40">
