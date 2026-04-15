@@ -1612,8 +1612,11 @@ export default function ChatApp() {
             )}
             <div className="flex items-end gap-2 p-2">
               <button
-                className="p-2 text-text-secondary hover:text-primary transition-colors rounded-full hover:bg-black/5 shrink-0"
-                onClick={() => fileInputRef.current?.click()}
+                className="p-2 text-text-secondary/50 transition-colors rounded-full bg-black/5 shrink-0 cursor-not-allowed"
+                type="button"
+                disabled
+                aria-disabled="true"
+                title="Прикрепление файлов скоро появится"
               >
                 <span className="material-symbols-outlined text-[24px]">add_circle</span>
               </button>
@@ -1622,6 +1625,7 @@ export default function ChatApp() {
                 multiple
                 className="hidden"
                 ref={fileInputRef}
+                disabled
                 onChange={async (e) => {
                   const files = e.target.files;
                   if (!files || files.length === 0) return;
@@ -1689,6 +1693,9 @@ export default function ChatApp() {
                 {composerStatusLabel}
               </span>
               <div className="flex items-center gap-3 text-[10px] text-text-secondary/70 font-mono">
+                <span className="rounded-full border border-dashed border-primary/30 bg-primary/5 px-2 py-0.5 text-[10px] font-semibold text-primary/80">
+                  Файлы скоро
+                </span>
                 <span className="hidden sm:inline">Оценка: {estimatedCostLabel}</span>
                 <span className="hidden md:inline">
                   {estimatedPromptTokens.toLocaleString()} ток.
