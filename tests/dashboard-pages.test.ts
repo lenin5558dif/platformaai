@@ -317,6 +317,7 @@ describe("dashboard pages", () => {
   });
 
   test("renders billing admin view with org details and transaction rows", async () => {
+    process.env.GLOBAL_ADMIN_EMAILS = "admin@example.com";
     mocks.auth.mockResolvedValue(
       createSession({ role: "ADMIN", orgId: "org-1", email: "admin@example.com" })
     );
@@ -361,6 +362,33 @@ describe("dashboard pages", () => {
     expect(html).toContain("Подробная статистика");
     expect(html).toContain("Оплачено");
     expect(html).toContain("Списание");
+  });
+
+  test("hides admin analytics links for non-global admins", async () => {
+    process.env.GLOBAL_ADMIN_EMAILS = "root@example.com";
+    mocks.auth.mockResolvedValue(
+      createSession({ role: "ADMIN", orgId: "org-1", email: "admin@example.com" })
+    );
+    mocks.prisma.user.findUnique.mockResolvedValue({
+      balance: 300,
+      email: "admin@example.com",
+      settings: { planName: "Omni Pro", planPrice: 59 },
+      orgId: "org-1",
+      role: "ADMIN",
+    });
+    mocks.prisma.message.aggregate.mockResolvedValue({
+      _sum: { tokenCount: 125000, cost: 17.5 },
+      _count: { _all: 4 },
+    });
+    mocks.prisma.transaction.findMany.mockResolvedValue([]);
+    mocks.prisma.organization.findUnique.mockResolvedValue({
+      name: "Acme LLC",
+      settings: { companyName: "Acme LLC", taxId: "7700000000", address: "Moscow" },
+    });
+
+    const html = render(await BillingPage());
+
+    expect(html).not.toContain("Подробная статистика");
   });
 
   test("renders profile page states and telegram linkage", async () => {

@@ -5,6 +5,7 @@ import TopUpForm from "@/components/billing/TopUpForm";
 import AppShell from "@/components/layout/AppShell";
 import TelegramLinkSection from "@/components/profile/TelegramLinkSection";
 import SessionSecurityCard from "@/components/profile/SessionSecurityCard";
+import { isGlobalAdminSession } from "@/lib/admin-access";
 import { resolvePlanFromSettings } from "@/lib/plans";
 
 export const dynamic = "force-dynamic";
@@ -23,6 +24,7 @@ export default async function ProfilePage({
   });
 
   const resolvedPlan = resolvePlanFromSettings(dbUser?.settings ?? null);
+  const canOpenAdmin = isGlobalAdminSession(session);
 
 
   return (
@@ -124,12 +126,14 @@ export default async function ProfilePage({
                   >
                     Открыть организацию
                   </Link>
-                  <Link
-                    href="/admin"
-                    className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-white"
-                  >
-                    Админ-обзор
-                  </Link>
+                  {canOpenAdmin ? (
+                    <Link
+                      href="/admin"
+                      className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-white"
+                    >
+                      Админ-обзор
+                    </Link>
+                  ) : null}
                 </div>
                 <p className="mt-3 text-[11px] text-text-secondary">
                   Администратор может завершать активные сессии участников из карточки RBAC.

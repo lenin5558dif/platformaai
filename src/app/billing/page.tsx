@@ -1,6 +1,7 @@
 import Link from "next/link";
 import AppShell from "@/components/layout/AppShell";
 import { requirePageSession } from "@/lib/auth";
+import { isGlobalAdminSession } from "@/lib/admin-access";
 import { prisma } from "@/lib/db";
 import { getSettingsObject } from "@/lib/user-settings";
 import TopUpForm from "@/components/billing/TopUpForm";
@@ -76,6 +77,7 @@ export default async function BillingPage() {
     typeof orgSettings.taxId === "string" ? orgSettings.taxId : "";
   const orgAddress =
     typeof orgSettings.address === "string" ? orgSettings.address : "";
+  const canOpenAdmin = isGlobalAdminSession(session);
 
   return (
     <AppShell
@@ -218,7 +220,7 @@ export default async function BillingPage() {
                       Дополнительный баланс: {formatCredits(Number(user?.balance ?? 0))}
                     </p>
                   </div>
-                  {isAdmin && (
+                  {isAdmin && canOpenAdmin && (
                     <Link
                       className="group mt-auto flex items-center gap-1 text-xs font-medium text-primary transition-colors hover:text-primary/80"
                       href="/admin"
