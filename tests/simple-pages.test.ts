@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => ({
   }),
   authUi: {
     getAuthCapabilities: vi.fn(),
+    describeAuthMethods: vi.fn(() => "auth-summary"),
     loadAuthEmailGuardrails: vi.fn(),
     resolveAuthMode: vi.fn(),
   },
@@ -50,6 +51,7 @@ vi.mock("@/components/layout/AppShell", () => ({
 
 vi.mock("@/lib/auth-ui", () => ({
   getAuthCapabilities: mocks.authUi.getAuthCapabilities,
+  describeAuthMethods: mocks.authUi.describeAuthMethods,
   loadAuthEmailGuardrails: mocks.authUi.loadAuthEmailGuardrails,
   resolveAuthMode: mocks.authUi.resolveAuthMode,
 }));
