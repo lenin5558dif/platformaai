@@ -58,6 +58,7 @@ const envSchema = z
     TELEGRAM_BOT_TOKEN: z.string().trim().min(1).optional(),
     TELEGRAM_LOGIN_BOT_NAME: z.string().trim().min(1).optional(),
     NEXT_PUBLIC_TELEGRAM_LOGIN_BOT_NAME: z.string().trim().min(1).optional(),
+    NEXT_PUBLIC_TELEGRAM_AUTH_ENABLED: z.enum(["0", "1"]).optional(),
     NEXT_PUBLIC_TEMP_ACCESS_ENABLED: z.enum(["0", "1"]).optional(),
     TEMP_ACCESS_TOKEN: z.string().trim().min(1).optional(),
     TEMP_ACCESS_EMAIL: z.string().trim().email().optional(),

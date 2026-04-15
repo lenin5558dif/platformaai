@@ -1,6 +1,7 @@
 # Telegram Integration API
 
 This document describes the API endpoints for linking and unlinking Telegram accounts.
+Telegram web login is a separate surface and works only for accounts that are already linked to Telegram.
 
 ## Authentication
 
@@ -89,6 +90,13 @@ After a user performs a **revoke-all sessions** action:
 - The Telegram account remains linked but cannot perform bot actions until the user generates a new link token in the web application and re-confirms the Telegram link.
 
 ## Deployment Notes
+
+### Telegram Login Widget Requirements
+
+- `NEXT_PUBLIC_TELEGRAM_AUTH_ENABLED=1`
+- `TELEGRAM_BOT_TOKEN`, `TELEGRAM_LOGIN_BOT_NAME`, and `NEXT_PUBLIC_TELEGRAM_LOGIN_BOT_NAME` must all be set and refer to the same bot.
+- The exact public HTTPS domain must be configured in BotFather for the Telegram Login Widget.
+- After changing Telegram env values, do a full rebuild and redeploy, not only a process restart.
 
 ### Database Migration
 

@@ -378,6 +378,7 @@ describe("internal runtime ops routes", () => {
   test("env module requires the full Telegram auth trio when any Telegram auth value is set", async () => {
     applyEnv({
       TELEGRAM_BOT_TOKEN: "telegram-token",
+      NEXT_PUBLIC_TELEGRAM_AUTH_ENABLED: "1",
     });
 
     let error: unknown;

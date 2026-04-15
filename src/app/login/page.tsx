@@ -1,5 +1,6 @@
 import LoginForm from "@/components/auth/LoginForm";
 import {
+  describeAuthMethods,
   getAuthCapabilities,
   loadAuthEmailGuardrails,
   resolveAuthMode,
@@ -15,6 +16,7 @@ export default async function LoginPage({
   const capabilities = getAuthCapabilities();
   const emailGuardrails = loadAuthEmailGuardrails();
   const mode = resolveAuthMode(params?.mode);
+  const authSummary = describeAuthMethods(capabilities);
 
   return (
     <div className="min-h-screen px-6 py-10">
@@ -27,8 +29,7 @@ export default async function LoginPage({
             Один вход для чата, регистрации и управления организацией
           </h1>
           <p className="mt-3 text-sm leading-6 text-text-secondary">
-            Используйте email, SSO или Telegram, чтобы быстро авторизоваться и продолжить работу в
-            приложении без отдельного портала.
+            {authSummary}
           </p>
           <div className="mt-6 flex flex-wrap items-center gap-3">
             <Link

@@ -1,4 +1,5 @@
 import { hasRealConfiguredValue } from "@/lib/config-values";
+import { getTelegramAuthConfig } from "@/lib/telegram-auth-config";
 
 export type AuthMode = "signin" | "register";
 
@@ -138,12 +139,7 @@ export function getAuthCapabilities(
     hasRealConfiguredValue(env.SSO_ISSUER) &&
     hasRealConfiguredValue(env.SSO_CLIENT_ID) &&
     hasRealConfiguredValue(env.SSO_CLIENT_SECRET);
-  const telegramEnabledByFlag = env.NEXT_PUBLIC_TELEGRAM_AUTH_ENABLED !== "0";
-  const telegramEnabled =
-    telegramEnabledByFlag &&
-    hasRealConfiguredValue(env.NEXT_PUBLIC_TELEGRAM_LOGIN_BOT_NAME) &&
-    hasRealConfiguredValue(env.TELEGRAM_LOGIN_BOT_NAME) &&
-    hasRealConfiguredValue(env.TELEGRAM_BOT_TOKEN);
+  const telegramEnabled = getTelegramAuthConfig(env).enabled;
   const tempAccess = env.NEXT_PUBLIC_TEMP_ACCESS_ENABLED === "1";
   const ssoVisibleByFlag =
     env.NEXT_PUBLIC_SSO_ENABLED === undefined || env.NEXT_PUBLIC_SSO_ENABLED === "1";
@@ -155,6 +151,28 @@ export function getAuthCapabilities(
     telegram: telegramEnabled,
     tempAccess,
   };
+}
+
+export function describeAuthMethods(capabilities: AuthCapabilities) {
+  const methods = [
+    capabilities.email ? "email" : null,
+    capabilities.sso ? "SSO" : null,
+    capabilities.telegram ? "Telegram" : null,
+  ].filter(Boolean) as string[];
+
+  if (methods.length === 0) {
+    return "Используйте основной вход организации, чтобы продолжить работу в приложении.";
+  }
+
+  if (methods.length === 1) {
+    return `Используйте ${methods[0]}, чтобы быстро авторизоваться и продолжить работу в приложении.`;
+  }
+
+  if (methods.length === 2) {
+    return `Используйте ${methods[0]} или ${methods[1]}, чтобы быстро авторизоваться и продолжить работу в приложении.`;
+  }
+
+  return `Используйте ${methods[0]}, ${methods[1]} или ${methods[2]}, чтобы быстро авторизоваться и продолжить работу в приложении.`;
 }
 
 export function resolveAuthMode(raw?: string): AuthMode {

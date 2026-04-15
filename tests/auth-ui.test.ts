@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  describeAuthMethods,
   evaluateAuthEmailGuardrails,
   getAuthCapabilities,
   loadAuthEmailGuardrails,
@@ -26,6 +27,7 @@ describe("auth-ui helpers", () => {
       NEXT_PUBLIC_TELEGRAM_LOGIN_BOT_NAME: "platforma_bot",
       TELEGRAM_LOGIN_BOT_NAME: "platforma_bot",
       TELEGRAM_BOT_TOKEN: "telegram-token",
+      NEXT_PUBLIC_TELEGRAM_AUTH_ENABLED: "1",
       NEXT_PUBLIC_TEMP_ACCESS_ENABLED: "1",
     });
 
@@ -71,6 +73,17 @@ describe("auth-ui helpers", () => {
       NEXT_PUBLIC_TELEGRAM_LOGIN_BOT_NAME: "platforma_bot",
       TELEGRAM_LOGIN_BOT_NAME: "platforma_bot",
       TELEGRAM_BOT_TOKEN: "REPLACE_ME",
+      NEXT_PUBLIC_TELEGRAM_AUTH_ENABLED: "1",
+    });
+
+    expect(capabilities.telegram).toBe(false);
+  });
+
+  it("keeps telegram auth hidden until the explicit feature flag is enabled", () => {
+    const capabilities = getAuthCapabilities({
+      NEXT_PUBLIC_TELEGRAM_LOGIN_BOT_NAME: "platforma_bot",
+      TELEGRAM_LOGIN_BOT_NAME: "platforma_bot",
+      TELEGRAM_BOT_TOKEN: "telegram-token",
     });
 
     expect(capabilities.telegram).toBe(false);
@@ -191,5 +204,25 @@ describe("auth-ui helpers", () => {
     expect(registerText.subtitle).toContain("основным идентификатором");
     expect(signinText.title).toContain("Вход");
     expect(signinText.ssoAction).toContain("SSO");
+  });
+
+  it("describes available auth methods without promising disabled ones", () => {
+    expect(
+      describeAuthMethods({
+        email: true,
+        sso: false,
+        telegram: false,
+        tempAccess: false,
+      })
+    ).toContain("email");
+
+    expect(
+      describeAuthMethods({
+        email: true,
+        sso: true,
+        telegram: false,
+        tempAccess: false,
+      })
+    ).toContain("email или SSO");
   });
 });

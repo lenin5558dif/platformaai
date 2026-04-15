@@ -71,6 +71,8 @@ describe("telegram token route", () => {
     state.tokenRecord = null;
     process.env.TELEGRAM_BOT_TOKEN = "telegram-token";
     process.env.TELEGRAM_LOGIN_BOT_NAME = "platformaai_bot";
+    process.env.NEXT_PUBLIC_TELEGRAM_LOGIN_BOT_NAME = "platformaai_bot";
+    process.env.NEXT_PUBLIC_TELEGRAM_AUTH_ENABLED = "1";
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2025-01-01T00:00:00.000Z"));
     vi.resetModules();

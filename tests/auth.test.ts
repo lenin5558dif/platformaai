@@ -318,7 +318,7 @@ describe("auth module", () => {
 
     await loadAuthModule();
 
-    expect(state.nextAuthConfig.providers).toHaveLength(4);
+    expect(state.nextAuthConfig.providers).toHaveLength(3);
     expect(getProvider("sso")).toMatchObject({
       id: "sso",
       name: "Corp SSO",
@@ -402,6 +402,11 @@ describe("auth module", () => {
   });
 
   test("telegram authorize rejects empty, invalid, and unverifiable payloads", async () => {
+    process.env.TELEGRAM_BOT_TOKEN = "bot-token";
+    process.env.TELEGRAM_LOGIN_BOT_NAME = "platformaai_bot";
+    process.env.NEXT_PUBLIC_TELEGRAM_LOGIN_BOT_NAME = "platformaai_bot";
+    process.env.NEXT_PUBLIC_TELEGRAM_AUTH_ENABLED = "1";
+
     await loadAuthModule();
     const telegramProvider = getProvider("telegram");
 
@@ -421,8 +426,9 @@ describe("auth module", () => {
     process.env.TELEGRAM_BOT_TOKEN = "bot-token";
     process.env.TELEGRAM_LOGIN_BOT_NAME = "platformaai_bot";
     process.env.NEXT_PUBLIC_TELEGRAM_LOGIN_BOT_NAME = "platformaai_bot";
+    process.env.NEXT_PUBLIC_TELEGRAM_AUTH_ENABLED = "1";
     state.verifyTelegramLogin.mockReturnValue(true);
-    state.prisma.user.upsert.mockResolvedValue({
+    state.prisma.user.findUnique.mockResolvedValue({
       id: "u-1",
       email: null,
       role: "USER",
@@ -446,12 +452,14 @@ describe("auth module", () => {
       expect.objectContaining({ id: 42 }),
       "bot-token",
     );
-    expect(state.prisma.user.upsert).toHaveBeenCalledWith({
+    expect(state.prisma.user.findUnique).toHaveBeenCalledWith({
       where: { telegramId: "42" },
-      update: {},
-      create: {
-        telegramId: "42",
-        role: "USER",
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        orgId: true,
+        balance: true,
       },
     });
     expect(result).toEqual({
@@ -469,8 +477,9 @@ describe("auth module", () => {
     process.env.TELEGRAM_BOT_TOKEN = "bot-token";
     process.env.TELEGRAM_LOGIN_BOT_NAME = "platformaai_bot";
     process.env.NEXT_PUBLIC_TELEGRAM_LOGIN_BOT_NAME = "platformaai_bot";
+    process.env.NEXT_PUBLIC_TELEGRAM_AUTH_ENABLED = "1";
     state.verifyTelegramLogin.mockReturnValue(true);
-    state.prisma.user.upsert.mockResolvedValue({
+    state.prisma.user.findUnique.mockResolvedValue({
       id: "u-2",
       email: "tg@example.com",
       role: "USER",
@@ -490,6 +499,34 @@ describe("auth module", () => {
     });
 
     expect(result?.name).toBe("Telegram User");
+  });
+
+  test("telegram provider is not registered when Telegram auth is disabled", async () => {
+    await loadAuthModule();
+
+    expect(getProvider("telegram")).toBeUndefined();
+  });
+
+  test("telegram authorize rejects accounts that are not linked yet", async () => {
+    process.env.TELEGRAM_BOT_TOKEN = "bot-token";
+    process.env.TELEGRAM_LOGIN_BOT_NAME = "platformaai_bot";
+    process.env.NEXT_PUBLIC_TELEGRAM_LOGIN_BOT_NAME = "platformaai_bot";
+    process.env.NEXT_PUBLIC_TELEGRAM_AUTH_ENABLED = "1";
+    state.verifyTelegramLogin.mockReturnValue(true);
+    state.prisma.user.findUnique.mockResolvedValue(null);
+
+    await loadAuthModule();
+    const telegramProvider = getProvider("telegram");
+
+    await expect(
+      telegramProvider.authorize({
+        data: JSON.stringify({
+          id: 404,
+          auth_date: 123,
+          hash: "hash",
+        }),
+      })
+    ).resolves.toBeNull();
   });
 
   test("registers temp access provider and authorizes by token", async () => {
@@ -824,6 +861,7 @@ describe("auth module", () => {
     process.env.TELEGRAM_BOT_TOKEN = "bot-token";
     process.env.TELEGRAM_LOGIN_BOT_NAME = "platformaai_bot";
     process.env.NEXT_PUBLIC_TELEGRAM_LOGIN_BOT_NAME = "platformaai_bot";
+    process.env.NEXT_PUBLIC_TELEGRAM_AUTH_ENABLED = "1";
 
     state.nextAuthAuth.mockResolvedValueOnce(null);
     let mod = await import("../src/app/api/auth/link-telegram/route");
@@ -929,6 +967,11 @@ describe("auth module", () => {
   });
 
   test("telegram verify route enforces rate limit and validates payloads", async () => {
+    process.env.TELEGRAM_BOT_TOKEN = "bot-token";
+    process.env.TELEGRAM_LOGIN_BOT_NAME = "platformaai_bot";
+    process.env.NEXT_PUBLIC_TELEGRAM_LOGIN_BOT_NAME = "platformaai_bot";
+    process.env.NEXT_PUBLIC_TELEGRAM_AUTH_ENABLED = "1";
+
     state.checkRateLimit.mockResolvedValueOnce({
       ok: false,
       remaining: 0,
@@ -971,6 +1014,7 @@ describe("auth module", () => {
     expect(res.status).toBe(401);
 
     state.verifyTelegramLogin.mockReturnValueOnce(true);
+    state.prisma.user.findUnique.mockResolvedValueOnce(null);
     vi.resetModules();
     mod = await import("../src/app/api/auth/telegram/verify/route");
     res = await mod.POST(
@@ -978,6 +1022,22 @@ describe("auth module", () => {
         method: "POST",
         body: JSON.stringify({
           id: 3,
+          auth_date: 123,
+          hash: "hash",
+        }),
+      }),
+    );
+    expect(res.status).toBe(404);
+
+    state.verifyTelegramLogin.mockReturnValueOnce(true);
+    state.prisma.user.findUnique.mockResolvedValueOnce({ id: "u-telegram" });
+    vi.resetModules();
+    mod = await import("../src/app/api/auth/telegram/verify/route");
+    res = await mod.POST(
+      new Request("http://localhost/api/auth/telegram/verify", {
+        method: "POST",
+        body: JSON.stringify({
+          id: 4,
           auth_date: 123,
           hash: "hash",
         }),

@@ -15,6 +15,7 @@ import { logAudit } from "@/lib/audit";
 import { sendMagicLink } from "@/lib/unisender";
 import { verifyTelegramLogin, type TelegramAuthPayload } from "@/lib/telegram";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
+import { getTelegramAuthConfig } from "@/lib/telegram-auth-config";
 import {
   evaluateAuthEmailGuardrails,
   loadAuthEmailGuardrails,
@@ -38,6 +39,7 @@ const EMAIL_SIGNIN_SUSPICIOUS_DOMAIN_LIMIT = 5;
 const emailAuthConfigured =
   Boolean(process.env.UNISENDER_API_KEY) &&
   Boolean(process.env.UNISENDER_SENDER_EMAIL);
+const telegramAuthConfigured = getTelegramAuthConfig().enabled;
 
 async function logAuthSecurityAudit(params: {
   stage: "email_signin" | "invite_create" | "invite_resend" | "invite_accept";
@@ -247,14 +249,8 @@ const passwordProvider = CredentialsProvider({
   },
 });
 
-const nextAuth = NextAuth({
-  adapter: PrismaAdapter(prisma),
-  session: { strategy: "jwt" },
-  trustHost: true,
-  providers: [
-    ...(emailProvider ? [emailProvider] : []),
-    passwordProvider,
-    CredentialsProvider({
+const telegramProvider = telegramAuthConfigured
+  ? CredentialsProvider({
       id: "telegram",
       name: "Telegram",
       credentials: {
@@ -288,14 +284,20 @@ const nextAuth = NextAuth({
         }
 
         const telegramId = String(parsed.id);
-        const user = await prisma.user.upsert({
+        const user = await prisma.user.findUnique({
           where: { telegramId },
-          update: {},
-          create: {
-            telegramId,
-            role: "USER",
+          select: {
+            id: true,
+            email: true,
+            role: true,
+            orgId: true,
+            balance: true,
           },
         });
+
+        if (!user) {
+          return null;
+        }
 
         return {
           id: user.id,
@@ -310,7 +312,17 @@ const nextAuth = NextAuth({
           balance: user.balance.toString(),
         };
       },
-    }),
+    })
+  : null;
+
+const nextAuth = NextAuth({
+  adapter: PrismaAdapter(prisma),
+  session: { strategy: "jwt" },
+  trustHost: true,
+  providers: [
+    ...(emailProvider ? [emailProvider] : []),
+    passwordProvider,
+    ...(telegramProvider ? [telegramProvider] : []),
     ...(tempAccessProvider ? [tempAccessProvider] : []),
     ...(ssoProvider ? [ssoProvider] : []),
   ],

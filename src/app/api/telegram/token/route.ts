@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { generateToken } from "@/lib/tokens";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { maskEmail } from "@/lib/telegram-linking";
-import { hasRealConfiguredValue } from "@/lib/config-values";
+import { getTelegramAuthConfig } from "@/lib/telegram-auth-config";
 import * as bcrypt from "bcryptjs";
 
 const EXPIRY_MINUTES = 10;
@@ -133,16 +133,15 @@ export async function POST() {
     },
   });
 
-  const botName = process.env.TELEGRAM_LOGIN_BOT_NAME;
-  const botToken = process.env.TELEGRAM_BOT_TOKEN;
-  if (!hasRealConfiguredValue(botName) || !hasRealConfiguredValue(botToken)) {
+  const telegramAuth = getTelegramAuthConfig();
+  if (!telegramAuth.enabled || !telegramAuth.botName) {
     return NextResponse.json(
       { error: "Telegram auth is not configured" },
       { status: 503 }
     );
   }
 
-  const deepLink = `https://t.me/${botName}?start=${token}`;
+  const deepLink = `https://t.me/${telegramAuth.botName}?start=${token}`;
 
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },

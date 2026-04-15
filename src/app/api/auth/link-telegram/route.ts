@@ -3,6 +3,7 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { verifyTelegramLogin } from "@/lib/telegram";
+import { getTelegramAuthConfig } from "@/lib/telegram-auth-config";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 
 const schema = z.object({
@@ -16,6 +17,13 @@ const schema = z.object({
 });
 
 export async function POST(request: Request) {
+  if (!getTelegramAuthConfig().enabled) {
+    return NextResponse.json(
+      { ok: false, error: "Telegram auth is not configured" },
+      { status: 503 }
+    );
+  }
+
   const session = await auth();
 
   if (!session?.user?.id) {
