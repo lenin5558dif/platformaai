@@ -16,7 +16,7 @@
 - [x] 5. Выровнять policy доступа к `/admin` в меню и CTA
 - [x] 6. Вернуть client-side navigation в `src/components/layout/UserMenu.tsx`
 - [ ] 7. Убрать dead-end на generic payments routes при YooKassa env
-- [ ] 8. Сделать production-safe заполнение `BillingPlan`
+- [x] 8. Сделать production-safe заполнение `BillingPlan`
 - [ ] 9. Перевести billing UI на `UserSubscription` как source of truth
 - [ ] 10. Развести денежные subscription transactions и credit ledger
 - [ ] 11. Починить детерминированное определение плана по `priceId` в webhook

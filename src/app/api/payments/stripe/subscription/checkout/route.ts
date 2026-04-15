@@ -2,7 +2,12 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { getBillingPlan, getPlanStripePriceId, resolveBillingPlanId } from "@/lib/plans";
+import {
+  ensureBillingPlans,
+  getBillingPlan,
+  getPlanStripePriceId,
+  resolveBillingPlanId,
+} from "@/lib/plans";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { getStripe } from "@/lib/stripe";
 
@@ -42,6 +47,8 @@ export async function POST(request: Request) {
   if (!staticPlan || staticPlan.monthlyPriceUsd <= 0 || !staticPlan.renewalEnabled) {
     return NextResponse.json({ error: "Plan is not purchasable" }, { status: 400 });
   }
+
+  await ensureBillingPlans(prisma);
 
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },

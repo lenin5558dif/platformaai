@@ -136,6 +136,29 @@ export function getBillingPlan(planId: BillingPlanId | null | undefined) {
   return planId ? PLAN_BY_ID.get(planId) ?? null : null;
 }
 
+type BillingPlanPersistence = {
+  billingPlan: {
+    upsert: (args: {
+      where: { code: string };
+      update: {
+        name: string;
+        monthlyPriceUsd: number;
+        includedCreditsPerMonth: number;
+        stripePriceId: string | null;
+        isActive: boolean;
+      };
+      create: {
+        code: string;
+        name: string;
+        monthlyPriceUsd: number;
+        includedCreditsPerMonth: number;
+        stripePriceId: string | null;
+        isActive: boolean;
+      };
+    }) => Promise<unknown>;
+  };
+};
+
 const PLAN_STRIPE_PRICE_ENV: Record<Exclude<BillingPlanId, "starter">, string> = {
   creator: "STRIPE_PRICE_ID_CREATOR",
   pro: "STRIPE_PRICE_ID_PRO",
@@ -150,6 +173,33 @@ export function getPlanStripePriceId(
   }
 
   return process.env[PLAN_STRIPE_PRICE_ENV[planId]] ?? fallback ?? null;
+}
+
+export async function ensureBillingPlans(prisma: BillingPlanPersistence) {
+  await Promise.all(
+    BILLING_PLANS.map((plan) => {
+      const stripePriceId = getPlanStripePriceId(plan.id, null);
+
+      return prisma.billingPlan.upsert({
+        where: { code: plan.id },
+        update: {
+          name: plan.name,
+          monthlyPriceUsd: plan.monthlyPriceUsd,
+          includedCreditsPerMonth: plan.includedCreditsPerMonth ?? 0,
+          stripePriceId,
+          isActive: true,
+        },
+        create: {
+          code: plan.id,
+          name: plan.name,
+          monthlyPriceUsd: plan.monthlyPriceUsd,
+          includedCreditsPerMonth: plan.includedCreditsPerMonth ?? 0,
+          stripePriceId,
+          isActive: true,
+        },
+      });
+    })
+  );
 }
 
 export function resolveBillingPlanId(value: unknown): BillingPlanId | null {

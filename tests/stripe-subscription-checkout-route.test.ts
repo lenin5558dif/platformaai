@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
     },
     billingPlan: {
       findUnique: vi.fn(),
+      upsert: vi.fn(),
     },
   },
 }));
@@ -38,6 +39,7 @@ describe("POST /api/payments/stripe/subscription/checkout", () => {
     delete process.env.NEXT_PUBLIC_APP_URL;
     delete process.env.NEXTAUTH_URL;
     delete process.env.STRIPE_PRICE_ID_CREATOR;
+    delete process.env.STRIPE_PRICE_ID_PRO;
     mocks.checkRateLimit.mockResolvedValue({
       ok: true,
       remaining: 4,
@@ -95,6 +97,7 @@ describe("POST /api/payments/stripe/subscription/checkout", () => {
     expect(await response.json()).toEqual({
       error: "Stripe price is not configured for this plan",
     });
+    expect(mocks.prisma.billingPlan.upsert).toHaveBeenCalledTimes(3);
   });
 
   test("creates subscription checkout session", async () => {
@@ -130,6 +133,7 @@ describe("POST /api/payments/stripe/subscription/checkout", () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ url: "https://stripe.test/subscription" });
+    expect(mocks.prisma.billingPlan.upsert).toHaveBeenCalledTimes(3);
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({
         mode: "subscription",
@@ -146,6 +150,47 @@ describe("POST /api/payments/stripe/subscription/checkout", () => {
             planId: "creator",
           },
         },
+      })
+    );
+  });
+
+  test("bootstraps missing billing plans before resolving the requested plan", async () => {
+    process.env.STRIPE_PRICE_ID_CREATOR = "price_creator_env";
+
+    mocks.auth.mockResolvedValue({ user: { id: "user-1" } });
+    mocks.prisma.user.findUnique.mockResolvedValue({
+      email: "user@example.com",
+      subscription: null,
+    });
+    mocks.prisma.billingPlan.findUnique.mockResolvedValue({
+      code: "creator",
+      stripePriceId: null,
+      isActive: true,
+    });
+    mocks.getStripe.mockReturnValue({
+      checkout: {
+        sessions: {
+          create: vi.fn().mockResolvedValue({ url: "https://stripe.test/subscription" }),
+        },
+      },
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/payments/stripe/subscription/checkout", {
+        method: "POST",
+        body: JSON.stringify({ planId: "creator" }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.prisma.billingPlan.upsert).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: { code: "creator" },
+        update: expect.objectContaining({
+          stripePriceId: "price_creator_env",
+          isActive: true,
+        }),
       })
     );
   });
