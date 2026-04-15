@@ -30,6 +30,27 @@ const {
     chat: {
       update: vi.fn(),
     },
+    platformConfig: {
+      upsert: vi.fn().mockResolvedValue({
+        id: "default",
+        globalSystemPrompt: null,
+        disabledModelIds: [],
+        updatedAt: new Date(),
+        updatedById: null,
+      }),
+      findUnique: vi.fn(),
+      findFirst: vi.fn(),
+    },
+    orgProviderCredential: {
+      findUnique: vi.fn().mockResolvedValue(null),
+      upsert: vi.fn(),
+    },
+    adminPasswordResetToken: {
+      create: vi.fn(),
+      findFirst: vi.fn(),
+      findUnique: vi.fn(),
+      update: vi.fn(),
+    },
   },
   mockReserveAiQuotaHold: vi.fn(),
   mockReleaseAiQuotaHold: vi.fn(),
@@ -98,6 +119,7 @@ import { POST as chatPost } from "@/app/api/ai/chat/route";
 describe("ABAC gate - quota hold lifecycle", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubEnv("OPENROUTER_API_KEY", "test-key");
     mockAuthFn.mockResolvedValue({ user: { id: "u1", orgId: null } });
     mockPrismaDb.user.findUnique.mockResolvedValue({
       balance: 100,

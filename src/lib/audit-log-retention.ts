@@ -2,7 +2,7 @@ import type { PrismaClient } from "@prisma/client";
 import type { AuditLogRetentionConfig } from "@/lib/audit-log-config";
 import { recordPurgeMetrics } from "@/lib/audit-metrics";
 
-export type AuditLogPurgeResult = {
+type AuditLogPurgeResult = {
   cutoffIso: string;
   dryRun: boolean;
   batches: number;

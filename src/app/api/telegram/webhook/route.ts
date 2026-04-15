@@ -1,7 +1,18 @@
 import { NextResponse } from "next/server";
 
 export async function POST(request: Request) {
-  const update = await request.json();
+  const expectedSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
+  const providedSecret = request.headers.get("x-telegram-bot-api-secret-token");
 
-  return NextResponse.json({ ok: true, update });
+  if (expectedSecret && providedSecret !== expectedSecret) {
+    return NextResponse.json({ ok: false }, { status: 401 });
+  }
+
+  const update = await request.json().catch(() => null);
+  if (!update) {
+    return NextResponse.json({ ok: false }, { status: 400 });
+  }
+
+  // Webhook endpoint intentionally returns a minimal acknowledgment.
+  return NextResponse.json({ ok: true });
 }

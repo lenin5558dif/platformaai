@@ -1,5 +1,6 @@
 generator client {
   provider = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-1.1.x", "debian-openssl-3.0.x"]
 }
 
 datasource db {
@@ -66,6 +67,11 @@ enum AuditAction {
   SCIM_GROUP_SYNC
   SSO_DOMAIN_UPDATED
   BILLING_REFILL
+  ADMIN_PASSWORD_RESET_REQUESTED
+  ADMIN_PASSWORD_RESET_COMPLETED
+  PLATFORM_SYSTEM_PROMPT_UPDATED
+  PLATFORM_MODEL_TOGGLED
+  ORG_PROVIDER_CREDENTIAL_UPDATED
 }
 
 enum AccessChannel {
@@ -79,9 +85,14 @@ enum QuotaScope {
   ORG
 }
 
+enum ProviderType {
+  OPENROUTER
+}
+
 model User {
   id          String      @id @default(cuid())
   email       String?     @unique
+  passwordHash String?
   emailVerifiedByProvider Boolean?
   telegramId  String?     @unique
   isActive    Boolean     @default(true)
@@ -108,6 +119,10 @@ model User {
   telegramTokens TelegramLinkToken[]
   channelBindings UserChannel[]
   memberships OrgMembership[]
+  providerCredentialsUpdated OrgProviderCredential[] @relation("OrgProviderCredentialUpdater")
+  platformConfigsUpdated PlatformConfig[] @relation("PlatformConfigUpdater")
+  passwordResetRequested AdminPasswordResetToken[] @relation("AdminPasswordResetRequester")
+  passwordResetTargets AdminPasswordResetToken[] @relation("AdminPasswordResetTarget")
   invitesCreated OrgInvite[] @relation("InviteCreator")
   dlpPoliciesCreated DlpPolicy[] @relation("DlpPolicyCreator")
   dlpPoliciesUpdated DlpPolicy[] @relation("DlpPolicyUpdater")
@@ -139,6 +154,7 @@ model Organization {
   quotaReservations QuotaReservation[]
   costCenters CostCenter[]
   scimTokens ScimToken[]
+  providerCredentials OrgProviderCredential[]
   domains    OrgDomain[]
   auditLogs  AuditLog[]
   createdAt DateTime @default(now())
@@ -560,4 +576,56 @@ model AuditLog {
   @@index([actorId])
   @@index([action])
   @@index([channel])
+}
+
+model PlatformConfig {
+  id               String   @id @default("default")
+  globalSystemPrompt String?
+  disabledModelIds String[] @default([])
+  updatedById      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  updatedBy User? @relation("PlatformConfigUpdater", fields: [updatedById], references: [id])
+
+  @@index([updatedById])
+}
+
+model OrgProviderCredential {
+  id               String       @id @default(cuid())
+  orgId            String
+  provider         ProviderType
+  encryptedSecret  String
+  secretFingerprint String
+  isActive         Boolean      @default(true)
+  updatedById      String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  updatedBy User?        @relation("OrgProviderCredentialUpdater", fields: [updatedById], references: [id])
+
+  @@unique([orgId, provider])
+  @@index([orgId])
+  @@index([provider])
+  @@index([updatedById])
+}
+
+model AdminPasswordResetToken {
+  id           String   @id @default(cuid())
+  userId       String
+  requestedById String?
+  tokenHash    String   @unique
+  tokenPrefix  String
+  expiresAt    DateTime
+  usedAt       DateTime?
+  createdAt    DateTime @default(now())
+
+  user        User  @relation("AdminPasswordResetTarget", fields: [userId], references: [id], onDelete: Cascade)
+  requestedBy User? @relation("AdminPasswordResetRequester", fields: [requestedById], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([requestedById])
+  @@index([tokenPrefix])
+  @@index([expiresAt])
 }

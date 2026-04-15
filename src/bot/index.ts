@@ -2,6 +2,7 @@ import "dotenv/config";
 import { Telegraf, Markup, type Context } from "telegraf";
 import { PrismaClient, Prisma, type User } from "@prisma/client";
 import { getOpenRouterBaseUrl, getOpenRouterHeaders } from "@/lib/openrouter";
+import { fetchWithTimeout, isFetchTimeoutError } from "@/lib/fetch-timeout";
 import { trimMessages, type ChatMessage } from "@/lib/context";
 import {
   calculateCreditsFromStt,
@@ -25,6 +26,9 @@ import {
   cancelTelegramLink,
   confirmTelegramLink,
 } from "@/bot/telegram-linking-flow";
+import { getPlatformConfig } from "@/lib/platform-config";
+import { resolveOpenRouterApiKey } from "@/lib/provider-credentials";
+import { getOpenRouterRateLimitPayload } from "@/lib/openrouter-metrics";
 
 const prisma = new PrismaClient();
 const botToken = process.env.TELEGRAM_BOT_TOKEN;
@@ -38,6 +42,7 @@ const DEFAULT_MODEL = "openai/gpt-4o";
 const bot = new Telegraf(botToken);
 
 const TELEGRAM_MESSAGE_LIMIT = 4000;
+const OPENROUTER_BOT_TIMEOUT_MS = 30_000;
 
 function escapeHtml(text: string) {
   return text
@@ -365,15 +370,26 @@ async function handleUserPrompt(ctx: Context, user: User, content: string) {
   if (!clean) return;
 
   const modelId = await resolveModel(user.id);
-
   const costCenterId = await resolveUserCostCenterId(user);
-
-  const org = user.orgId
-    ? await prisma.organization.findUnique({
-        where: { id: user.orgId },
-        select: { settings: true },
-      })
-    : null;
+  const [org, platformConfig, openRouterApiKey] = await Promise.all([
+    user.orgId
+      ? prisma.organization.findUnique({
+          where: { id: user.orgId },
+          select: { settings: true },
+        })
+      : null,
+    getPlatformConfig(),
+    resolveOpenRouterApiKey({ orgId: user.orgId }),
+  ]);
+  const disabledModels = new Set(
+    platformConfig.disabledModelIds
+      .map((entry) => entry.trim().toLowerCase())
+      .filter((entry) => entry.length > 0)
+  );
+  if (disabledModels.has(modelId.trim().toLowerCase())) {
+    await ctx.reply("Эта модель временно отключена администратором платформы.");
+    return;
+  }
 
   const authCtx: AuthorizationContext = {
     userId: user.id,
@@ -393,6 +409,7 @@ async function handleUserPrompt(ctx: Context, user: User, content: string) {
   }
   const finalContent = authResult.finalContent;
   const chat = await getOrCreateChat(user.id, modelId);
+  const globalSystemPrompt = platformConfig.globalSystemPrompt?.trim() ?? "";
 
   await prisma.message.create({
     data: {
@@ -408,7 +425,10 @@ async function handleUserPrompt(ctx: Context, user: User, content: string) {
   });
 
   const history = await fetchChatMessages(chat.id);
-  const trimmed = trimMessages(history);
+  const messagesWithSystem = globalSystemPrompt
+    ? [{ role: "system" as const, content: globalSystemPrompt }, ...history]
+    : history;
+  const trimmed = trimMessages(messagesWithSystem);
 
   try {
     await preflightCredits({ userId: user.id, minAmount: 1 });
@@ -419,32 +439,75 @@ async function handleUserPrompt(ctx: Context, user: User, content: string) {
 
   const stopTyping = startTyping(ctx);
   const placeholder = await ctx.reply("⏳ Готовлю ответ...");
+  if (!openRouterApiKey) {
+    await logEvent({
+      type: "AI_ERROR",
+      userId: user.id,
+      chatId: chat.id,
+      modelId,
+      message: "OPENROUTER_API_KEY is not set",
+      payload: {
+        source: "telegram",
+        orgId: user.orgId ?? null,
+      },
+    });
+    await sendReply(
+      ctx,
+      "OpenRouter ключ не настроен. Обратитесь к администратору.",
+      placeholder.message_id
+    );
+    stopTyping();
+    return;
+  }
 
-  await logEvent({
-    type: "AI_REQUEST",
-    userId: user.id,
-    chatId: chat.id,
-    modelId,
-    payload: {
-      model: modelId,
-      messageCount: trimmed.length,
-      source: "telegram",
-    },
-  });
-
+  const providerRequestStartedAt = Date.now();
   try {
-    const response = await fetch(`${getOpenRouterBaseUrl()}/chat/completions`, {
+    const response = await fetchWithTimeout(`${getOpenRouterBaseUrl()}/chat/completions`, {
       method: "POST",
-      headers: getOpenRouterHeaders(),
+      headers: getOpenRouterHeaders(openRouterApiKey),
       body: JSON.stringify({
         model: modelId,
         messages: trimmed,
         stream: true,
         stream_options: { include_usage: true },
       }),
+      timeoutMs: OPENROUTER_BOT_TIMEOUT_MS,
+      timeoutLabel: "OpenRouter telegram chat completion",
     });
+    const rateLimitPayload = getOpenRouterRateLimitPayload(response.headers);
 
     if (!response.ok) {
+      const durationMs = Date.now() - providerRequestStartedAt;
+      const details = await response.text();
+      await logEvent({
+        type: "AI_REQUEST",
+        userId: user.id,
+        chatId: chat.id,
+        modelId,
+        payload: {
+          source: "telegram",
+          model: modelId,
+          stream: true,
+          messageCount: trimmed.length,
+          status: response.status,
+          durationMs,
+          error: true,
+          ...rateLimitPayload,
+        },
+      });
+      await logEvent({
+        type: "AI_ERROR",
+        userId: user.id,
+        chatId: chat.id,
+        modelId,
+        payload: {
+          source: "telegram",
+          status: response.status,
+          durationMs,
+          details: details.slice(0, 500),
+          ...rateLimitPayload,
+        },
+      });
       await sendReply(
         ctx,
         "Модель временно недоступна. Попробуйте позже.",
@@ -454,6 +517,35 @@ async function handleUserPrompt(ctx: Context, user: User, content: string) {
     }
 
     if (!response.body) {
+      const durationMs = Date.now() - providerRequestStartedAt;
+      await logEvent({
+        type: "AI_REQUEST",
+        userId: user.id,
+        chatId: chat.id,
+        modelId,
+        payload: {
+          source: "telegram",
+          model: modelId,
+          stream: true,
+          messageCount: trimmed.length,
+          status: 502,
+          durationMs,
+          error: true,
+          ...rateLimitPayload,
+        },
+      });
+      await logEvent({
+        type: "AI_ERROR",
+        userId: user.id,
+        chatId: chat.id,
+        modelId,
+        message: "OpenRouter response stream is missing",
+        payload: {
+          source: "telegram",
+          durationMs,
+          ...rateLimitPayload,
+        },
+      });
       await sendReply(
         ctx,
         "Не удалось получить поток ответа. Попробуйте позже.",
@@ -554,7 +646,7 @@ async function handleUserPrompt(ctx: Context, user: User, content: string) {
           modelId,
           promptTokens: usage.prompt_tokens ?? 0,
           completionTokens: usage.completion_tokens ?? 0,
-          apiKey: undefined,
+          apiKey: openRouterApiKey,
         });
 
         cost = creditsResult.credits;
@@ -597,15 +689,53 @@ async function handleUserPrompt(ctx: Context, user: User, content: string) {
       data: { updatedAt: new Date() },
     });
 
+    await logEvent({
+      type: "AI_REQUEST",
+      userId: user.id,
+      chatId: chat.id,
+      modelId,
+      payload: {
+        source: "telegram",
+        model: modelId,
+        stream: true,
+        messageCount: trimmed.length,
+        status: 200,
+        durationMs: Date.now() - providerRequestStartedAt,
+        totalTokens: tokenCount,
+        ...rateLimitPayload,
+      },
+    });
+
     await sendReply(ctx, assistantText, placeholder.message_id);
   } catch (error) {
     console.error("Telegram OpenRouter failed", error);
+    const durationMs = Date.now() - providerRequestStartedAt;
+    const status = isFetchTimeoutError(error) ? 504 : 502;
+    await logEvent({
+      type: "AI_REQUEST",
+      userId: user.id,
+      chatId: chat.id,
+      modelId,
+      payload: {
+        source: "telegram",
+        model: modelId,
+        stream: true,
+        messageCount: trimmed.length,
+        status,
+        durationMs,
+        error: true,
+      },
+    });
     await logEvent({
       type: "AI_ERROR",
       userId: user.id,
       chatId: chat.id,
       modelId,
       message: error instanceof Error ? error.message : "OpenRouter error",
+      payload: {
+        source: "telegram",
+        durationMs,
+      },
     });
     await sendReply(
       ctx,
@@ -647,14 +777,28 @@ bot.action(/model:(.+)/, async (ctx) => {
   const user = await getAuthorizedUser(ctx);
   if (!user) return;
 
-  const org = user.orgId
-    ? await prisma.organization.findUnique({
-        where: { id: user.orgId },
-        select: { settings: true },
-      })
-    : null;
+  const [org, platformConfig] = await Promise.all([
+    user.orgId
+      ? prisma.organization.findUnique({
+          where: { id: user.orgId },
+          select: { settings: true },
+        })
+      : null,
+    getPlatformConfig(),
+  ]);
 
   const modelId = ctx.match[1];
+  const disabledModels = new Set(
+    platformConfig.disabledModelIds
+      .map((entry) => entry.trim().toLowerCase())
+      .filter((entry) => entry.length > 0)
+  );
+  if (disabledModels.has(modelId.trim().toLowerCase())) {
+    await ctx.answerCbQuery("Эта модель временно отключена администратором.", {
+      show_alert: true,
+    });
+    return;
+  }
   const authCtx: AuthorizationContext = {
     userId: user.id,
     orgId: user.orgId,

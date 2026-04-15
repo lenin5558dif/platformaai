@@ -1,6 +1,6 @@
 import * as bcrypt from "bcryptjs";
 
-export const TELEGRAM_LINK_TOKEN_PREFIX_LEN = 16;
+const TELEGRAM_LINK_TOKEN_PREFIX_LEN = 16;
 
 export function getTelegramLinkTokenPrefix(token: string) {
   return token.slice(0, TELEGRAM_LINK_TOKEN_PREFIX_LEN);
@@ -48,7 +48,7 @@ export function buildTelegramLinkConfirmationPrompt(params: {
   };
 }
 
-export function isTelegramAccessRevoked(params: { globalRevokeCounter: number }) {
+function isTelegramAccessRevoked(params: { globalRevokeCounter: number }) {
   return params.globalRevokeCounter > 0;
 }
 

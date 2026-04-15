@@ -70,7 +70,7 @@ export async function POST(request: Request) {
 
     // Rate limit: 10 invites per hour per user/org
     const rateLimitKey = `invite:create:${session.user.id}:${membership.orgId}`;
-    const rateLimit = checkRateLimit({
+    const rateLimit = await checkRateLimit({
       key: rateLimitKey,
       limit: 10,
       windowMs: 3600000,

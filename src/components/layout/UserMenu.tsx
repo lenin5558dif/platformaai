@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { getNavItems } from "@/lib/navigation";
 
@@ -50,7 +51,7 @@ export default function UserMenu({
   }, [isOpen]);
 
   const name = displayName?.trim() || email?.trim() || "Пользователь";
-  const plan = planName?.trim() || "Pro Plan";
+  const plan = planName?.trim() || "Тариф Pro";
   const initial = resolveInitial(email ?? displayName);
   const navItems = getNavItems(role);
 
@@ -89,7 +90,7 @@ export default function UserMenu({
                 : pathname.startsWith(item.href)
               : false;
             return (
-              <a
+              <Link
                 key={item.href}
                 className={`mb-1 flex items-center gap-3 rounded-lg px-2 py-2 text-sm transition-colors ${
                   active
@@ -111,7 +112,7 @@ export default function UserMenu({
                   {item.icon}
                 </span>
                 <span>{item.label}</span>
-              </a>
+              </Link>
             );
           })}
         </div>

@@ -11,7 +11,7 @@ export type OrgDlpPolicy = {
   patterns: string[];
 };
 
-export function getOrgSettingsObject(settings: Prisma.JsonValue | null) {
+function getOrgSettingsObject(settings: Prisma.JsonValue | null) {
   if (!settings || typeof settings !== "object" || Array.isArray(settings)) {
     return {} as Record<string, unknown>;
   }

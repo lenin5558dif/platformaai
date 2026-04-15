@@ -14,7 +14,7 @@ export type AuthCapabilities = {
   telegram: boolean;
 };
 
-export type MappedAuthError = {
+type MappedAuthError = {
   state: AuthViewState;
   title: string;
   message: string;
@@ -26,11 +26,14 @@ export function getAuthCapabilities(
 ): AuthCapabilities {
   const ssoConfigured =
     env.SSO_ISSUER && env.SSO_CLIENT_ID && env.SSO_CLIENT_SECRET;
+  const telegramEnabled =
+    env.NEXT_PUBLIC_TELEGRAM_AUTH_ENABLED === "1" &&
+    Boolean(env.NEXT_PUBLIC_TELEGRAM_LOGIN_BOT_NAME);
 
   return {
     email: true,
     sso: env.NEXT_PUBLIC_SSO_ENABLED === "1" || Boolean(ssoConfigured),
-    telegram: Boolean(env.NEXT_PUBLIC_TELEGRAM_LOGIN_BOT_NAME),
+    telegram: telegramEnabled,
   };
 }
 
@@ -43,17 +46,16 @@ export function getModeText(mode: AuthMode) {
     return {
       title: "Создание аккаунта PlatformaAI",
       subtitle:
-        "Веб-аккаунт станет вашим основным идентификатором. Telegram можно подключить позже.",
-      emailAction: "Отправить ссылку для регистрации",
+        "Заполните никнейм, email и пароль. После регистрации можно сразу войти в чат.",
+      emailAction: "Создать аккаунт",
       ssoAction: "Зарегистрироваться через SSO",
     };
   }
 
   return {
     title: "Вход в PlatformaAI",
-    subtitle:
-      "Войдите через magic link или SSO. Telegram - дополнительный канал к Web-профилю.",
-    emailAction: "Отправить magic link",
+    subtitle: "Войдите через email и пароль. SSO доступен при настройке организации.",
+    emailAction: "Войти",
     ssoAction: "Войти через SSO",
   };
 }
@@ -70,6 +72,13 @@ export function mapLoginError(error?: string): MappedAuthError | null {
         title: "Требуется вход через SSO",
         message: "Для этого домена разрешен только вход через корпоративный SSO.",
         action: "use_sso",
+      };
+    case "CredentialsSignin":
+      return {
+        state: "error",
+        title: "Неверный email или пароль",
+        message: "Проверьте данные и попробуйте снова.",
+        action: "retry",
       };
     case "Verification":
       return {

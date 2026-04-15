@@ -1,5 +1,9 @@
+import { fetchWithTimeout } from "@/lib/fetch-timeout";
+
 const DEFAULT_WHISPER_MODEL = "whisper-1";
 const DEFAULT_WHISPER_LANGUAGE = "ru";
+const AUDIO_DOWNLOAD_TIMEOUT_MS = 20_000;
+const WHISPER_TRANSCRIBE_TIMEOUT_MS = 120_000;
 
 export async function transcribeAudio(params: {
   fileUrl: string;
@@ -12,7 +16,10 @@ export async function transcribeAudio(params: {
     throw new Error("OPENAI_API_KEY is not set");
   }
 
-  const response = await fetch(params.fileUrl);
+  const response = await fetchWithTimeout(params.fileUrl, {
+    timeoutMs: AUDIO_DOWNLOAD_TIMEOUT_MS,
+    timeoutLabel: "Audio download",
+  });
   if (!response.ok) {
     throw new Error("Failed to download audio file");
   }
@@ -34,7 +41,7 @@ export async function transcribeAudio(params: {
     params.language ?? process.env.WHISPER_LANGUAGE ?? DEFAULT_WHISPER_LANGUAGE
   );
 
-  const sttResponse = await fetch(
+  const sttResponse = await fetchWithTimeout(
     "https://api.openai.com/v1/audio/transcriptions",
     {
       method: "POST",
@@ -42,6 +49,8 @@ export async function transcribeAudio(params: {
         Authorization: `Bearer ${apiKey}`,
       },
       body: form,
+      timeoutMs: WHISPER_TRANSCRIBE_TIMEOUT_MS,
+      timeoutLabel: "OpenAI Whisper transcription",
     }
   );
 

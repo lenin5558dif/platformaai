@@ -28,7 +28,7 @@ export async function POST(
 
     // Rate limit: 10 resends per hour per user/org
     const rateLimitKey = `invite:resend:${session.user.id}:${membership.orgId}`;
-    const rateLimit = checkRateLimit({
+    const rateLimit = await checkRateLimit({
       key: rateLimitKey,
       limit: 10,
       windowMs: 3600000,

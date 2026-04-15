@@ -1,17 +1,27 @@
 import { NextResponse } from "next/server";
 import type { Session } from "next-auth";
-import { prisma } from "@/lib/db";
 import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/db";
 import type { OrgPermissionKey } from "@/lib/org-permissions";
 import { HttpError } from "@/lib/http-error";
-
-export type AuthzChannel = "web" | "telegram" | "scim" | "api";
+import { ZodError } from "zod";
 
 export function toErrorResponse(error: unknown) {
   if (error instanceof HttpError) {
     return NextResponse.json(
       { error: error.message, code: error.code },
       { status: error.status }
+    );
+  }
+
+  if (error instanceof ZodError) {
+    return NextResponse.json(
+      {
+        error: "Invalid request payload",
+        code: "VALIDATION_ERROR",
+        issues: error.issues,
+      },
+      { status: 400 }
     );
   }
 
@@ -40,22 +50,6 @@ export async function requireSession(request?: Request): Promise<Session> {
     throw unauthorized();
   }
   return session;
-}
-
-export async function requireActiveUser(session: Session) {
-  // auth() already enforces isActive in DB. This is a defensive assertion.
-  if (!session.user?.id) {
-    throw unauthorized();
-  }
-
-  const dbUser = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { isActive: true },
-  });
-
-  if (!dbUser || dbUser.isActive === false) {
-    throw unauthorized();
-  }
 }
 
 export function createAuthorizer(session: Session) {

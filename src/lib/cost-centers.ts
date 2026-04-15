@@ -15,31 +15,6 @@ export async function assertCostCenterAccess(params: {
   }
 }
 
-export async function assertCostCenterAccessForUser(params: {
-  userId: string;
-  orgId: string;
-  costCenterId: string;
-}) {
-  const membership = await prisma.orgMembership.findUnique({
-    where: {
-      orgId_userId: {
-        orgId: params.orgId,
-        userId: params.userId,
-      },
-    },
-    select: { id: true },
-  });
-
-  if (!membership) {
-    throw new HttpError(403, "FORBIDDEN", "Forbidden");
-  }
-
-  await assertCostCenterAccess({
-    orgId: params.orgId,
-    costCenterId: params.costCenterId,
-  });
-}
-
 /**
  * Check if a cost center is in the allowed set for a membership.
  * Semantics: if membership has 0 allowed rows => allow all org cost centers.

@@ -17,6 +17,7 @@ describe("auth-ui helpers", () => {
   it("detects capabilities from env flags", () => {
     const capabilities = getAuthCapabilities({
       NEXT_PUBLIC_SSO_ENABLED: "1",
+      NEXT_PUBLIC_TELEGRAM_AUTH_ENABLED: "1",
       NEXT_PUBLIC_TELEGRAM_LOGIN_BOT_NAME: "platforma_bot",
     });
 
@@ -58,8 +59,10 @@ describe("auth-ui helpers", () => {
     const signinText = getModeText("signin");
 
     expect(registerText.title).toContain("Создание аккаунта");
-    expect(registerText.subtitle).toContain("основным идентификатором");
+    expect(registerText.subtitle).toContain("никнейм");
+    expect(registerText.emailAction).toContain("Создать");
     expect(signinText.title).toContain("Вход");
+    expect(signinText.emailAction).toContain("Войти");
     expect(signinText.ssoAction).toContain("SSO");
   });
 });

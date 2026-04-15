@@ -1,4 +1,4 @@
-export type MetricLabels = Record<string, string>;
+type MetricLabels = Record<string, string>;
 
 function serializeLabels(labels: MetricLabels | undefined) {
   if (!labels) return "";

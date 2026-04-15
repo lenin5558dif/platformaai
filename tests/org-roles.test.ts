@@ -26,6 +26,7 @@ const { mockAuthFn, mockPrismaDb } = vi.hoisted(() => ({
     orgMembership: {
       findUnique: vi.fn(),
     },
+    $transaction: vi.fn(),
   },
 }));
 

@@ -6,13 +6,13 @@ import { evaluateDlp, type DlpOutcome } from "@/lib/dlp";
 import { logAudit } from "@/lib/audit";
 import type { ChatMessage } from "@/lib/context";
 
-export type ModelValidationResult =
+type ModelValidationResult =
   | { ok: true }
   | { ok: false; status: 403; error: string };
 
-export type DlpMessage = ChatMessage;
+type DlpMessage = ChatMessage;
 
-export type DlpApplyResult =
+type DlpApplyResult =
   | {
       ok: true;
       blocked: false;
@@ -28,7 +28,7 @@ export type DlpApplyResult =
       matches: string[];
     };
 
-export type AuditContext = {
+type AuditContext = {
   orgId: string | null;
   actorId: string;
   targetId: string | null;
@@ -226,11 +226,11 @@ export type AuthorizationContext = {
   source?: string;
 };
 
-export type ModelCheckResult =
+type ModelCheckResult =
   | { allowed: true }
   | { allowed: false; reason: "model_blocked" };
 
-export type DlpCheckResult =
+type DlpCheckResult =
   | { action: "allow" }
   | { action: "block"; matches: string[] }
   | { action: "redact"; redactedText: string; matches: string[] };
@@ -264,7 +264,7 @@ export async function checkModelAllowed(
  * Emits POLICY_BLOCKED audit log for block/redact actions.
  * For use by Telegram bot.
  */
-export async function checkDlpPolicy(
+async function checkDlpPolicy(
   content: string,
   ctx: AuthorizationContext
 ): Promise<DlpCheckResult> {

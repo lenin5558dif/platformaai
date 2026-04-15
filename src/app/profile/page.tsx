@@ -42,7 +42,7 @@ export default async function ProfilePage({
       user={{
         email: session.user.email,
         role: session.user.role,
-        planName: "Pro Plan",
+        planName: "Тариф Pro",
       }}
     >
       <div className="mx-auto max-w-3xl rounded-2xl bg-white/80 border border-white/50 shadow-glass-sm p-6">
@@ -58,13 +58,13 @@ export default async function ProfilePage({
         )}
         <div className="grid gap-4 md:grid-cols-2">
           <div className="rounded-xl border border-gray-200 bg-white/70 p-4">
-            <p className="text-xs text-text-secondary">Email</p>
+            <p className="text-xs text-text-secondary">Электронная почта</p>
             <p className="text-sm font-medium text-text-main">
               {session.user.email ?? "—"}
             </p>
           </div>
           <div className="rounded-xl border border-gray-200 bg-white/70 p-4">
-            <p className="text-xs text-text-secondary">Telegram ID</p>
+            <p className="text-xs text-text-secondary">ID Telegram</p>
             <p className="text-sm font-medium text-text-main">
               {dbUser?.telegramId ?? "—"}
             </p>
