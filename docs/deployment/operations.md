@@ -1,15 +1,15 @@
 # Operations Runbook
 
 This runbook covers the minimum operational steps for a self-hosted PlatformaAI deployment.
-Use it together with [self-hosted.md](./self-hosted.md).
+Use it together with [self-hosted.md](./self-hosted.md) and [../../server.md](../../server.md).
 
 ## Pre-Deploy Checklist
 
 - Confirm `.env` is complete for the intended feature set.
 - Confirm the database is reachable from the host.
-- Confirm the target image or working tree matches the release you intend to deploy.
-- Run the deploy-safe migration job before switching traffic to the new app version.
-- Keep the previous release or image available for rollback.
+- Confirm the target working tree matches the release you intend to deploy.
+- Run `npm run prisma:migrate` before switching traffic to the new app version.
+- Keep the previous release checkout or commit available for rollback.
 
 ## Backup
 
@@ -38,8 +38,8 @@ pg_restore --clean --if-exists --no-owner --dbname "$DATABASE_URL" backup-YYYYMM
 Run restore only during a controlled maintenance window.
 After restore:
 
-- run `docker compose --profile migrate run --rm migrate`
-- start the app
+- run `npm run prisma:migrate`
+- start the app processes
 - verify health/readiness and a login flow
 
 ## Deploy
@@ -47,29 +47,40 @@ After restore:
 Example sequence:
 
 ```bash
-docker compose up -d postgres
-docker compose --profile migrate run --rm migrate
-docker compose up -d app
+ssh -i ~/.ssh/platformaai_dokploy_ed25519 platformaai@194.59.40.35
+cd /home/platformaai/releases/nikolay
+git fetch origin
+git checkout nikolay
+git pull --ff-only origin nikolay
+npm install
+npm run prisma:generate
+npm run prisma:migrate
+npm run build
+ss -ltnp | grep -E ':3000|:3001'
+kill <pid-on-3000> <pid-on-3001>
+PORT=3000 nohup npm run start > app-3000.log 2>&1 &
+PORT=3001 nohup npm run start > app-3001.log 2>&1 &
 ```
 
 ## Post-Deploy Smoke Checks
 
 ```bash
-curl -fsS http://localhost:3000/api/internal/health
-curl -fsS http://localhost:3000/api/internal/readiness
-curl -fsS -H "x-cron-secret: $CRON_SECRET" http://localhost:3000/api/internal/ops
-curl -fsS -H "x-cron-secret: $CRON_SECRET" http://localhost:3000/api/internal/metrics
+curl -fsS http://127.0.0.1:3000/api/internal/health
+curl -fsS http://127.0.0.1:3000/api/internal/readiness
+curl -fsS https://ai.aurmind.ru/api/internal/health
 ```
 
 Then verify manually:
 
 - login page loads
+- browser registration works
+- browser login works
 - email, SSO, Telegram, or temporary-access auth surfaces match the configured env
 - unauthenticated access to `/` redirects to `/login?mode=signin`
 - public routes such as `/pricing`, `/share/[token]`, and `/invite/accept?token=...` still load without a session
 - chat page opens for an authenticated user
 - org page opens for an org admin
-- Stripe checkout route responds as expected in the current environment
+- Stripe top-up and subscription checkout routes respond as expected in the current environment
 
 ## Rollback
 

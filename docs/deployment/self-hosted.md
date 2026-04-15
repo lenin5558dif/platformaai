@@ -1,48 +1,51 @@
 # Self-hosted Deployment
 
-This document describes the production/self-hosted runtime path for PlatformaAI.
-It focuses on container startup, probes, and operational checks.
+This document describes the current production/self-hosted runtime path for PlatformaAI.
+It focuses on the real server process model, probes, and operational checks.
 For backups, restore, rollback, and smoke-check procedures, see [operations.md](operations.md).
+For SSH access, release paths, and exact host commands, see [../../server.md](../../server.md).
 
 ## Prerequisites
 
-- Docker with Compose v2
-- PostgreSQL 16 or the bundled `postgres` service
-- A populated `.env` file based on `.env.example`
+- SSH access to the production host
+- Node.js and npm available on the host
+- PostgreSQL reachable from the host
+- A populated `.env` file in the release directory
 
 The runtime uses the same canonical env contract as the app itself. Keep the
 required secrets available in `.env` before starting the containers; the build
 does not import the env validator from `next.config.ts`.
 
-## Services
+## Runtime Model
 
-The default `docker-compose.yml` now defines:
+The current server is not running the app through Docker Compose.
+Production is started from a release checkout and keeps two Next.js processes listening on ports `3000` and `3001`.
 
-- `postgres` - PostgreSQL 16 with a healthcheck
-- `app` - Next.js production container built from `Dockerfile`
-- `migrate` - one-shot Prisma migration job that runs `prisma migrate deploy`, enabled with the `migrate` profile
-- `pgadmin` - optional admin UI, enabled with the `admin` profile
+Current public URL:
+
+- `https://ai.aurmind.ru`
 
 ## First Deploy
 
 ```bash
-cp .env.example .env
-docker compose up -d postgres
-docker compose --profile migrate run --rm migrate
-docker compose up -d app
+ssh -i ~/.ssh/platformaai_dokploy_ed25519 platformaai@194.59.40.35
+cd /home/platformaai/releases/nikolay
+git fetch origin
+git checkout nikolay
+git pull --ff-only origin nikolay
+npm install
+npm run prisma:generate
+npm run prisma:migrate
+npm run build
 ```
 
-Optional admin UI:
+Then restart the two app processes:
 
 ```bash
-docker compose --profile admin up -d pgadmin
-```
-
-If the schema already exists, the `migrate` step can be repeated independently
-after each release to apply any pending production-safe migrations:
-
-```bash
-docker compose --profile migrate run --rm migrate
+ss -ltnp | grep -E ':3000|:3001'
+kill <pid-on-3000> <pid-on-3001>
+PORT=3000 nohup npm run start > app-3000.log 2>&1 &
+PORT=3001 nohup npm run start > app-3001.log 2>&1 &
 ```
 
 ## Probes
@@ -58,9 +61,7 @@ The readiness check verifies:
 - database connectivity
 - audit log ops config validity
 
-The app container healthcheck in Compose points at `readiness`, so an unhealthy
-DB or invalid ops config marks the service unhealthy instead of letting a broken
-release look healthy.
+An unhealthy DB or invalid ops config should block the release from being considered healthy.
 
 Operational caveat:
 
@@ -84,8 +85,8 @@ metrics scraping, and alerting.
 - `NEXTAUTH_URL` and `NEXT_PUBLIC_APP_URL` must match
 - `ops` and `metrics` stay behind `x-cron-secret`
 - health/readiness responses are `no-store`
-- the Compose app service uses `restart: unless-stopped`
-- the app image is built as `standalone` and does not depend on the dev toolchain
+- the production start path should use the built standalone server when present
+- `npm run start` is wired to prefer `.next/standalone/server.js`
 
 Current limitation:
 
@@ -97,12 +98,9 @@ Current limitation:
 After deploy:
 
 ```bash
-curl -fsS http://localhost:3000/api/internal/health
-curl -fsS http://localhost:3000/api/internal/readiness
-curl -fsS -H "x-cron-secret: $CRON_SECRET" http://localhost:3000/api/internal/ops
-curl -fsS -H "x-cron-secret: $CRON_SECRET" http://localhost:3000/api/internal/metrics
+curl -fsS http://127.0.0.1:3000/api/internal/health
+curl -fsS http://127.0.0.1:3000/api/internal/readiness
+curl -I http://127.0.0.1:3000/login?mode=signin
+curl -I http://127.0.0.1:3000/pricing
+curl -fsS https://ai.aurmind.ru/api/internal/health
 ```
-
-If you front the app with a reverse proxy or load balancer, wire the liveness
-probe to `/api/internal/health` and the rollout/readiness probe to
-`/api/internal/readiness`.

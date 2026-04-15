@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   auth: vi.fn(),
+  requirePageSession: vi.fn(),
   requireSession: vi.fn(),
   createAuthorizer: vi.fn(),
   revalidatePath: vi.fn(),
@@ -64,6 +65,7 @@ vi.mock("next/cache", () => ({
 
 vi.mock("@/lib/auth", () => ({
   auth: mocks.auth,
+  requirePageSession: mocks.requirePageSession,
 }));
 
 vi.mock("@/lib/authorize", () => ({
@@ -259,6 +261,7 @@ describe("org page", () => {
     vi.clearAllMocks();
     process.env.NEXT_PUBLIC_APP_URL = "http://app.example";
     mocks.auth.mockResolvedValue(makeSession());
+    mocks.requirePageSession.mockResolvedValue(makeSession());
     mocks.requireSession.mockResolvedValue(makeSession());
     setAdminAuthorizer([
       ORG_PERMISSIONS.ORG_BILLING_MANAGE,
@@ -272,12 +275,12 @@ describe("org page", () => {
     ]);
   });
 
-  test("renders onboarding when there is no authenticated session", async () => {
-    mocks.auth.mockResolvedValue(null);
+  test("renders onboarding when the signed-in user does not belong to an org yet", async () => {
+    mocks.prisma.user.findUnique.mockResolvedValue({ orgId: null, role: "USER" });
 
     const html = renderToStaticMarkup((await renderOrgPage()) as never);
 
-    expect(html).toContain("Организация недоступна без входа");
+    expect(html).toContain("Создайте первую организацию");
     expect(html).toContain("Создать организацию");
   });
 
@@ -485,7 +488,7 @@ describe("org page", () => {
   });
 
   test("renders the employee view without admin-only sections", async () => {
-    mocks.auth.mockResolvedValue(makeSession("EMPLOYEE"));
+    mocks.requirePageSession.mockResolvedValue(makeSession("EMPLOYEE"));
     mocks.prisma.user.findUnique.mockResolvedValue({ orgId: "org-1", role: "EMPLOYEE" });
     setAdminAuthorizer([]);
     setCommonOrgData();

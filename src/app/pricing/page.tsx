@@ -1,5 +1,6 @@
 import Link from "next/link";
 import AppShell from "@/components/layout/AppShell";
+import PlanCheckoutButton from "@/components/billing/PlanCheckoutButton";
 import { BILLING_PLANS } from "@/lib/plans";
 
 export default function PricingPage() {
@@ -100,9 +101,17 @@ export default function PricingPage() {
                       {plan.description}
                     </p>
                   </div>
-                  <button className={buttonClass} type="button">
-                    {buttonLabel}
-                  </button>
+                  {plan.id === "starter" ? (
+                    <Link className={buttonClass} href="/login?mode=register">
+                      {buttonLabel}
+                    </Link>
+                  ) : (
+                    <PlanCheckoutButton
+                      className={buttonClass}
+                      label={buttonLabel}
+                      planId={plan.id}
+                    />
+                  )}
                   <div className="my-1 h-px w-full bg-slate-100" />
                   <div className="flex flex-col gap-4">
                     {plan.features.map((item) => (

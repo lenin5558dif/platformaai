@@ -17,7 +17,7 @@ PlatformaAI is a multi-model AI workspace built on Next.js 15. It combines chat,
 - Prompt library, model catalog, billing, pricing, settings, profile, org, timeline, events, audit, and admin pages
 - Organization features: invites, RBAC, cost centers, model policy, DLP policy, SCIM tokens
 - Telegram bot and Telegram account linking
-- Stripe-backed billing and refill flows
+- Stripe-backed subscriptions, included monthly credits, and top-up refill flows
 
 ### Stack
 
@@ -185,7 +185,7 @@ PlatformaAI — это мультимодельное AI-приложение н
 - Страницы промптов, моделей, биллинга, тарифов, настроек, профиля, организации, ленты, событий, аудита и админки
 - Организационные возможности: приглашения, RBAC, cost centers, model policy, DLP policy, SCIM tokens
 - Telegram-бот и привязка Telegram-аккаунта
-- Биллинг и пополнение через Stripe
+- Подписки Stripe, включенные месячные кредиты и пополнение баланса
 
 ### Стек
 

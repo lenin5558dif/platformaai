@@ -136,6 +136,22 @@ export function getBillingPlan(planId: BillingPlanId | null | undefined) {
   return planId ? PLAN_BY_ID.get(planId) ?? null : null;
 }
 
+const PLAN_STRIPE_PRICE_ENV: Record<Exclude<BillingPlanId, "starter">, string> = {
+  creator: "STRIPE_PRICE_ID_CREATOR",
+  pro: "STRIPE_PRICE_ID_PRO",
+};
+
+export function getPlanStripePriceId(
+  planId: BillingPlanId | null | undefined,
+  fallback?: string | null
+) {
+  if (!planId || planId === "starter") {
+    return fallback ?? null;
+  }
+
+  return process.env[PLAN_STRIPE_PRICE_ENV[planId]] ?? fallback ?? null;
+}
+
 export function resolveBillingPlanId(value: unknown): BillingPlanId | null {
   if (typeof value !== "string" || !value.trim()) return null;
   const normalized = value.trim().toLowerCase();

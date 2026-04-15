@@ -43,6 +43,73 @@ test.describe("browser smoke", () => {
     await expect(page.getByRole("button", { name: "Войти" })).toBeVisible();
   });
 
+  test.describe("auth roundtrip", () => {
+    test.skip(!process.env.E2E_BASE_URL, "auth roundtrip is run against the deployed server");
+
+    test("registers through the browser form and lands in the app", async ({ page }) => {
+      const stamp = Date.now();
+      const email = `codex+${stamp}@example.com`;
+      const password = "CodexPass123!";
+
+      await page.goto("/login?mode=register", { waitUntil: "networkidle" });
+      await page.getByRole("tab", { name: "Регистрация" }).click();
+      await page.getByLabel("Никнейм").fill(`codex_${stamp}`);
+      await page.getByLabel("Электронная почта").fill(email);
+      await page.getByLabel("Пароль", { exact: true }).fill(password);
+      await page.getByLabel("Повторите пароль").fill(password);
+
+      const registerResponse = page.waitForResponse((response) =>
+        response.url().includes("/api/auth/register") && response.request().method() === "POST"
+      );
+      const signInResponse = page.waitForResponse((response) =>
+        response.url().includes("/api/auth/callback/credentials") &&
+        response.request().method() === "POST"
+      );
+
+      await page.getByRole("button", { name: "Создать аккаунт" }).click();
+
+      await expect((await registerResponse).status()).toBe(201);
+      await expect((await signInResponse).ok()).toBeTruthy();
+      await expect(page).not.toHaveURL(/\/login\?/);
+
+      await page.goto("/billing", { waitUntil: "networkidle" });
+      await expect(page.getByRole("heading", { name: "Подписка и платежи" })).toBeVisible();
+    });
+
+    test("signs in through the browser form for an existing user", async ({ page }) => {
+      const stamp = Date.now();
+      const email = `codex+signin-${stamp}@example.com`;
+      const password = "CodexPass123!";
+
+      const seedResponse = await page.request.post("/api/auth/register", {
+        data: {
+          nickname: `seed_${stamp}`,
+          email,
+          password,
+          confirmPassword: password,
+        },
+      });
+      expect(seedResponse.status()).toBe(201);
+
+      await page.goto("/login?mode=signin", { waitUntil: "networkidle" });
+      await page.getByLabel("Электронная почта").fill(email);
+      await page.getByLabel("Пароль").fill(password);
+
+      const signInResponse = page.waitForResponse((response) =>
+        response.url().includes("/api/auth/callback/credentials") &&
+        response.request().method() === "POST"
+      );
+
+      await page.getByRole("button", { name: "Войти" }).click();
+
+      await expect((await signInResponse).ok()).toBeTruthy();
+      await expect(page).not.toHaveURL(/\/login\?/);
+
+      await page.goto("/billing", { waitUntil: "networkidle" });
+      await expect(page.getByRole("heading", { name: "Подписка и платежи" })).toBeVisible();
+    });
+  });
+
   test.describe("server-only share coverage", () => {
     test.skip(!process.env.E2E_BASE_URL, "share smoke requires E2E_BASE_URL");
 
