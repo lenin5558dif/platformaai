@@ -23,8 +23,15 @@
 
 ## Release Checks
 
-- [ ] A. Прогнать целевые unit/integration тесты по auth
-- [ ] B. Прогнать целевые unit/integration тесты по billing/payments
+- [x] A. Прогнать целевые unit/integration тесты по auth
+- [x] B. Прогнать целевые unit/integration тесты по billing/payments
 - [ ] C. Прогнать e2e smoke
 - [ ] D. Проверить merge `nikolay -> main` без конфликтов или с заранее разрешенным планом
 - [ ] E. Проверить deploy/smoke на сервере
+
+## Текущий статус интеграции
+
+- `A` закрыт: `tests/auth.test.ts`, `tests/auth-register-route.test.ts`, `tests/auth-ui.test.ts`, `tests/telegram-token.test.ts` зеленые.
+- `B` закрыт: `tests/account-billing-routes.test.ts`, `tests/dashboard-pages.test.ts`, `tests/payments-routes.test.ts`, `tests/stripe-subscription-checkout-route.test.ts`, `tests/stripe-webhook-route.test.ts` зеленые.
+- `D` пока заблокирован: прямой `merge --no-commit origin/main` дает большой конфликтный слой.
+- Основные конфликтные зоны: `.env.example`, `prisma/schema.prisma`, `README.md`, `src/lib/auth.ts`, `src/lib/navigation.ts`, `src/components/auth/*`, `src/components/layout/*`, `src/app/profile/page.tsx`, `src/app/settings/page.tsx`, `src/app/page.tsx`, `src/app/admin/*`, `src/app/api/auth/*`.
