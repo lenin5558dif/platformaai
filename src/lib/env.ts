@@ -139,7 +139,6 @@ const envSchema = z
       }
     }
 
-    const telegramBotTokenConfigured = hasRealConfiguredValue(env.TELEGRAM_BOT_TOKEN);
     const telegramLoginBotNameConfigured = hasRealConfiguredValue(env.TELEGRAM_LOGIN_BOT_NAME);
     const telegramPublicBotNameConfigured = hasRealConfiguredValue(
       env.NEXT_PUBLIC_TELEGRAM_LOGIN_BOT_NAME
