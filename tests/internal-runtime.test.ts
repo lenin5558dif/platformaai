@@ -408,4 +408,18 @@ describe("internal runtime ops routes", () => {
 
     expect(env.TELEGRAM_BOT_TOKEN).toBe("REPLACE_ME");
   });
+
+  test("env module allows bot-only telegram setup when web auth is not enabled", async () => {
+    applyEnv({
+      TELEGRAM_BOT_TOKEN: "telegram-token",
+      TELEGRAM_LOGIN_BOT_NAME: undefined,
+      NEXT_PUBLIC_TELEGRAM_LOGIN_BOT_NAME: undefined,
+      NEXT_PUBLIC_TELEGRAM_AUTH_ENABLED: "0",
+    });
+
+    const { env } = await importFresh<typeof import("../src/lib/env")>("../src/lib/env");
+
+    expect(env.TELEGRAM_BOT_TOKEN).toBe("telegram-token");
+    expect(env.NEXT_PUBLIC_TELEGRAM_AUTH_ENABLED).toBe("0");
+  });
 });

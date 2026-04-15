@@ -144,6 +144,7 @@ const envSchema = z
     const telegramPublicBotNameConfigured = hasRealConfiguredValue(
       env.NEXT_PUBLIC_TELEGRAM_LOGIN_BOT_NAME
     );
+    const telegramAuthExplicitlyEnabled = env.NEXT_PUBLIC_TELEGRAM_AUTH_ENABLED === "1";
 
     if (
       telegramLoginBotNameConfigured &&
@@ -159,7 +160,7 @@ const envSchema = z
     }
 
     if (
-      telegramBotTokenConfigured ||
+      telegramAuthExplicitlyEnabled ||
       telegramLoginBotNameConfigured ||
       telegramPublicBotNameConfigured
     ) {
