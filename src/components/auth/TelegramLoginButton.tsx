@@ -143,6 +143,15 @@ export default function TelegramLoginButton({
     };
   }, [pollToken]);
 
+  function openInNewTab(url: string) {
+    const nextWindow = window.open(url, "_blank", "noopener,noreferrer");
+    if (nextWindow) {
+      nextWindow.opener = null;
+      return true;
+    }
+    return false;
+  }
+
   async function handleClick() {
     setStatus("starting");
     setErrorMessage(null);
@@ -167,10 +176,10 @@ export default function TelegramLoginButton({
       setPollToken(payload.token);
       setStatus("waiting");
 
-      window.location.assign(payload.appDeepLink);
+      const openedApp = openInNewTab(payload.appDeepLink);
       window.setTimeout(() => {
-        if (document.visibilityState === "visible") {
-          window.location.assign(payload.deepLink);
+        if (document.visibilityState === "visible" || !openedApp) {
+          openInNewTab(payload.deepLink);
         }
       }, 900);
     } catch {
