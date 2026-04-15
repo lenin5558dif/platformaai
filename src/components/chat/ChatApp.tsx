@@ -80,7 +80,6 @@ export default function ChatApp() {
   );
   const [searchQuery, setSearchQuery] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
-  const [isUploading, setIsUploading] = useState(false);
   const [useWebSearch, setUseWebSearch] = useState(false);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState("");
@@ -108,7 +107,6 @@ export default function ChatApp() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const skipNextLoadRef = useRef<string | null>(null);
   const activeChatIdRef = useRef<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const modelMenuRef = useRef<HTMLDivElement>(null);
   const appliedPromptRef = useRef<string | null>(null);
 
@@ -214,13 +212,11 @@ export default function ChatApp() {
   }, [error]);
 
   const composerState = useMemo(() => {
-    if (isUploading) return "uploading";
     if (isSending) return "sending";
     return "idle";
-  }, [isUploading, isSending]);
+  }, [isSending]);
 
   const composerStatusLabel = useMemo(() => {
-    if (composerState === "uploading") return "Загрузка...";
     if (composerState === "sending") return "Отправка...";
     return isOnline ? "Готово" : "Офлайн";
   }, [composerState, isOnline]);
@@ -665,35 +661,6 @@ export default function ChatApp() {
     if (!response.ok) {
       const data = await response.json().catch(() => ({}));
       throw new Error(data?.error ?? "Не удалось сохранить сообщение.");
-    }
-  }
-
-  async function handleUpload(file: File, targetChatId?: string) {
-    const chatId = targetChatId ?? (await ensureChatId(
-      file.name ? file.name.slice(0, 40) : "Новый чат"
-    ));
-    if (!chatId) return;
-
-    setIsUploading(true);
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("chatId", chatId);
-      const response = await fetch("/api/files", {
-        method: "POST",
-        body: formData,
-      });
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        setError(data?.error ?? "Не удалось загрузить файл.");
-        return;
-      }
-      const data = await response.json();
-      if (data?.data) {
-        setAttachments((prev) => [...prev, data.data as Attachment]);
-      }
-    } finally {
-      setIsUploading(false);
     }
   }
 
@@ -1586,31 +1553,17 @@ export default function ChatApp() {
             )}
             <div className="flex items-end gap-2 p-2">
               <button
-                className="p-2 text-text-secondary hover:text-primary transition-colors rounded-full hover:bg-black/5 shrink-0"
-                onClick={() => fileInputRef.current?.click()}
+                className="group relative p-2 text-text-secondary/60 rounded-full bg-black/5 shrink-0 cursor-not-allowed"
+                type="button"
+                disabled
+                title="Прикрепление файлов скоро"
+                aria-label="Прикрепление файлов скоро"
               >
                 <span className="material-symbols-outlined text-[24px]">add_circle</span>
+                <span className="pointer-events-none absolute -top-1 -right-1 rounded-full bg-primary px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-white shadow-sm">
+                  Soon
+                </span>
               </button>
-              <input
-                type="file"
-                multiple
-                className="hidden"
-                ref={fileInputRef}
-                onChange={async (e) => {
-                  const files = e.target.files;
-                  if (!files || files.length === 0) return;
-                  let chatId = activeChatId;
-                  if (!chatId) {
-                    const fileTitle = files[0]?.name?.slice(0, 40) || "Новый чат";
-                    chatId = await createChat(fileTitle);
-                  }
-                  if (!chatId) return;
-                  for (const file of Array.from(files)) {
-                    await handleUpload(file, chatId);
-                  }
-                  e.target.value = "";
-                }}
-              />
 
               <textarea
                 className="w-full bg-transparent border-none text-text-primary placeholder-text-secondary focus:ring-0 focus:outline-none focus-visible:outline-none resize-none max-h-32 py-2.5 text-sm md:text-base leading-normal scrollbar-hide"
