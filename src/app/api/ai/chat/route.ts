@@ -39,6 +39,7 @@ import {
 } from "@/lib/cache";
 import { updateChatSummary } from "@/lib/summary";
 import { requestSchema } from "@/lib/chat-request-schema";
+import { getSpendableCredits } from "@/lib/subscriptions";
 
 export async function POST(request: Request) {
   const session = await auth(request);
@@ -72,10 +73,23 @@ export async function POST(request: Request) {
       settings: true,
       costCenterId: true,
       orgId: true,
+      subscription: {
+        select: {
+          status: true,
+          currentPeriodEnd: true,
+          includedCredits: true,
+          includedCreditsUsed: true,
+        },
+      },
     },
   });
 
-  if (!user || Number(user.balance) <= 0) {
+  const spendableCredits = getSpendableCredits({
+    balance: user?.balance,
+    subscription: user?.subscription,
+  });
+
+  if (!user || spendableCredits.total <= 0) {
     return NextResponse.json({ error: "Insufficient balance" }, { status: 402 });
   }
 

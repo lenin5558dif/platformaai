@@ -5,6 +5,7 @@ import AppShell from "@/components/layout/AppShell";
 import { auth, requirePageSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getSettingsObject } from "@/lib/user-settings";
+import { resolvePlanFromSettings } from "@/lib/plans";
 
 export const dynamic = "force-dynamic";
 
@@ -71,8 +72,7 @@ export default async function PromptsPage() {
   }
 
   const settings = getSettingsObject(user?.settings ?? null);
-  const planName =
-    typeof settings.planName === "string" ? settings.planName : "Pro Plan";
+  const planName = resolvePlanFromSettings(settings)?.name ?? "Тариф не назначен";
 
   const prompts = await prisma.prompt.findMany({
     where: { OR: orConditions },

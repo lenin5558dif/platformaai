@@ -5,6 +5,7 @@ import TopUpForm from "@/components/billing/TopUpForm";
 import AppShell from "@/components/layout/AppShell";
 import TelegramLinkSection from "@/components/profile/TelegramLinkSection";
 import SessionSecurityCard from "@/components/profile/SessionSecurityCard";
+import { resolvePlanFromSettings } from "@/lib/plans";
 
 export const dynamic = "force-dynamic";
 
@@ -18,8 +19,10 @@ export default async function ProfilePage({
 
   const dbUser = await prisma.user.findUnique({
     where: { id: session.user.id },
-    select: { telegramId: true },
+    select: { telegramId: true, settings: true },
   });
+
+  const resolvedPlan = resolvePlanFromSettings(dbUser?.settings ?? null);
 
 
   return (
@@ -29,7 +32,7 @@ export default async function ProfilePage({
       user={{
         email: session.user.email,
         role: session.user.role,
-        planName: "Pro Plan",
+        planName: resolvedPlan?.name ?? null,
       }}
     >
       <div className="mx-auto max-w-4xl space-y-4">
@@ -94,6 +97,9 @@ export default async function ProfilePage({
             </span>
             <span className="rounded-full border border-gray-200 bg-white px-3 py-1">
               Telegram: {dbUser?.telegramId ? "привязан" : "не привязан"}
+            </span>
+            <span className="rounded-full border border-gray-200 bg-white px-3 py-1">
+              Тариф: {resolvedPlan?.name ?? "не назначен"}
             </span>
             <span className="rounded-full border border-gray-200 bg-white px-3 py-1">
               Действия профиля: пополнение, Telegram, биллинг

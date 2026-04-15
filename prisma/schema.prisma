@@ -27,6 +27,16 @@ enum ChatSource {
 enum TransactionType {
   REFILL
   SPEND
+  SUBSCRIPTION_PURCHASE
+  SUBSCRIPTION_RENEWAL
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELED
+  PAST_DUE
+  INCOMPLETE
+  TRIALING
 }
 
 enum PromptVisibility {
@@ -96,6 +106,7 @@ model User {
   attachments Attachment[]
   messages    Message[]
   transactions Transaction[]
+  subscription UserSubscription?
   accounts    Account[]
   sessions    Session[]
   settings    Json        @default("{}")
@@ -120,6 +131,42 @@ model User {
   globalRevokeCounter Int @default(0)
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
+}
+
+model BillingPlan {
+  id                      String   @id @default(cuid())
+  code                    String   @unique
+  name                    String
+  monthlyPriceUsd         Decimal  @db.Decimal(12, 2)
+  includedCreditsPerMonth Decimal  @db.Decimal(12, 2)
+  stripePriceId           String?  @unique
+  isActive                Boolean  @default(true)
+  subscriptions           UserSubscription[]
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+}
+
+model UserSubscription {
+  id                  String             @id @default(cuid())
+  userId              String             @unique
+  planId              String
+  status              SubscriptionStatus @default(ACTIVE)
+  currentPeriodStart  DateTime
+  currentPeriodEnd    DateTime
+  includedCredits     Decimal            @db.Decimal(12, 2)
+  includedCreditsUsed Decimal            @default(0.0) @db.Decimal(12, 2)
+  stripeCustomerId    String?
+  stripeSubscriptionId String?           @unique
+  cancelAtPeriodEnd   Boolean            @default(false)
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan BillingPlan @relation(fields: [planId], references: [id], onDelete: Restrict)
+
+  @@index([planId])
+  @@index([status])
+  @@index([currentPeriodEnd])
 }
 
 model Organization {

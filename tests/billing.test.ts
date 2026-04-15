@@ -40,6 +40,9 @@ const state = vi.hoisted(() => ({
       findUnique: vi.fn(),
       update: vi.fn(),
     },
+    userSubscription: {
+      updateMany: vi.fn(),
+    },
     transaction: {
       create: vi.fn(),
     },
@@ -85,6 +88,7 @@ function baseUser(overrides: Record<string, unknown> = {}) {
     monthlySpent: 20,
     dailyResetAt: new Date("2026-04-14T00:00:00.000Z"),
     monthlyResetAt: new Date("2026-04-01T00:00:00.000Z"),
+    subscription: null,
     org: null,
     ...overrides,
   };
@@ -99,6 +103,7 @@ describe("billing", () => {
     state.applyLimitResets.mockReset();
     state.tx.user.findUnique.mockReset();
     state.tx.user.update.mockReset();
+    state.tx.userSubscription.updateMany.mockReset();
     state.tx.transaction.create.mockReset();
     state.tx.organization.update.mockReset();
     state.tx.quotaBucket.upsert.mockReset();
@@ -115,6 +120,7 @@ describe("billing", () => {
     }));
     state.tx.transaction.create.mockResolvedValue({ id: "tx-1", amount: 15 });
     state.tx.user.update.mockResolvedValue({ balance: 85 });
+    state.tx.userSubscription.updateMany.mockResolvedValue({ count: 1 });
     state.tx.organization.update.mockResolvedValue({});
     state.tx.quotaBucket.upsert.mockResolvedValue({});
     state.qmReserve.mockResolvedValue({
@@ -187,6 +193,26 @@ describe("billing", () => {
     await expect(preflightCredits({ userId: "u-1" })).rejects.toThrow("INSUFFICIENT_BALANCE");
   });
 
+  test("preflightCredits counts active subscription credits together with top-up balance", async () => {
+    const { preflightCredits } = await loadBilling();
+
+    state.prisma.user.findUnique.mockResolvedValueOnce(
+      baseUser({
+        balance: 0,
+        dailyLimit: 0,
+        monthlyLimit: 0,
+        subscription: {
+          status: "ACTIVE",
+          currentPeriodEnd: new Date("2099-05-01T00:00:00.000Z"),
+          includedCredits: 100,
+          includedCreditsUsed: 55,
+        },
+      }),
+    );
+
+    await expect(preflightCredits({ userId: "u-1", minAmount: 40 })).resolves.toBeUndefined();
+  });
+
   test("spendCredits enforces missing user, balance and limit checks", async () => {
     const { spendCredits } = await loadBilling();
 
@@ -249,6 +275,54 @@ describe("billing", () => {
     expect(result).toEqual({
       transaction: { id: "tx-1", amount: 15 },
       balance: 85,
+    });
+  });
+
+  test("spendCredits consumes included subscription credits before top-up balance", async () => {
+    const { spendCredits } = await loadBilling();
+
+    state.tx.user.findUnique.mockResolvedValueOnce(
+      baseUser({
+        balance: 10,
+        costCenterId: "cc-user",
+        subscription: {
+          id: "sub-1",
+          status: "ACTIVE",
+          currentPeriodEnd: new Date("2099-05-01T00:00:00.000Z"),
+          includedCredits: 100,
+          includedCreditsUsed: 95,
+        },
+      }),
+    );
+    state.tx.user.update.mockResolvedValueOnce({ balance: 8 });
+
+    const result = await spendCredits({ userId: "u-1", amount: 7 });
+
+    expect(state.tx.userSubscription.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: "sub-1",
+        includedCreditsUsed: 95,
+      },
+      data: {
+        includedCreditsUsed: { increment: 5 },
+      },
+    });
+    expect(state.tx.user.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          id: "u-1",
+          balance: { gte: 2 },
+        },
+        data: expect.objectContaining({
+          balance: { decrement: 2 },
+          dailySpent: { increment: 7 },
+          monthlySpent: { increment: 7 },
+        }),
+      }),
+    );
+    expect(result).toEqual({
+      transaction: { id: "tx-1", amount: 15 },
+      balance: 8,
     });
   });
 

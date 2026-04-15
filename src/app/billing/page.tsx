@@ -4,10 +4,9 @@ import { requirePageSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getSettingsObject } from "@/lib/user-settings";
 import TopUpForm from "@/components/billing/TopUpForm";
+import { resolvePlanFromSettings } from "@/lib/plans";
 
 export const dynamic = "force-dynamic";
-
-const PLAN_TOKEN_LIMIT = 1_000_000;
 
 function formatNumber(value: number) {
   return new Intl.NumberFormat("ru-RU").format(value);
@@ -26,9 +25,7 @@ export default async function BillingPage() {
 
   const now = new Date();
   const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-  const monthEnd = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)
-  );
+  const monthEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
 
   const [user, usage, transactions] = await Promise.all([
     prisma.user.findUnique({
@@ -58,21 +55,16 @@ export default async function BillingPage() {
     : null;
 
   const settings = getSettingsObject(user?.settings ?? null);
-  const planName =
-    typeof settings.planName === "string" ? settings.planName : "Omni Pro";
-  const planPrice =
-    typeof settings.planPrice === "number" ? settings.planPrice : 29;
+  const resolvedPlan = resolvePlanFromSettings(settings);
   const isB2B = user?.role && user.role !== "USER";
   const isAdmin = user?.role === "ADMIN";
-  const planRenewal = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, now.getUTCDate())
-  );
 
   const usedTokens = Number(usage._sum?.tokenCount ?? 0);
   const spentCredits = Number(usage._sum?.cost ?? 0);
-  const tokenPercent =
-    PLAN_TOKEN_LIMIT > 0
-      ? Math.min(100, (usedTokens / PLAN_TOKEN_LIMIT) * 100)
+  const includedCredits = resolvedPlan?.includedCreditsPerMonth ?? null;
+  const creditPercent =
+    includedCredits && includedCredits > 0
+      ? Math.min(100, (spentCredits / includedCredits) * 100)
       : 0;
 
   const orgSettings = getSettingsObject(org?.settings ?? null);
@@ -92,7 +84,7 @@ export default async function BillingPage() {
       user={{
         email: user?.email,
         role: user?.role,
-        planName,
+        planName: resolvedPlan?.name ?? null,
       }}
     >
       <div className="mx-auto flex max-w-5xl flex-col gap-8">
@@ -139,29 +131,29 @@ export default async function BillingPage() {
                       <div>
                         <div className="mb-3 inline-flex items-center gap-2 rounded-md border border-green-200 bg-green-50 px-2.5 py-1 text-xs font-semibold uppercase tracking-wide text-green-700">
                           <span className="size-1.5 rounded-full bg-green-500" />
-                          Активен
+                          {resolvedPlan ? "Подписка активна" : "Подписка не назначена"}
                         </div>
                         <h3 className="font-display text-3xl font-bold text-slate-900">
-                          {planName}
+                          {resolvedPlan?.name ?? "Подписка не назначена"}
                         </h3>
-                        <div className="flex items-baseline gap-1 text-slate-500">
-                          <span className="text-xl font-medium text-slate-900">
-                            ${planPrice}
-                          </span>
-                          <span className="text-sm">/ месяц</span>
-                        </div>
+                        {resolvedPlan && resolvedPlan.monthlyPriceUsd !== null ? (
+                          <div className="flex items-baseline gap-1 text-slate-500">
+                            <span className="text-xl font-medium text-slate-900">
+                              ${resolvedPlan.monthlyPriceUsd}
+                            </span>
+                            <span className="text-sm">/ месяц</span>
+                          </div>
+                        ) : (
+                          <p className="text-sm text-slate-500">
+                            Индивидуальные условия тарифа
+                          </p>
+                        )}
                       </div>
                       <p className="max-w-sm text-sm leading-relaxed text-slate-500">
-                        Следующее списание:{" "}
-                        <span className="font-medium text-slate-900">
-                          {planRenewal.toLocaleDateString("ru-RU", {
-                            day: "numeric",
-                            month: "long",
-                            year: "numeric",
-                          })}
-                        </span>
-                        .<br />
-                        Доступ к GPT-4, Claude 3 Opus и Llama 3.
+                        {resolvedPlan
+                          ? resolvedPlan.description ??
+                            "Подписка дает включенный лимит кредитов на период, а при необходимости баланс можно пополнить отдельно."
+                          : "Назначьте тариф, чтобы получить включенный лимит кредитов на период. Дополнительные кредиты можно докупать отдельно."}
                       </p>
                     </div>
                     <div className="flex min-w-[160px] flex-col gap-3">
@@ -200,28 +192,30 @@ export default async function BillingPage() {
                   <div className="flex flex-col gap-2">
                     <div className="flex items-end justify-between">
                       <span className="font-display text-2xl font-bold text-slate-900">
-                        {formatNumber(usedTokens)}
+                        {formatCredits(spentCredits)}
                       </span>
-                      <span className="mb-1.5 text-xs font-medium text-slate-500">
-                        из {formatNumber(PLAN_TOKEN_LIMIT)} токенов
-                      </span>
+                      {includedCredits !== null && (
+                        <span className="mb-1.5 text-xs font-medium text-slate-500">
+                          из {formatCredits(includedCredits)}
+                        </span>
+                      )}
                     </div>
                     <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
                       <div
                         className="h-full rounded-full bg-primary"
-                        style={{ width: `${tokenPercent}%` }}
+                        style={{ width: `${creditPercent}%` }}
                       />
                     </div>
                     <p className="mt-1 text-xs text-slate-500">
-                      {Math.round(tokenPercent)}% от лимита. Сброс{" "}
-                      {monthEnd.toLocaleDateString("ru-RU", {
-                        day: "numeric",
-                        month: "short",
-                      })}
-                      .
+                      {includedCredits !== null
+                        ? `${Math.round(creditPercent)}% от включенного лимита за период.`
+                        : "Включенный лимит для этого тарифа пока не указан."}
                     </p>
                     <p className="text-xs text-slate-500">
-                      Потрачено: {formatCredits(spentCredits)}
+                      Использовано токенов: {formatNumber(usedTokens)}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      Дополнительный баланс: {formatCredits(Number(user?.balance ?? 0))}
                     </p>
                   </div>
                   {isAdmin && (

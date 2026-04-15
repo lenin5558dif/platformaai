@@ -1,6 +1,10 @@
 import Link from "next/link";
 import AppShell from "@/components/layout/AppShell";
+import { BILLING_PLANS } from "@/lib/plans";
+
 export default function PricingPage() {
+  const personalPlans = BILLING_PLANS;
+
   return (
     <AppShell title="Тарифы" subtitle="Выберите оптимальный план под ваши задачи.">
       <div className="flex w-full flex-col items-center">
@@ -56,142 +60,68 @@ export default function PricingPage() {
 
         <section className="flex w-full justify-center px-4 py-8 md:px-10 lg:py-12">
           <div className="grid w-full max-w-[1200px] grid-cols-1 items-start gap-8 md:grid-cols-2 lg:grid-cols-3">
-            <div className="group flex flex-col gap-5 rounded-2xl border border-slate-200 bg-white p-8 transition-all duration-300 hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5">
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xl font-bold leading-tight text-slate-900">
-                    Старт
-                  </h3>
-                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-wider text-slate-700">
-                    Бесплатно
-                  </span>
-                </div>
-                <div className="mt-2 flex items-baseline gap-1 text-slate-900">
-                  <span className="text-4xl font-black tracking-tight">$0</span>
-                  <span className="text-sm font-medium text-slate-500">/мес</span>
-                </div>
-                <p className="mt-1 min-h-[40px] text-sm leading-relaxed text-slate-500">
-                  Идеально для знакомства с open-source моделями.
-                </p>
-              </div>
-              <button
-                className="mt-2 h-12 w-full rounded-lg border border-slate-200 bg-white text-sm font-bold tracking-wide text-slate-900 shadow-sm transition-all hover:border-primary hover:text-primary"
-                type="button"
-              >
-                Попробовать бесплатно
-              </button>
-              <div className="my-1 h-px w-full bg-slate-100" />
-              <div className="flex flex-col gap-4">
-                {[
-                  "Llama 3, Mistral 7B",
-                  "50 запросов в день",
-                  "Стандартная скорость",
-                  "Доступ к сообществу",
-                ].map((item) => (
-                  <div
-                    key={item}
-                    className="flex items-start gap-3 text-sm text-slate-600"
-                  >
-                    <span className="material-symbols-outlined shrink-0 text-[20px] text-primary">
-                      check
-                    </span>
-                    <span>{item}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
+            {personalPlans.map((plan) => {
+              const isFeatured = plan.id === "creator";
+              const wrapperClass = isFeatured
+                ? "group relative z-10 flex flex-col gap-5 rounded-2xl border-2 border-primary bg-white p-8 shadow-2xl shadow-primary/15 md:-translate-y-4"
+                : "group flex flex-col gap-5 rounded-2xl border border-slate-200 bg-white p-8 transition-all duration-300 hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5";
+              const priceClass = isFeatured
+                ? "text-5xl font-black tracking-tight"
+                : "text-4xl font-black tracking-tight";
+              const buttonClass = isFeatured
+                ? "mt-2 h-12 w-full rounded-lg bg-primary text-sm font-bold tracking-wide text-white shadow-lg shadow-primary/30 transition-all hover:bg-primary/90"
+                : "mt-2 h-12 w-full rounded-lg border border-slate-200 bg-white text-sm font-bold tracking-wide text-slate-900 shadow-sm transition-all hover:border-primary hover:text-primary";
+              const buttonLabel =
+                plan.id === "starter" ? "Попробовать бесплатно" : `Выбрать «${plan.name}»`;
 
-            <div className="group relative z-10 flex flex-col gap-5 rounded-2xl border-2 border-primary bg-white p-8 shadow-2xl shadow-primary/15 md:-translate-y-4">
-              <div className="absolute -top-4 left-1/2 -translate-x-1/2 rounded-full bg-primary px-4 py-1.5 text-xs font-bold uppercase tracking-wider text-white shadow-md">
-                Популярный выбор
-              </div>
-              <div className="mt-2 flex flex-col gap-2">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xl font-bold leading-tight text-slate-900">
-                    Креатор
-                  </h3>
-                </div>
-                <div className="mt-2 flex items-baseline gap-1 text-slate-900">
-                  <span className="text-5xl font-black tracking-tight">$29</span>
-                  <span className="text-sm font-medium text-slate-500">/мес</span>
-                </div>
-                <p className="mt-1 min-h-[40px] text-sm leading-relaxed text-slate-500">
-                  Для профессионалов, использующих лучшие модели.
-                </p>
-              </div>
-              <button
-                className="mt-2 h-12 w-full rounded-lg bg-primary text-sm font-bold tracking-wide text-white shadow-lg shadow-primary/30 transition-all hover:bg-primary/90"
-                type="button"
-              >
-                Выбрать «Креатор»
-              </button>
-              <div className="my-1 h-px w-full bg-slate-100" />
-              <div className="flex flex-col gap-4">
-                {[
-                  "Всё из тарифа «Старт»",
-                  "GPT-4o, Claude 3.5 Sonnet",
-                  "1M токенов в месяц",
-                  "Приоритетная очередь",
-                  "Режим сравнения моделей",
-                ].map((item) => (
-                  <div
-                    key={item}
-                    className="flex items-start gap-3 text-sm text-slate-700"
-                  >
-                    <span className="material-symbols-outlined shrink-0 text-[20px] text-primary">
-                      check_circle
-                    </span>
-                    <span>{item}</span>
+              return (
+                <div key={plan.id} className={wrapperClass}>
+                  {plan.badge && isFeatured && (
+                    <div className="absolute -top-4 left-1/2 -translate-x-1/2 rounded-full bg-primary px-4 py-1.5 text-xs font-bold uppercase tracking-wider text-white shadow-md">
+                      {plan.badge}
+                    </div>
+                  )}
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-xl font-bold leading-tight text-slate-900">
+                        {plan.name}
+                      </h3>
+                      {plan.badge && !isFeatured && (
+                        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-wider text-slate-700">
+                          {plan.badge}
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-2 flex items-baseline gap-1 text-slate-900">
+                      <span className={priceClass}>${plan.monthlyPriceUsd}</span>
+                      <span className="text-sm font-medium text-slate-500">/мес</span>
+                    </div>
+                    <p className="mt-1 min-h-[40px] text-sm leading-relaxed text-slate-500">
+                      {plan.description}
+                    </p>
                   </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="group flex flex-col gap-5 rounded-2xl border border-slate-200 bg-white p-8 transition-all duration-300 hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5">
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xl font-bold leading-tight text-slate-900">
-                    Профи
-                  </h3>
-                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-wider text-slate-700">
-                    Максимум
-                  </span>
-                </div>
-                <div className="mt-2 flex items-baseline gap-1 text-slate-900">
-                  <span className="text-4xl font-black tracking-tight">$99</span>
-                  <span className="text-sm font-medium text-slate-500">/мес</span>
-                </div>
-                <p className="mt-1 min-h-[40px] text-sm leading-relaxed text-slate-500">
-                  Безграничные возможности и API доступ.
-                </p>
-              </div>
-              <button
-                className="mt-2 h-12 w-full rounded-lg border border-slate-200 bg-white text-sm font-bold tracking-wide text-slate-900 shadow-sm transition-all hover:border-primary hover:text-primary"
-                type="button"
-              >
-                Выбрать «Профи»
-              </button>
-              <div className="my-1 h-px w-full bg-slate-100" />
-              <div className="flex flex-col gap-4">
-                {[
-                  "Безлимит на топовые модели",
-                  "Доступ к API OmniLLM",
-                  "Максимальная скорость",
-                  "Приватные данные (Zero-retention)",
-                  "Приоритетная поддержка 24/7",
-                ].map((item) => (
-                  <div
-                    key={item}
-                    className="flex items-start gap-3 text-sm text-slate-600"
-                  >
-                    <span className="material-symbols-outlined shrink-0 text-[20px] text-primary">
-                      check
-                    </span>
-                    <span>{item}</span>
+                  <button className={buttonClass} type="button">
+                    {buttonLabel}
+                  </button>
+                  <div className="my-1 h-px w-full bg-slate-100" />
+                  <div className="flex flex-col gap-4">
+                    {plan.features.map((item) => (
+                      <div
+                        key={item}
+                        className={`flex items-start gap-3 text-sm ${
+                          isFeatured ? "text-slate-700" : "text-slate-600"
+                        }`}
+                      >
+                        <span className="material-symbols-outlined shrink-0 text-[20px] text-primary">
+                          {isFeatured ? "check_circle" : "check"}
+                        </span>
+                        <span>{item}</span>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            </div>
+                </div>
+              );
+            })}
           </div>
         </section>
 
@@ -203,8 +133,8 @@ export default function PricingPage() {
                   Сравнение возможностей
                 </h3>
                 <p className="max-w-md text-sm text-slate-500">
-                  Посмотрите подробную таблицу доступности моделей, длины
-                  контекста и лимитов токенов для каждого плана.
+                  Сверяйте включенные кредиты по подписке, доступные модели и
+                  возможность докупать дополнительный баланс.
                 </p>
               </div>
               <button
@@ -260,14 +190,19 @@ export default function PricingPage() {
             <div className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
               {[
                 {
-                  question: "Как считаются токены?",
+                  question: "Как устроены лимиты в подписке?",
                   answer:
-                    "1 токен примерно равен 4 символам английского текста. 1000 токенов — это около 750 слов. В тарифе «Креатор» 1M токенов эквивалентен примерно 700,000 слов или нескольким книгам текста.",
+                    "Подписка дает включенный лимит кредитов на период. Когда он заканчивается, вы можете докупить дополнительные кредиты и продолжить работу без смены тарифа.",
                 },
                 {
                   question: "Могу ли я сменить тариф в любой момент?",
                   answer:
                     "Да, вы можете повысить или понизить тариф в любое время. При повышении тарифа изменения вступают в силу немедленно с перерасчетом стоимости.",
+                },
+                {
+                  question: "Что происходит, если включенные кредиты закончились?",
+                  answer:
+                    "Лимит по подписке не обнуляет ваш аккаунт. После исчерпания включенных кредитов можно докупить дополнительный баланс и продолжать пользоваться тем же тарифом.",
                 },
                 {
                   question: "Что такое доступ к API в плане «Профи»?",

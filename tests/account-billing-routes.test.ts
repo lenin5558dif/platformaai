@@ -67,10 +67,13 @@ describe("account and billing API routes", () => {
       expect(response.status).toBe(200);
       expect(await response.json()).toEqual({
         balance: "0",
+        topUpBalance: "0",
+        includedCreditsRemaining: "0",
         dailySpent: "0",
         monthlySpent: "0",
         dailyLimit: null,
         monthlyLimit: null,
+        subscription: null,
         org: null,
         transactions: [],
       });
@@ -96,10 +99,13 @@ describe("account and billing API routes", () => {
       expect(response.status).toBe(200);
       expect(await response.json()).toEqual({
         balance: "12",
+        topUpBalance: "12",
+        includedCreditsRemaining: "0",
         dailySpent: "4",
         monthlySpent: "8",
         dailyLimit: "50",
         monthlyLimit: "100",
+        subscription: null,
         org: null,
         transactions: [],
       });
@@ -135,10 +141,13 @@ describe("account and billing API routes", () => {
       expect(response.status).toBe(200);
       expect(await response.json()).toEqual({
         balance: "18",
+        topUpBalance: "18",
+        includedCreditsRemaining: "0",
         dailySpent: "6",
         monthlySpent: "10",
         dailyLimit: "50",
         monthlyLimit: "100",
+        subscription: null,
         org: null,
         transactions: [],
       });
@@ -170,10 +179,13 @@ describe("account and billing API routes", () => {
       expect(response.status).toBe(200);
       expect(await response.json()).toEqual({
         balance: "22",
+        topUpBalance: "22",
+        includedCreditsRemaining: "0",
         dailySpent: "0",
         monthlySpent: "0",
         dailyLimit: "50",
         monthlyLimit: "100",
+        subscription: null,
         org: null,
         transactions: [],
       });
@@ -214,10 +226,13 @@ describe("account and billing API routes", () => {
       expect(response.status).toBe(200);
       expect(await response.json()).toEqual({
         balance: "42",
+        topUpBalance: "42",
+        includedCreditsRemaining: "0",
         dailySpent: "3",
         monthlySpent: "9",
         dailyLimit: "50",
         monthlyLimit: "100",
+        subscription: null,
         org: {
           budget: "500",
           spent: "123",
@@ -266,10 +281,13 @@ describe("account and billing API routes", () => {
       expect(response.status).toBe(200);
       expect(await response.json()).toEqual({
         balance: "30",
+        topUpBalance: "30",
+        includedCreditsRemaining: "0",
         dailySpent: "5",
         monthlySpent: "2",
         dailyLimit: "50",
         monthlyLimit: "100",
+        subscription: null,
         org: null,
         transactions: [],
       });
@@ -281,6 +299,64 @@ describe("account and billing API routes", () => {
           dailyResetAt: new Date("2026-04-14T00:00:00.000Z"),
           monthlyResetAt: new Date("2026-04-14T00:00:00.000Z"),
         },
+      });
+    });
+
+    test("returns subscription details and included credits when present", async () => {
+      mocks.auth.mockResolvedValue({ user: { id: "user-1" } });
+      mocks.prisma.user.findUnique.mockResolvedValue({
+        balance: 30,
+        dailySpent: 5,
+        monthlySpent: 2,
+        dailyLimit: 50,
+        monthlyLimit: 100,
+        dailyResetAt: new Date("2026-04-14T00:00:00.000Z"),
+        monthlyResetAt: new Date("2026-04-14T00:00:00.000Z"),
+        subscription: {
+          status: "ACTIVE",
+          currentPeriodStart: new Date("2026-04-01T00:00:00.000Z"),
+          currentPeriodEnd: new Date("2099-05-01T00:00:00.000Z"),
+          includedCredits: { toString: () => "100.00" },
+          includedCreditsUsed: { toString: () => "25.00" },
+          cancelAtPeriodEnd: false,
+          plan: {
+            code: "creator",
+            name: "Креатор",
+            monthlyPriceUsd: { toString: () => "29.00" },
+            includedCreditsPerMonth: { toString: () => "100.00" },
+          },
+        },
+        org: null,
+      });
+      mocks.prisma.transaction.findMany.mockResolvedValue([]);
+
+      const response = await getBillingSummary();
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({
+        balance: "30",
+        topUpBalance: "30",
+        includedCreditsRemaining: "75",
+        dailySpent: "5",
+        monthlySpent: "2",
+        dailyLimit: "50",
+        monthlyLimit: "100",
+        subscription: {
+          status: "ACTIVE",
+          currentPeriodStart: "2026-04-01T00:00:00.000Z",
+          currentPeriodEnd: "2099-05-01T00:00:00.000Z",
+          includedCredits: "100.00",
+          includedCreditsUsed: "25.00",
+          cancelAtPeriodEnd: false,
+          plan: {
+            code: "creator",
+            name: "Креатор",
+            monthlyPriceUsd: "29.00",
+            includedCreditsPerMonth: "100.00",
+          },
+        },
+        org: null,
+        transactions: [],
       });
     });
   });

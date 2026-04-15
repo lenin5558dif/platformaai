@@ -287,7 +287,7 @@ describe("dashboard pages", () => {
     const html = render(await BillingPage());
 
     expect(html).toContain("Подписка и платежи");
-    expect(html).toContain("Creator");
+    expect(html).toContain("Креатор");
     expect(html).toContain("История платежей появится после первых операций.");
     expect(html).not.toContain("Реквизиты (B2B)");
     expect(mocks.prisma.organization.findUnique).not.toHaveBeenCalled();

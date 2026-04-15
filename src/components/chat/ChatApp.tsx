@@ -518,6 +518,7 @@ export default function ChatApp() {
         if (!response.ok) return;
         const data = await response.json();
         const settings = data?.data?.settings ?? null;
+        const resolvedPlan = data?.data?.resolvedPlan ?? null;
         const onboarded = Boolean(settings?.onboarded);
         const firstName =
           typeof settings?.profileFirstName === "string"
@@ -529,7 +530,9 @@ export default function ChatApp() {
             : "";
         const displayName = [firstName, lastName].filter(Boolean).join(" ");
         const planName =
-          typeof settings?.planName === "string" ? settings.planName : "План Pro";
+          typeof resolvedPlan?.name === "string" && resolvedPlan.name.trim()
+            ? resolvedPlan.name
+            : "Тариф не назначен";
         setShowOnboarding(!onboarded);
         setCurrentUser({
           email: data?.data?.email ?? null,
@@ -1249,7 +1252,7 @@ export default function ChatApp() {
                 {currentUser?.displayName || "Пользователь"}
               </span>
               <span className="text-xs text-text-secondary">
-                {currentUser?.planName || "План Pro"}
+                {currentUser?.planName || "Тариф не назначен"}
               </span>
             </div>
             <Link

@@ -13,6 +13,7 @@ import {
   mergeSettings,
   removeSettingsKey,
 } from "@/lib/user-settings";
+import { resolvePlanFromSettings } from "@/lib/plans";
 
 export const dynamic = "force-dynamic";
 
@@ -127,7 +128,7 @@ export default async function SettingsPage() {
     typeof settings.profilePhone === "string" ? settings.profilePhone : "";
 
   const displayName = [firstName, lastName].filter(Boolean).join(" ");
-  const planName = typeof settings.planName === "string" ? settings.planName : "Pro Plan";
+  const planName = resolvePlanFromSettings(settings)?.name ?? "Тариф не назначен";
 
   return (
     <AppShell

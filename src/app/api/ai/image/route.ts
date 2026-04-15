@@ -23,6 +23,7 @@ import {
 import { findOwnedChat } from "@/lib/chat-ownership";
 import { resolveOrgCostCenterId } from "@/lib/cost-centers";
 import { HttpError } from "@/lib/http-error";
+import { getSpendableCredits } from "@/lib/subscriptions";
 
 const requestSchema = z.object({
   attachmentId: z.string().min(1),
@@ -74,10 +75,23 @@ export async function POST(request: Request) {
       org: { select: { settings: true } },
       orgId: true,
       costCenterId: true,
+      subscription: {
+        select: {
+          status: true,
+          currentPeriodEnd: true,
+          includedCredits: true,
+          includedCreditsUsed: true,
+        },
+      },
     },
   });
 
-  if (!user || Number(user.balance) <= 0) {
+  const spendableCredits = getSpendableCredits({
+    balance: user?.balance,
+    subscription: user?.subscription,
+  });
+
+  if (!user || spendableCredits.total <= 0) {
     return NextResponse.json({ error: "Insufficient balance" }, { status: 402 });
   }
 
