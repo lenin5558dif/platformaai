@@ -10,7 +10,7 @@
 ## Merge Blockers
 
 - [x] 1. Закрыть account takeover в `src/app/api/auth/register/route.ts`
-- [ ] 2. Вернуть brute-force rate limiting в password login (`src/lib/auth.ts`)
+- [x] 2. Вернуть brute-force rate limiting в password login (`src/lib/auth.ts`)
 - [ ] 3. Стабилизировать Telegram auth rollout и не ломать существующий вход
 - [ ] 4. Вернуть мобильную навигацию в `src/components/layout/AppShell.tsx`
 - [ ] 5. Выровнять policy доступа к `/admin` в меню и CTA

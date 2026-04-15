@@ -348,7 +348,9 @@ describe("auth module", () => {
       credentialsProvider.authorize({
         email: "user@example.com",
         password: "correct-horse-battery-staple",
-      })
+      }, new Request("http://localhost/login", {
+        headers: { "x-forwarded-for": "203.0.113.10" },
+      }))
     ).resolves.toEqual({
       id: "u-credentials",
       email: "user@example.com",
@@ -357,6 +359,17 @@ describe("auth module", () => {
       orgId: "org-1",
       balance: "7",
       emailVerifiedByProvider: null,
+    });
+
+    expect(state.checkRateLimit).toHaveBeenCalledWith({
+      key: "auth:login:ip:203.0.113.10",
+      limit: 30,
+      windowMs: 300000,
+    });
+    expect(state.checkRateLimit).toHaveBeenCalledWith({
+      key: "auth:login:identity:203.0.113.10:user@example.com",
+      limit: 10,
+      windowMs: 600000,
     });
   });
 
@@ -379,7 +392,7 @@ describe("auth module", () => {
       credentialsProvider.authorize({
         email: "user@example.com",
         password: "wrong-password",
-      })
+      }, new Request("http://localhost/login"))
     ).resolves.toBeNull();
 
     state.prisma.user.findUnique.mockResolvedValueOnce({
@@ -397,8 +410,69 @@ describe("auth module", () => {
       credentialsProvider.authorize({
         email: "user2@example.com",
         password: "correct-password",
-      })
+      }, new Request("http://localhost/login"))
     ).resolves.toBeNull();
+  });
+
+  test("credentials authorize rejects when IP rate limit is exceeded before lookup", async () => {
+    state.checkRateLimit.mockResolvedValueOnce({
+      ok: false,
+      remaining: 0,
+      resetAt: Date.now() + 300000,
+    });
+
+    await loadAuthModule();
+    const credentialsProvider = getProvider("credentials");
+
+    await expect(
+      credentialsProvider.authorize(
+        {
+          email: "user@example.com",
+          password: "correct-horse-battery-staple",
+        },
+        new Request("http://localhost/login", {
+          headers: { "x-forwarded-for": "198.51.100.1" },
+        })
+      )
+    ).resolves.toBeNull();
+
+    expect(state.prisma.user.findUnique).not.toHaveBeenCalled();
+  });
+
+  test("credentials authorize rejects when identity rate limit is exceeded before lookup", async () => {
+    state.checkRateLimit
+      .mockResolvedValueOnce({
+        ok: true,
+        remaining: 29,
+        resetAt: Date.now() + 300000,
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        remaining: 0,
+        resetAt: Date.now() + 600000,
+      });
+
+    await loadAuthModule();
+    const credentialsProvider = getProvider("credentials");
+
+    await expect(
+      credentialsProvider.authorize(
+        {
+          email: "user@example.com",
+          password: "correct-horse-battery-staple",
+        },
+        new Request("http://localhost/login", {
+          headers: { "x-forwarded-for": "198.51.100.2" },
+        })
+      )
+    ).resolves.toBeNull();
+
+    expect(state.prisma.user.findUnique).not.toHaveBeenCalled();
+    expect(state.checkRateLimit).toHaveBeenCalledWith({
+      key: "auth:login:identity:203.0.113.10:user@example.com",
+      limit: 10,
+      windowMs: 600000,
+    });
   });
 
   test("telegram authorize rejects empty, invalid, and unverifiable payloads", async () => {

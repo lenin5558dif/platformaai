@@ -32,10 +32,19 @@ const telegramSchema = z.object({
   hash: z.string(),
 });
 
+const credentialsSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(8).max(72),
+});
+
 const authEmailGuardrails = loadAuthEmailGuardrails();
 const EMAIL_SIGNIN_DOMAIN_LIMIT = 20;
 const EMAIL_SIGNIN_DOMAIN_WINDOW_MS = 15 * 60 * 1000;
 const EMAIL_SIGNIN_SUSPICIOUS_DOMAIN_LIMIT = 5;
+const LOGIN_IP_LIMIT = 30;
+const LOGIN_IP_WINDOW_MS = 5 * 60 * 1000;
+const LOGIN_IDENTITY_LIMIT = 10;
+const LOGIN_IDENTITY_WINDOW_MS = 10 * 60 * 1000;
 const emailAuthConfigured =
   Boolean(process.env.UNISENDER_API_KEY) &&
   Boolean(process.env.UNISENDER_SENDER_EMAIL);
@@ -204,18 +213,42 @@ const passwordProvider = CredentialsProvider({
     email: { label: "Email", type: "email" },
     password: { label: "Password", type: "password" },
   },
-  authorize: async (credentials) => {
-    const email =
-      typeof credentials?.email === "string" ? credentials.email.trim().toLowerCase() : "";
-    const password =
-      typeof credentials?.password === "string" ? credentials.password : "";
+  authorize: async (credentials, request) => {
+    const clientIp = getClientIp(request);
 
-    if (!email || !password) {
+    const ipRate = await checkRateLimit({
+      key: `auth:login:ip:${clientIp}`,
+      limit: LOGIN_IP_LIMIT,
+      windowMs: LOGIN_IP_WINDOW_MS,
+    });
+    if (!ipRate.ok) {
+      return null;
+    }
+
+    const parsed = credentialsSchema.safeParse({
+      email:
+        typeof credentials?.email === "string"
+          ? credentials.email.trim().toLowerCase()
+          : "",
+      password:
+        typeof credentials?.password === "string" ? credentials.password : "",
+    });
+
+    if (!parsed.success) {
+      return null;
+    }
+
+    const identityRate = await checkRateLimit({
+      key: `auth:login:identity:${clientIp}:${parsed.data.email}`,
+      limit: LOGIN_IDENTITY_LIMIT,
+      windowMs: LOGIN_IDENTITY_WINDOW_MS,
+    });
+    if (!identityRate.ok) {
       return null;
     }
 
     const user = await prisma.user.findUnique({
-      where: { email },
+      where: { email: parsed.data.email },
       select: {
         id: true,
         email: true,
@@ -232,7 +265,10 @@ const passwordProvider = CredentialsProvider({
       return null;
     }
 
-    const passwordMatches = await compare(password, user.passwordHash).catch(() => false);
+    const passwordMatches = await compare(
+      parsed.data.password,
+      user.passwordHash
+    ).catch(() => false);
     if (!passwordMatches) {
       return null;
     }
