@@ -11,8 +11,8 @@ export async function POST(request: Request) {
 
   if (provider === "yookassa") {
     return NextResponse.json(
-      { error: "YooKassa subscriptions are not implemented yet" },
-      { status: 501 }
+      { error: "YooKassa subscriptions are temporarily unavailable" },
+      { status: 503 }
     );
   }
 

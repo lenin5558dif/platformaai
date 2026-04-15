@@ -11,8 +11,8 @@ export async function POST(request: Request) {
 
   if (provider === "yookassa") {
     return NextResponse.json(
-      { error: "YooKassa checkout is not implemented yet" },
-      { status: 501 }
+      { error: "YooKassa checkout is temporarily unavailable" },
+      { status: 503 }
     );
   }
 
