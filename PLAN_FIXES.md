@@ -25,18 +25,17 @@
 
 - [x] A. Прогнать целевые unit/integration тесты по auth
 - [x] B. Прогнать целевые unit/integration тесты по billing/payments
-- [ ] C. Прогнать e2e smoke
+- [x] C. Прогнать e2e smoke
 - [ ] D. Проверить merge `nikolay -> main` без конфликтов или с заранее разрешенным планом
-- [ ] E. Проверить deploy/smoke на сервере
+- [x] E. Проверить deploy/smoke на сервере
 
 ## Текущий статус интеграции
 
 - `A` закрыт: `tests/auth.test.ts`, `tests/auth-register-route.test.ts`, `tests/auth-ui.test.ts`, `tests/telegram-token.test.ts` зеленые.
 - `B` закрыт: `tests/account-billing-routes.test.ts`, `tests/dashboard-pages.test.ts`, `tests/payments-routes.test.ts`, `tests/stripe-subscription-checkout-route.test.ts`, `tests/stripe-webhook-route.test.ts` зеленые.
-- `C` пока не закрыт: `E2E_BASE_URL=https://ai.aurmind.ru npm run test:e2e -- tests/e2e/smoke.spec.ts` дает `7 failed, 2 passed`.
-- Причины по `C`: `/` редиректит на `/login?mode=register` вместо ожидаемого `/login?mode=signin`; `/models` и `/billing` на публичном домене отдают `404`; переходы после browser auth не попадают на актуальную billing-страницу.
+- `C` закрыт: после деплоя свежего `nikolay` публичный `E2E_BASE_URL=https://ai.aurmind.ru npm run test:e2e -- tests/e2e/smoke.spec.ts` проходит `9/9`.
 - `D` пока заблокирован: прямой `merge --no-commit origin/main` дает большой конфликтный слой.
-- `E` пока заблокирован: SSH-доступ по ключу из `server.md` отклоняется сервером (`Permission denied (publickey)`), поэтому выкатить текущий `nikolay` и прогнать server-side smoke не удалось.
+- `E` закрыт: deploy выполнен на `194.59.40.35`, `3000` и `3001` подняты из `/home/platformaai/releases/nikolay`, публичные `health/readiness` зеленые.
 - Основные конфликтные зоны: `.env.example`, `prisma/schema.prisma`, `README.md`, `src/lib/auth.ts`, `src/lib/navigation.ts`, `src/components/auth/*`, `src/components/layout/*`, `src/app/profile/page.tsx`, `src/app/settings/page.tsx`, `src/app/page.tsx`, `src/app/admin/*`, `src/app/api/auth/*`.
 
 ## Журнал этапов
@@ -45,18 +44,15 @@
 - [x] Этап 2. Прогнаны целевые auth и billing/payments unit/integration наборы.
 - [x] Этап 3. Проверен прямой merge-check с `origin/main`, конфликтный слой зафиксирован.
 - [x] Этап 4. Проверен публичный e2e smoke против `https://ai.aurmind.ru`, результаты и расхождения записаны.
-- [x] Этап 5. Проверен серверный SSH-доступ по `server.md`, текущий доступ заблокирован `Permission denied (publickey)`.
+- [x] Этап 5. Перепроверен серверный SSH-доступ: обычный `ssh platformaai@194.59.40.35` работает, а прежний `Permission denied (publickey)` был вызван устаревшей инструкцией с неверным ключом в `server.md`.
 - [x] Этап 6. Прогнать полный локальный `lint` + `build` + `vitest`.
 - [x] Этап 7. Прогнать локальный `Playwright` поверх локального приложения и пройти пользовательские маршруты.
 - [x] Этап 8. Свести найденные ошибки в таблицу и определить следующие действия.
 
 ## Найденные ошибки и расхождения
 
-- Публичный домен `https://ai.aurmind.ru` не соответствует текущим ожиданиям `nikolay` smoke-сценария.
-- `/` редиректит на `/login?mode=register`, а не на `/login?mode=signin`.
-- `/models` и `/billing` на публичном домене сейчас отдают `404`.
-- После browser auth на публичном домене пользователь не попадает на ожидаемый экран `Подписка и платежи`.
-- SSH-доступ к `platformaai@194.59.40.35` по ключу из `server.md` не проходит.
+- Публичный домен был неактуален до деплоя, но после выкладки свежего `nikolay` публичный `Playwright smoke` проходит `9/9`.
+- SSH-доступ к `platformaai@194.59.40.35` работает через обычный `ssh`; прежняя команда из `server.md` с `platformaai_dokploy_ed25519` была неверной.
 - Локальный `npm run build` поймал type error в `src/app/billing/page.tsx -> resolvePlanFromSubscription(user?.subscription)`.
 - Type error выше исправлен расширением типа `SubscriptionSnapshot` в `src/lib/plans.ts`; после правки нужен повторный `build`.
 - Production-like `build` дополнительно выявил хрупкость env-валидации: placeholder `TELEGRAM_BOT_TOKEN=REPLACE_ME` ошибочно включал Telegram auth и валил сборку.
@@ -70,3 +66,7 @@
 - Ручная локальная UI-проверка выявила UX-пробелы на `pricing`:
   - кнопка `Бизнес (B2B)` декоративная, не меняет состояние страницы;
   - кнопка `Показать полную таблицу` декоративная, не раскрывает сравнение.
+- Серверный deploy-check после фиксов:
+  - `npm test` на сервере зеленый: `82 files`, `610 tests`;
+  - `npm run build` на сервере зеленый;
+  - публичные `/api/internal/health` и `/api/internal/readiness` отвечают `ok/ready`.
