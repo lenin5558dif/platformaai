@@ -107,6 +107,7 @@ export default function ChatApp() {
   } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const skipNextLoadRef = useRef<string | null>(null);
+  const activeChatIdRef = useRef<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const modelMenuRef = useRef<HTMLDivElement>(null);
   const appliedPromptRef = useRef<string | null>(null);
@@ -582,6 +583,10 @@ export default function ChatApp() {
   }, [filteredChats, activeChatId, isDraft]);
 
   useEffect(() => {
+    activeChatIdRef.current = activeChatId;
+  }, [activeChatId]);
+
+  useEffect(() => {
     if (isSending && streamingChatId && activeChatId !== streamingChatId) {
       setIsSending(false);
       setStreamingChatId(null);
@@ -771,7 +776,7 @@ export default function ChatApp() {
             const delta = parsed?.choices?.[0]?.delta?.content;
             if (delta) {
               setMessages((prev) => {
-                if (activeChatId !== chatId) return prev;
+                if (activeChatIdRef.current !== chatId) return prev;
                 const updated = [...prev];
                 const current = updated[assistantIndex];
                 if (current) {
