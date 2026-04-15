@@ -69,6 +69,8 @@ describe("telegram token route", () => {
     state.userEmail = "user@example.com";
     state.userOrgName = "Acme Org";
     state.tokenRecord = null;
+    process.env.TELEGRAM_BOT_TOKEN = "telegram-token";
+    process.env.TELEGRAM_LOGIN_BOT_NAME = "platformaai_bot";
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2025-01-01T00:00:00.000Z"));
     vi.resetModules();
@@ -132,6 +134,18 @@ describe("telegram token route", () => {
 
     expect(json.deepLink).toContain(mockToken);
     expect(json.deepLink).toBe(`https://t.me/platformaai_bot?start=${mockToken}`);
+  });
+
+  test("returns 503 when telegram auth is not configured", async () => {
+    process.env.TELEGRAM_BOT_TOKEN = "REPLACE_ME";
+
+    const { POST } = await import("../src/app/api/telegram/token/route");
+    const res = await POST();
+
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({
+      error: "Telegram auth is not configured",
+    });
   });
 
   test("DB stores only prefix in token field", async () => {

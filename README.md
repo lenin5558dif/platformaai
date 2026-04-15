@@ -17,7 +17,7 @@ PlatformaAI is a multi-model AI workspace built on Next.js 15. It combines chat,
 - Prompt library, model catalog, billing, pricing, settings, profile, org, timeline, events, audit, and admin pages
 - Organization features: invites, RBAC, cost centers, model policy, DLP policy, SCIM tokens
 - Telegram bot and Telegram account linking
-- Stripe-backed subscriptions, included monthly credits, and top-up refill flows
+- Payment-provider layer for subscriptions, included monthly credits, and top-up refill flows
 
 ### Stack
 
@@ -28,7 +28,7 @@ PlatformaAI is a multi-model AI workspace built on Next.js 15. It combines chat,
 | Auth | Auth.js / NextAuth v5 beta, credentials, optional SSO and Telegram |
 | Database | PostgreSQL, Prisma |
 | AI | OpenRouter |
-| Payments | Stripe |
+| Payments | YooKassa-ready provider layer |
 | Bot | Telegraf |
 | Tests | Vitest, Playwright |
 
@@ -80,8 +80,8 @@ Required for app startup:
 - `NEXT_PUBLIC_APP_URL`
 - `OPENROUTER_API_KEY`
 - `UNISENDER_API_KEY`
-- `STRIPE_SECRET_KEY`
-- `STRIPE_WEBHOOK_SECRET`
+- `YOOKASSA_SHOP_ID`, `YOOKASSA_SECRET_KEY`
+- `YOOKASSA_RETURN_URL`
 
 Optional by feature:
 
@@ -185,7 +185,7 @@ PlatformaAI — это мультимодельное AI-приложение н
 - Страницы промптов, моделей, биллинга, тарифов, настроек, профиля, организации, ленты, событий, аудита и админки
 - Организационные возможности: приглашения, RBAC, cost centers, model policy, DLP policy, SCIM tokens
 - Telegram-бот и привязка Telegram-аккаунта
-- Подписки Stripe, включенные месячные кредиты и пополнение баланса
+- Платежный слой под YooKassa, включенные месячные кредиты и пополнение баланса
 
 ### Стек
 
@@ -196,7 +196,7 @@ PlatformaAI — это мультимодельное AI-приложение н
 | Auth | Auth.js / NextAuth v5 beta, credentials, опциональные SSO и Telegram |
 | База | PostgreSQL, Prisma |
 | AI | OpenRouter |
-| Платежи | Stripe |
+| Платежи | YooKassa-ready payment layer |
 | Бот | Telegraf |
 | Тесты | Vitest, Playwright |
 
@@ -248,8 +248,8 @@ npm run dev
 - `NEXT_PUBLIC_APP_URL`
 - `OPENROUTER_API_KEY`
 - `UNISENDER_API_KEY`
-- `STRIPE_SECRET_KEY`
-- `STRIPE_WEBHOOK_SECRET`
+- `YOOKASSA_SHOP_ID`, `YOOKASSA_SECRET_KEY`
+- `YOOKASSA_RETURN_URL`
 
 Опциональны по включаемым функциям:
 

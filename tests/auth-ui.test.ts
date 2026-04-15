@@ -66,6 +66,16 @@ describe("auth-ui helpers", () => {
     });
   });
 
+  it("hides telegram auth when the token is still a placeholder", () => {
+    const capabilities = getAuthCapabilities({
+      NEXT_PUBLIC_TELEGRAM_LOGIN_BOT_NAME: "platforma_bot",
+      TELEGRAM_LOGIN_BOT_NAME: "platforma_bot",
+      TELEGRAM_BOT_TOKEN: "REPLACE_ME",
+    });
+
+    expect(capabilities.telegram).toBe(false);
+  });
+
   it("allows hiding SSO from the UI when server credentials are present", () => {
     const capabilities = getAuthCapabilities({
       SSO_ISSUER: "https://issuer.example",

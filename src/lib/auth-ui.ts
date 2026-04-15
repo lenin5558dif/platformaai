@@ -1,3 +1,5 @@
+import { hasRealConfiguredValue } from "@/lib/config-values";
+
 export type AuthMode = "signin" | "register";
 
 export type AuthViewState =
@@ -133,17 +135,19 @@ export function getAuthCapabilities(
   env: Record<string, string | undefined> = process.env
 ): AuthCapabilities {
   const ssoConfigured =
-    env.SSO_ISSUER && env.SSO_CLIENT_ID && env.SSO_CLIENT_SECRET;
+    hasRealConfiguredValue(env.SSO_ISSUER) &&
+    hasRealConfiguredValue(env.SSO_CLIENT_ID) &&
+    hasRealConfiguredValue(env.SSO_CLIENT_SECRET);
   const telegramEnabledByFlag = env.NEXT_PUBLIC_TELEGRAM_AUTH_ENABLED !== "0";
   const telegramEnabled =
     telegramEnabledByFlag &&
-    Boolean(env.NEXT_PUBLIC_TELEGRAM_LOGIN_BOT_NAME) &&
-    Boolean(env.TELEGRAM_LOGIN_BOT_NAME) &&
-    Boolean(env.TELEGRAM_BOT_TOKEN);
+    hasRealConfiguredValue(env.NEXT_PUBLIC_TELEGRAM_LOGIN_BOT_NAME) &&
+    hasRealConfiguredValue(env.TELEGRAM_LOGIN_BOT_NAME) &&
+    hasRealConfiguredValue(env.TELEGRAM_BOT_TOKEN);
   const tempAccess = env.NEXT_PUBLIC_TEMP_ACCESS_ENABLED === "1";
   const ssoVisibleByFlag =
     env.NEXT_PUBLIC_SSO_ENABLED === undefined || env.NEXT_PUBLIC_SSO_ENABLED === "1";
-  const ssoEnabled = Boolean(ssoConfigured) && ssoVisibleByFlag;
+  const ssoEnabled = ssoConfigured && ssoVisibleByFlag;
 
   return {
     email: true,

@@ -118,8 +118,8 @@ describe("auth module", () => {
     process.env.OPENROUTER_API_KEY = "openrouter-key";
     process.env.UNISENDER_API_KEY = "unisender-key";
     process.env.UNISENDER_SENDER_EMAIL = "no-reply@example.com";
-    process.env.STRIPE_SECRET_KEY = "stripe-secret";
-    process.env.STRIPE_WEBHOOK_SECRET = "stripe-webhook-secret";
+    process.env.YOOKASSA_SHOP_ID = "yookassa-shop";
+    process.env.YOOKASSA_SECRET_KEY = "yookassa-secret";
     delete process.env.AUTH_BYPASS;
     delete process.env.AUTH_BYPASS_EMAIL;
     delete process.env.AUTH_BYPASS_ROLE;

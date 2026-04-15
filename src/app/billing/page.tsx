@@ -246,20 +246,20 @@ export default async function BillingPage() {
                       <div className="flex items-center gap-4">
                         <div className="flex h-8 w-12 items-center justify-center rounded border border-slate-200 bg-white">
                           <span className="text-xs font-semibold text-slate-500">
-                            VISA
+                            YK
                           </span>
                         </div>
                         <div className="flex flex-col">
                           <p className="text-sm font-medium text-slate-900">
-                            Карта не привязана
+                            YooKassa checkout
                           </p>
                           <p className="text-xs text-slate-500">
-                            Используйте пополнение баланса
+                            Используйте пополнение баланса и покупку подписки
                           </p>
                         </div>
                       </div>
                       <span className="rounded bg-slate-200 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-600">
-                        Локально
+                        YooKassa-ready
                       </span>
                     </div>
                     <div className="rounded-lg border border-dashed border-slate-300 p-4">

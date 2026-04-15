@@ -14,8 +14,8 @@ const REQUIRED_ENV = {
   NEXT_PUBLIC_APP_URL: "https://app.example",
   OPENROUTER_API_KEY: "openrouter-key",
   UNISENDER_API_KEY: "unisender-key",
-  STRIPE_SECRET_KEY: "stripe-secret",
-  STRIPE_WEBHOOK_SECRET: "stripe-webhook-secret",
+  YOOKASSA_SHOP_ID: "yookassa-shop",
+  YOOKASSA_SECRET_KEY: "yookassa-secret",
 };
 
 vi.mock("@/lib/db", () => ({

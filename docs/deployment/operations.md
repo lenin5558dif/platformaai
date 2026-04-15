@@ -80,7 +80,7 @@ Then verify manually:
 - public routes such as `/pricing`, `/share/[token]`, and `/invite/accept?token=...` still load without a session
 - chat page opens for an authenticated user
 - org page opens for an org admin
-- Stripe top-up and subscription checkout routes respond as expected in the current environment
+- top-up and subscription checkout routes respond as expected in the current environment
 
 ## Rollback
 

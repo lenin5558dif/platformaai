@@ -6,8 +6,8 @@ const TEST_ENV_DEFAULTS: Record<string, string> = {
   NEXT_PUBLIC_APP_URL: "https://app.example",
   OPENROUTER_API_KEY: "test-openrouter-key",
   UNISENDER_API_KEY: "test-unisender-key",
-  STRIPE_SECRET_KEY: "test-stripe-secret",
-  STRIPE_WEBHOOK_SECRET: "test-stripe-webhook-secret",
+  YOOKASSA_SHOP_ID: "test-yookassa-shop",
+  YOOKASSA_SECRET_KEY: "test-yookassa-secret",
 };
 
 for (const [key, value] of Object.entries(TEST_ENV_DEFAULTS)) {

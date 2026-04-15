@@ -17,6 +17,7 @@ export default function PlanCheckoutButton({
   disabled = false,
 }: PlanCheckoutButtonProps) {
   const [status, setStatus] = useState<"idle" | "loading">("idle");
+  const [error, setError] = useState<string | null>(null);
 
   async function handleClick() {
     if (disabled || status === "loading") {
@@ -24,9 +25,10 @@ export default function PlanCheckoutButton({
     }
 
     setStatus("loading");
+    setError(null);
 
     try {
-      const response = await fetch("/api/payments/stripe/subscription/checkout", {
+      const response = await fetch("/api/payments/subscription/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ planId }),
@@ -46,19 +48,23 @@ export default function PlanCheckoutButton({
         window.location.assign(data.url);
         return;
       }
+      setError(data.error ?? "Не удалось создать оплату подписки.");
     } finally {
       setStatus("idle");
     }
   }
 
   return (
-    <button
-      type="button"
-      className={className}
-      disabled={disabled || status === "loading"}
-      onClick={handleClick}
-    >
-      {status === "loading" ? "Создаем..." : label}
-    </button>
+    <div className="space-y-2">
+      <button
+        type="button"
+        className={className}
+        disabled={disabled || status === "loading"}
+        onClick={handleClick}
+      >
+        {status === "loading" ? "Создаем..." : label}
+      </button>
+      {error ? <p className="text-xs text-red-500">{error}</p> : null}
+    </div>
   );
 }

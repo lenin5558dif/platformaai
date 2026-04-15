@@ -15,7 +15,7 @@ export default function TopUpForm() {
     setError(null);
 
     try {
-      const response = await fetch("/api/payments/stripe/checkout", {
+      const response = await fetch("/api/payments/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ credits }),

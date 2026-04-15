@@ -34,8 +34,11 @@ const envSchema = z
 
     OPENROUTER_API_KEY: requiredText("OPENROUTER_API_KEY"),
     UNISENDER_API_KEY: requiredText("UNISENDER_API_KEY"),
-    STRIPE_SECRET_KEY: requiredText("STRIPE_SECRET_KEY"),
-    STRIPE_WEBHOOK_SECRET: requiredText("STRIPE_WEBHOOK_SECRET"),
+    STRIPE_SECRET_KEY: z.string().trim().min(1).optional(),
+    STRIPE_WEBHOOK_SECRET: z.string().trim().min(1).optional(),
+    YOOKASSA_SHOP_ID: z.string().trim().min(1).optional(),
+    YOOKASSA_SECRET_KEY: z.string().trim().min(1).optional(),
+    YOOKASSA_RETURN_URL: urlSchema.optional(),
 
     UNISENDER_SENDER_EMAIL: z.string().trim().email().optional(),
     UNISENDER_SENDER_NAME: z.string().trim().min(1).optional(),
