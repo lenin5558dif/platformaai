@@ -380,7 +380,7 @@ async function handleUserPrompt(ctx: Context, user: User, content: string) {
         })
       : null,
     getPlatformConfig(),
-    resolveOpenRouterApiKey({ orgId: user.orgId }),
+    resolveOpenRouterApiKey({ userId: user.id, orgId: user.orgId }),
   ]);
   const disabledModels = new Set(
     platformConfig.disabledModelIds

@@ -126,7 +126,7 @@ export async function POST(request: Request) {
 
   const [platformConfig, openRouterApiKey] = await Promise.all([
     getPlatformConfig(),
-    resolveOpenRouterApiKey({ orgId: user.orgId }),
+    resolveOpenRouterApiKey({ userId: user.id, orgId: user.orgId }),
   ]);
 
   const modelId = "openai/gpt-4o-mini";

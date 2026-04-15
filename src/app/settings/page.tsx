@@ -5,6 +5,13 @@ import TelegramLinkSection from "@/components/profile/TelegramLinkSection";
 import { revalidatePath } from "next/cache";
 import { auth, signOut as authSignOut } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { fetchWithTimeout } from "@/lib/fetch-timeout";
+import { getOpenRouterBaseUrl, getOpenRouterHeaders } from "@/lib/openrouter";
+import {
+  getUserOpenRouterCredential,
+  resolveUserOpenRouterApiKey,
+  upsertUserOpenRouterCredential,
+} from "@/lib/provider-credentials";
 import {
   getSettingsObject,
   getUserAssistantInstructions,
@@ -149,10 +156,63 @@ async function logout() {
   await authSignOut({ redirectTo: "/login" });
 }
 
+async function savePersonalOpenRouterCredential(formData: FormData) {
+  "use server";
+
+  const session = await auth();
+  if (!session?.user?.id) {
+    return;
+  }
+
+  const rawSecret = String(formData.get("openRouterApiKey") ?? "");
+  const isActive = String(formData.get("openRouterIsActive") ?? "true") === "true";
+
+  try {
+    await upsertUserOpenRouterCredential({
+      userId: session.user.id,
+      rawSecret,
+      isActive,
+    });
+    revalidatePath("/settings");
+    redirect("/settings?openrouter=saved");
+  } catch {
+    redirect("/settings?openrouter=error");
+  }
+}
+
+async function testPersonalOpenRouterCredential() {
+  "use server";
+
+  const session = await auth();
+  if (!session?.user?.id) {
+    return;
+  }
+
+  const apiKey = await resolveUserOpenRouterApiKey({
+    userId: session.user.id,
+  });
+
+  if (!apiKey) {
+    redirect("/settings?openrouter=missing");
+  }
+
+  try {
+    const response = await fetchWithTimeout(`${getOpenRouterBaseUrl()}/models`, {
+      headers: getOpenRouterHeaders(apiKey ?? undefined),
+      cache: "no-store",
+      timeoutMs: 12_000,
+      timeoutLabel: "OpenRouter personal models",
+    });
+    redirect(`/settings?openrouter=${response.ok ? "ok" : "failed"}`);
+  } catch {
+    redirect("/settings?openrouter=failed");
+  }
+}
+
 export default async function SettingsPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ onboarding?: string }>;
+  searchParams?: Promise<{ onboarding?: string; openrouter?: string }>;
 }) {
   const params = searchParams ? await searchParams : undefined;
   const isOnboardingFlow = params?.onboarding === "1";
@@ -175,6 +235,9 @@ export default async function SettingsPage({
     where: { id: session.user.id },
     select: { settings: true, email: true, role: true, telegramId: true },
   });
+  const personalOpenRouterCredential = await getUserOpenRouterCredential({
+    userId: session.user.id,
+  });
 
   const settings = getSettingsObject(user?.settings ?? null);
   const userProfile = getUserProfile(user?.settings ?? null) ?? "";
@@ -195,6 +258,18 @@ export default async function SettingsPage({
   const displayName = [firstName, lastName].filter(Boolean).join(" ");
   const planName =
     typeof settings.planName === "string" ? settings.planName : "Тариф Pro";
+  const openRouterStatus =
+    params?.openrouter === "saved"
+      ? "Персональный OpenRouter ключ сохранен."
+      : params?.openrouter === "ok"
+        ? "Персональный OpenRouter ключ успешно проверен."
+        : params?.openrouter === "missing"
+          ? "Сначала сохраните персональный OpenRouter ключ."
+          : params?.openrouter === "failed"
+            ? "Проверка персонального OpenRouter ключа завершилась с ошибкой."
+            : params?.openrouter === "error"
+              ? "Не удалось сохранить персональный OpenRouter ключ."
+              : null;
 
   return (
     <AppShell
@@ -227,6 +302,12 @@ export default async function SettingsPage({
             </button>
           </form>
         </div>
+
+        {openRouterStatus && (
+          <div className="rounded-xl border border-gray-200 bg-white/80 px-4 py-3 text-sm text-text-main">
+            {openRouterStatus}
+          </div>
+        )}
 
           <form id="profile-form" action={updateProfileSettings} className="space-y-6">
             <input
@@ -388,6 +469,91 @@ export default async function SettingsPage({
               </div>
               <div className="p-8">
                 <TelegramLinkSection telegramId={user?.telegramId ?? null} />
+              </div>
+            </section>
+
+            <section
+              id="openrouter"
+              className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
+            >
+              <div className="border-b border-slate-200/60 px-8 py-6">
+                <h3 className="text-base font-bold text-slate-900">
+                  Персональный OpenRouter ключ
+                </h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  Этот ключ будет использоваться раньше ключа организации и глобального ключа сервера.
+                </p>
+              </div>
+              <div className="space-y-4 p-8">
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600">
+                  Статус:{" "}
+                  {personalOpenRouterCredential?.isActive ? (
+                    <span className="font-semibold text-emerald-700">
+                      активен
+                    </span>
+                  ) : (
+                    <span className="font-semibold text-slate-700">
+                      не настроен / отключен
+                    </span>
+                  )}{" "}
+                  • fingerprint: {personalOpenRouterCredential?.maskedFingerprint ?? "—"}
+                </div>
+
+                <div className="flex flex-col gap-4 rounded-xl border border-gray-200 bg-white/70 p-4">
+                  <div className="space-y-1.5">
+                    <label
+                      className="text-xs font-semibold uppercase tracking-wider text-slate-500"
+                      htmlFor="openRouterApiKey"
+                    >
+                      API ключ OpenRouter
+                    </label>
+                    <input
+                      id="openRouterApiKey"
+                      name="openRouterApiKey"
+                      type="password"
+                      className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition-all placeholder:text-gray-400 focus:border-primary focus:ring-2 focus:ring-primary/10"
+                      placeholder="sk-or-..."
+                    />
+                    <p className="text-xs text-slate-500">
+                      Оставьте поле пустым, если хотите только включить или отключить уже сохраненный ключ.
+                    </p>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label
+                      className="text-xs font-semibold uppercase tracking-wider text-slate-500"
+                      htmlFor="openRouterIsActive"
+                    >
+                      Активность
+                    </label>
+                    <select
+                      id="openRouterIsActive"
+                      name="openRouterIsActive"
+                      defaultValue={personalOpenRouterCredential?.isActive ? "true" : "false"}
+                      className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/10"
+                    >
+                      <option value="true">Включен</option>
+                      <option value="false">Отключен</option>
+                    </select>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      formAction={savePersonalOpenRouterCredential}
+                      className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary/90"
+                      type="submit"
+                    >
+                      Сохранить ключ
+                    </button>
+                    <button
+                      formAction={testPersonalOpenRouterCredential}
+                      className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+                      type="submit"
+                    >
+                      Проверить ключ
+                    </button>
+                  </div>
+                </div>
               </div>
             </section>
 

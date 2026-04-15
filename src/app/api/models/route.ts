@@ -29,7 +29,7 @@ export async function GET() {
   try {
     const [platformConfig, openRouterApiKey] = await Promise.all([
       getPlatformConfig(),
-      resolveOpenRouterApiKey({ orgId: user?.orgId ?? null }),
+      resolveOpenRouterApiKey({ userId: user?.id ?? null, orgId: user?.orgId ?? null }),
     ]);
     if (!openRouterApiKey) {
       return NextResponse.json(

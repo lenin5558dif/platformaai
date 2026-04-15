@@ -92,7 +92,7 @@ export async function POST(request: Request) {
         })
       : null,
     getPlatformConfig(),
-    resolveOpenRouterApiKey({ orgId: user.orgId }),
+    resolveOpenRouterApiKey({ userId: user.id, orgId: user.orgId }),
   ]);
   const modelPolicy = getOrgModelPolicy(org?.settings ?? null);
   const dlpPolicy = getOrgDlpPolicy(org?.settings ?? null);

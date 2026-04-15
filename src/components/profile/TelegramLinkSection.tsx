@@ -72,13 +72,48 @@ export default function TelegramLinkSection(params: {
 
   const identityHint = useMemo(() => maskedIdentityHint(maskedEmail, orgName), [maskedEmail, orgName]);
 
-  const checkStatus = useCallback(async () => {
-    if (!token) {
+  const applyStatusBody = useCallback((body: TelegramStatusResponse | null) => {
+    if (body?.maskedEmail) {
+      setMaskedEmail(body.maskedEmail);
+    }
+    if (body?.orgName) {
+      setOrgName(body.orgName);
+    }
+
+    if (body?.state === "linked") {
+      setTelegramId(body.telegramId ?? telegramId);
+      setViewState("linked");
+      setMessage({
+        tone: "success",
+        title: "Telegram подключен",
+        message: "Привязка подтверждена. Telegram доступ активирован для вашего профиля.",
+      });
+      emitTelegramLinkingEvent("confirm_link", "success");
+      return true;
+    }
+
+    if (body?.state === "awaiting_bot_confirmation") {
+      setViewState("awaiting_bot_confirmation");
+      return true;
+    }
+
+    if (body?.state === "idle") {
+      setTelegramId(null);
+      setViewState("idle");
+      return true;
+    }
+
+    return false;
+  }, [telegramId]);
+
+  const checkStatus = useCallback(async (tokenOverride?: string | null) => {
+    const currentToken = tokenOverride ?? token;
+    if (!currentToken) {
       return;
     }
 
     try {
-      const url = `/api/telegram/token?token=${encodeURIComponent(token)}`;
+      const url = `/api/telegram/token?token=${encodeURIComponent(currentToken)}`;
       const res = await fetch(url, { method: "GET", cache: "no-store" });
       const body = (await res.json().catch(() => null)) as TelegramStatusResponse | null;
 
@@ -89,41 +124,41 @@ export default function TelegramLinkSection(params: {
         return;
       }
 
-      if (body?.maskedEmail) {
-        setMaskedEmail(body.maskedEmail);
-      }
-      if (body?.orgName) {
-        setOrgName(body.orgName);
-      }
-
-      if (body?.state === "linked") {
-        setTelegramId(body.telegramId ?? telegramId);
-        setViewState("linked");
-        setMessage({
-          tone: "success",
-          title: "Telegram подключен",
-          message: "Привязка подтверждена. Telegram доступ активирован для вашего профиля.",
-        });
-        emitTelegramLinkingEvent("confirm_link", "success");
-        return;
-      }
-
-      if (body?.state === "awaiting_bot_confirmation") {
-        setViewState("awaiting_bot_confirmation");
-        return;
-      }
-
       if (body?.state === "error") {
         setViewState("error");
         setMessage(mapTelegramLinkingError(body.code ?? body.error ?? undefined));
         emitTelegramLinkingEvent("confirm_link", body?.code === "TOKEN_EXPIRED" ? "expired" : "failure");
+        return;
       }
+
+      applyStatusBody(body);
     } catch {
       setViewState("error");
       setMessage(mapTelegramLinkingError());
       emitTelegramLinkingEvent("confirm_link", "failure");
     }
-  }, [telegramId, token]);
+  }, [applyStatusBody, token]);
+
+  const refreshCurrentLink = useCallback(async () => {
+    try {
+      const res = await fetch("/api/telegram/token", {
+        method: "GET",
+        cache: "no-store",
+      });
+      const body = (await res.json().catch(() => null)) as TelegramStatusResponse | null;
+      if (!res.ok) {
+        return;
+      }
+
+      applyStatusBody(body);
+    } catch {
+      // ignore background refresh errors
+    }
+  }, [applyStatusBody]);
+
+  useEffect(() => {
+    void refreshCurrentLink();
+  }, [refreshCurrentLink]);
 
   useEffect(() => {
     if (!token || viewState !== "awaiting_bot_confirmation") {
@@ -152,12 +187,13 @@ export default function TelegramLinkSection(params: {
         return;
       }
 
-      setToken(body?.token ?? null);
+      const nextToken = body?.token ?? null;
+      setToken(nextToken);
       setDeepLink(body?.deepLink ?? null);
       setExpiresAt(body?.expiresAt ?? null);
       setMaskedEmail(body?.maskedEmail ?? null);
       setOrgName(body?.orgName ?? null);
-      setViewState("link_generated");
+      setViewState("awaiting_bot_confirmation");
       setMessage({
         tone: "info",
         title: "Ссылка готова",
@@ -165,7 +201,7 @@ export default function TelegramLinkSection(params: {
       });
       emitTelegramLinkingEvent("create_link", "success");
 
-      void checkStatus();
+      void checkStatus(nextToken);
     } catch {
       setViewState("error");
       setMessage(mapTelegramLinkingError());
