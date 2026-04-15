@@ -96,12 +96,11 @@ export default function LoginForm({
     initialFeedback?.state ?? "idle"
   );
   const [feedback, setFeedback] = useState<AuthFeedback | null>(initialFeedback);
-  const [telegramUnavailable, setTelegramUnavailable] = useState(false);
   const emailRef = useRef<HTMLInputElement>(null);
 
   const modeText = useMemo(() => getModeText(mode), [mode]);
   const hasAnyMethod = capabilities.email || capabilities.sso;
-  const showTelegramWidget = capabilities.telegram && !telegramUnavailable;
+  const showTelegramWidget = capabilities.telegram;
 
   useEffect(() => {
     if (!initialFeedback) {
@@ -453,14 +452,10 @@ export default function LoginForm({
         {showTelegramWidget ? (
           <TelegramLoginButton
             onStarted={() => emitAuthEvent("submit", "telegram")}
-            onError={() => {
-              setTelegramUnavailable(true);
-              emitAuthEvent("failure", "telegram");
-            }}
           />
         ) : (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-            <p className="font-semibold">Привязка Telegram скоро появится</p>
+            <p className="font-semibold">Вход через Telegram недоступен</p>
             <p className="mt-1">
               Сервис временно недоступен в этом окружении. Сейчас используйте email + пароль.
             </p>

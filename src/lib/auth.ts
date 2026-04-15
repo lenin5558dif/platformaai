@@ -5,6 +5,7 @@ import type { OIDCConfig } from "@auth/core/providers";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { prisma } from "@/lib/db";
 import { verifyTelegramLogin, type TelegramAuthPayload } from "@/lib/telegram";
+import { consumeTelegramLoginToken } from "@/lib/telegram-login";
 import { z } from "zod";
 import { Prisma, UserRole } from "@prisma/client";
 import { SYSTEM_ROLE_NAMES } from "@/lib/org-permissions";
@@ -26,6 +27,10 @@ const telegramSchema = z.object({
 const credentialsSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8).max(72),
+});
+
+const telegramLoginTokenSchema = z.object({
+  loginToken: z.string().min(1).max(128),
 });
 
 const LOGIN_IP_LIMIT = 30;
@@ -195,6 +200,43 @@ const nextAuth = NextAuth({
         };
       },
     }),
+    CredentialsProvider({
+      id: "telegram-login",
+      name: "Telegram App Login",
+      credentials: {
+        loginToken: { label: "Telegram login token", type: "text" },
+      },
+      authorize: async (credentials) => {
+        const parsed = telegramLoginTokenSchema.safeParse({
+          loginToken:
+            typeof credentials?.loginToken === "string"
+              ? credentials.loginToken.trim()
+              : "",
+        });
+
+        if (!parsed.success) {
+          return null;
+        }
+
+        const user = await consumeTelegramLoginToken({
+          prisma,
+          token: parsed.data.loginToken,
+        });
+
+        if (!user) {
+          return null;
+        }
+
+        return {
+          id: user.id,
+          email: user.email ?? undefined,
+          role: user.role,
+          orgId: user.orgId,
+          balance: user.balance.toString(),
+          emailVerifiedByProvider: user.emailVerifiedByProvider ?? null,
+        };
+      },
+    }),
     ...(ssoProvider ? [ssoProvider] : []),
   ],
   callbacks: {
@@ -281,7 +323,11 @@ const nextAuth = NextAuth({
         });
       }
 
-      if (account?.provider !== "telegram" && account?.provider !== "credentials") {
+      if (
+        account?.provider !== "telegram" &&
+        account?.provider !== "credentials" &&
+        account?.provider !== "telegram-login"
+      ) {
         const profileRecord = profile as Record<string, unknown> | null;
         const profileEmailVerified =
           profileRecord && typeof profileRecord["email_verified"] === "boolean"

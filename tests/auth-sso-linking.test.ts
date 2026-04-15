@@ -50,4 +50,10 @@ describe("auth SSO linking", () => {
       allowDangerousEmailAccountLinking: false,
     });
   });
+
+  test("registers telegram app login provider", async () => {
+    await import("../src/lib/auth");
+
+    expect(state.nextAuthConfig.providers).toHaveLength(3);
+  });
 });

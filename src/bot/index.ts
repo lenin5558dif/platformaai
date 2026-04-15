@@ -26,6 +26,7 @@ import {
   cancelTelegramLink,
   confirmTelegramLink,
 } from "@/bot/telegram-linking-flow";
+import { completeTelegramLogin, extractTelegramLoginToken } from "@/lib/telegram-login";
 import { getPlatformConfig } from "@/lib/platform-config";
 import { resolveOpenRouterApiKey } from "@/lib/provider-credentials";
 import { getOpenRouterRateLimitPayload } from "@/lib/openrouter-metrics";
@@ -752,6 +753,23 @@ bot.start(async (ctx) => {
   const [, token] = text.split(" ");
 
   if (token) {
+    const loginToken = extractTelegramLoginToken(token);
+    if (loginToken) {
+      const telegramId = ctx.from?.id?.toString();
+      if (!telegramId) {
+        await ctx.reply("Не удалось получить Telegram ID.");
+        return;
+      }
+
+      const res = await completeTelegramLogin({
+        prisma,
+        token: loginToken,
+        telegramId,
+      });
+      await ctx.reply(res.message);
+      return;
+    }
+
     const res = await beginTelegramLink({ prisma, token });
     if (!res.ok) {
       await ctx.reply(res.message);
