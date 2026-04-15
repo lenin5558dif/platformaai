@@ -33,5 +33,8 @@
 
 - `A` закрыт: `tests/auth.test.ts`, `tests/auth-register-route.test.ts`, `tests/auth-ui.test.ts`, `tests/telegram-token.test.ts` зеленые.
 - `B` закрыт: `tests/account-billing-routes.test.ts`, `tests/dashboard-pages.test.ts`, `tests/payments-routes.test.ts`, `tests/stripe-subscription-checkout-route.test.ts`, `tests/stripe-webhook-route.test.ts` зеленые.
+- `C` пока не закрыт: `E2E_BASE_URL=https://ai.aurmind.ru npm run test:e2e -- tests/e2e/smoke.spec.ts` дает `7 failed, 2 passed`.
+- Причины по `C`: `/` редиректит на `/login?mode=register` вместо ожидаемого `/login?mode=signin`; `/models` и `/billing` на публичном домене отдают `404`; переходы после browser auth не попадают на актуальную billing-страницу.
 - `D` пока заблокирован: прямой `merge --no-commit origin/main` дает большой конфликтный слой.
+- `E` пока заблокирован: SSH-доступ по ключу из `server.md` отклоняется сервером (`Permission denied (publickey)`), поэтому выкатить текущий `nikolay` и прогнать server-side smoke не удалось.
 - Основные конфликтные зоны: `.env.example`, `prisma/schema.prisma`, `README.md`, `src/lib/auth.ts`, `src/lib/navigation.ts`, `src/components/auth/*`, `src/components/layout/*`, `src/app/profile/page.tsx`, `src/app/settings/page.tsx`, `src/app/page.tsx`, `src/app/admin/*`, `src/app/api/auth/*`.
