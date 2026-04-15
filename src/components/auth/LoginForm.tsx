@@ -99,6 +99,7 @@ export default function LoginForm({
   );
   const [feedback, setFeedback] = useState<AuthFeedback | null>(initialFeedback);
   const [telegramUnavailable, setTelegramUnavailable] = useState(false);
+  const [isHydrated, setIsHydrated] = useState(false);
   const emailRef = useRef<HTMLInputElement>(null);
 
   const modeText = useMemo(() => getModeText(mode), [mode]);
@@ -113,6 +114,10 @@ export default function LoginForm({
 
     emitAuthEvent(initialFeedback.state === "expired" ? "expired" : "failure", "credentials");
   }, [initialFeedback]);
+
+  useEffect(() => {
+    setIsHydrated(true);
+  }, []);
 
   function onModeChange(nextMode: AuthMode) {
     setMode(nextMode);
@@ -395,9 +400,13 @@ export default function LoginForm({
             <button
               type="submit"
               className="w-full rounded-lg bg-primary px-3 py-2.5 text-sm font-semibold text-white hover:bg-primary-hover disabled:opacity-60"
-              disabled={status === "submitting"}
+              disabled={status === "submitting" || !isHydrated}
             >
-              {status === "submitting" ? "Обработка..." : modeText.emailAction}
+              {status === "submitting"
+                ? "Обработка..."
+                : !isHydrated
+                  ? "Подготовка..."
+                  : modeText.emailAction}
             </button>
           </form>
         )}
