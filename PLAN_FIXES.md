@@ -19,7 +19,7 @@
 - [x] 8. Сделать production-safe заполнение `BillingPlan`
 - [x] 9. Перевести billing UI на `UserSubscription` как source of truth
 - [x] 10. Развести денежные subscription transactions и credit ledger
-- [ ] 11. Починить детерминированное определение плана по `priceId` в webhook
+- [x] 11. Починить детерминированное определение плана по `priceId` в webhook
 
 ## Release Checks
 

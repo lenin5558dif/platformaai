@@ -78,13 +78,25 @@ async function resolvePlanForSubscription(params: {
   }
 
   if (params.priceId) {
-    const plan = await params.tx.billingPlan.findFirst({
+    const directMatch = await params.tx.billingPlan.findUnique({
+      where: { stripePriceId: params.priceId },
+      select: {
+        id: true,
+        code: true,
+        stripePriceId: true,
+        includedCreditsPerMonth: true,
+      },
+    });
+
+    if (directMatch) {
+      return directMatch;
+    }
+
+    const fallbackPlans = await params.tx.billingPlan.findMany({
       where: {
-        OR: [
-          { stripePriceId: params.priceId },
-          { code: "creator" },
-          { code: "pro" },
-        ],
+        code: {
+          in: ["creator", "pro"],
+        },
       },
       select: {
         id: true,
@@ -92,15 +104,16 @@ async function resolvePlanForSubscription(params: {
         stripePriceId: true,
         includedCreditsPerMonth: true,
       },
-      orderBy: { createdAt: "asc" },
     });
 
-    if (plan?.stripePriceId === params.priceId) {
-      return plan;
-    }
+    const envMatchedPlan = fallbackPlans.find(
+      (plan) =>
+        getPlanStripePriceId(plan.code as "creator" | "pro", plan.stripePriceId) ===
+        params.priceId
+    );
 
-    if (plan && getPlanStripePriceId(plan.code as "creator" | "pro", plan.stripePriceId) === params.priceId) {
-      return plan;
+    if (envMatchedPlan) {
+      return envMatchedPlan;
     }
   }
 
