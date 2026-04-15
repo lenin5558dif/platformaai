@@ -216,7 +216,7 @@ export default function TelegramLinkSection(params: {
   }, []);
 
   return (
-    <div className="mt-6 rounded-xl border border-gray-200 bg-white/70 p-4">
+    <div className="rounded-xl border border-gray-200 bg-white/70 p-4">
       <p className="text-sm font-medium text-text-main mb-2">Привязка Telegram</p>
       <p className="text-xs text-text-secondary mb-3">
         Сгенерируйте одноразовую ссылку и перейдите по ней в Telegram. Подтвердите действие в

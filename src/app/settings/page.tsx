@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import AppShell from "@/components/layout/AppShell";
+import TelegramLinkSection from "@/components/profile/TelegramLinkSection";
 import { revalidatePath } from "next/cache";
 import { auth, signOut as authSignOut } from "@/lib/auth";
 import { prisma } from "@/lib/db";
@@ -172,7 +173,7 @@ export default async function SettingsPage({
 
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
-    select: { settings: true, email: true, role: true },
+    select: { settings: true, email: true, role: true, telegramId: true },
   });
 
   const settings = getSettingsObject(user?.settings ?? null);
@@ -370,6 +371,23 @@ export default async function SettingsPage({
                     />
                   </div>
                 </div>
+              </div>
+            </section>
+
+            <section
+              id="telegram"
+              className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
+            >
+              <div className="border-b border-slate-200/60 px-8 py-6">
+                <h3 className="text-base font-bold text-slate-900">
+                  Telegram
+                </h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  Подключите Telegram, чтобы входить через бота и пользоваться Telegram-каналом.
+                </p>
+              </div>
+              <div className="p-8">
+                <TelegramLinkSection telegramId={user?.telegramId ?? null} />
               </div>
             </section>
 

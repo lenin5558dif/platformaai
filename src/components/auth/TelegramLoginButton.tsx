@@ -24,7 +24,7 @@ type PollResponse =
 function getErrorMessage(code?: string) {
   switch (code) {
     case "ACCOUNT_NOT_LINKED":
-      return "Этот Telegram пока не привязан к аккаунту. Сначала войдите по email и привяжите его в настройках.";
+      return "Этот Telegram пока не привязан к аккаунту. Сначала войдите по email и привяжите его в профиле или настройках.";
     case "ACCOUNT_INACTIVE":
       return "Этот аккаунт отключен. Обратитесь к администратору.";
     case "TOKEN_EXPIRED":

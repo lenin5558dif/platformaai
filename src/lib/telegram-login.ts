@@ -149,7 +149,7 @@ export async function completeTelegramLogin(args: {
       ok: false as const,
       code: "ACCOUNT_NOT_LINKED",
       message:
-        "Этот Telegram еще не привязан к аккаунту PlatformaAI. Сначала войдите по email и привяжите Telegram в настройках.",
+        "Этот Telegram еще не привязан к аккаунту PlatformaAI. Сначала войдите по email и привяжите Telegram в профиле или настройках.",
     };
   }
 
