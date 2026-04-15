@@ -1,5 +1,6 @@
+import Link from "next/link";
 import { revalidatePath } from "next/cache";
-import { auth } from "@/lib/auth";
+import { requirePageSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import { createAuthorizer, requireSession } from "@/lib/authorize";
@@ -483,22 +484,7 @@ async function removeSsoDomain(domainId: string) {
 }
 
 export default async function OrgPage() {
-  const session = await auth();
-
-  if (!session?.user?.id) {
-    return (
-      <div className="min-h-screen flex items-center justify-center px-6">
-        <div className="rounded-2xl bg-white/80 border border-white/50 shadow-glass-sm p-6 text-center">
-          <h1 className="text-2xl font-semibold text-text-main mb-2 font-display">
-            Организация недоступна
-          </h1>
-          <p className="text-sm text-text-secondary">
-            Пожалуйста, войдите в аккаунт.
-          </p>
-        </div>
-      </div>
-    );
-  }
+  const session = await requirePageSession();
 
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
@@ -508,40 +494,80 @@ export default async function OrgPage() {
   if (!user?.orgId) {
     return (
       <div className="min-h-screen px-6 py-10">
-        <div className="max-w-3xl mx-auto rounded-2xl bg-white/80 border border-white/50 shadow-glass-sm p-6">
-          <h1 className="text-2xl font-semibold text-text-main mb-2 font-display">
-            Создайте организацию
-          </h1>
-          <p className="text-sm text-text-secondary mb-6">
-            Организация нужна для распределения бюджета и лимитов сотрудников.
-          </p>
-          <form action={createOrganization} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-text-main">
-                Название
-              </label>
-              <input
-                name="name"
-                className="mt-2 w-full rounded-lg border border-gray-200 bg-white/70 px-3 py-2 text-sm"
-                placeholder="PlatformaAI"
-              />
+        <div className="mx-auto grid max-w-5xl gap-6 lg:grid-cols-[1.05fr_0.95fr]">
+          <section className="rounded-3xl border border-white/60 bg-white/80 p-6 shadow-glass-sm md:p-8">
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-primary">
+              Онбординг организации
+            </p>
+            <h1 className="mt-3 text-3xl font-semibold leading-tight text-text-main font-display">
+              Создайте первую организацию
+            </h1>
+            <p className="mt-3 text-sm leading-6 text-text-secondary">
+              Организация нужна, чтобы распределять бюджет, лимиты, роли и приглашения между
+              людьми. После создания вы сразу попадете в панель управления.
+            </p>
+
+            <div className="mt-6 space-y-3">
+              {[
+                {
+                  title: "1. Название",
+                  text: "Задайте понятное имя рабочего пространства для вашей команды.",
+                },
+                {
+                  title: "2. Бюджет",
+                  text: "Укажите стартовый объем кредитов для общего контроля расходов.",
+                },
+                {
+                  title: "3. Настройка",
+                  text: "После создания откроются приглашения, роли и политики.",
+                },
+              ].map((item) => (
+                <div
+                  key={item.title}
+                  className="rounded-2xl border border-white/60 bg-white/70 px-4 py-4"
+                >
+                  <p className="text-sm font-semibold text-text-main">{item.title}</p>
+                  <p className="mt-2 text-xs leading-5 text-text-secondary">{item.text}</p>
+                </div>
+              ))}
             </div>
-            <div>
-              <label className="block text-sm font-medium text-text-main">
-                Бюджет (кредиты)
-              </label>
-              <input
-                name="budget"
-                type="number"
-                step="0.01"
-                className="mt-2 w-full rounded-lg border border-gray-200 bg-white/70 px-3 py-2 text-sm"
-                placeholder="1000"
-              />
-            </div>
-            <button className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-hover">
-              Создать
-            </button>
-          </form>
+          </section>
+
+          <div className="rounded-3xl border border-white/60 bg-white/80 p-6 shadow-glass-sm md:p-8">
+            <h2 className="text-2xl font-semibold text-text-main font-display">
+              Создание организации
+            </h2>
+            <p className="mt-2 text-sm text-text-secondary">
+              Организация нужна для распределения бюджета и лимитов сотрудников.
+            </p>
+            <form action={createOrganization} className="mt-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-text-main">
+                  Название
+                </label>
+                <input
+                  name="name"
+                  className="mt-2 w-full rounded-lg border border-gray-200 bg-white/70 px-3 py-2 text-sm"
+                  placeholder="PlatformaAI"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-text-main">
+                  Бюджет (кредиты)
+                </label>
+                <input
+                  name="budget"
+                  type="number"
+                  step="0.01"
+                  className="mt-2 w-full rounded-lg border border-gray-200 bg-white/70 px-3 py-2 text-sm"
+                  placeholder="1000"
+                />
+              </div>
+              <button className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-hover">
+                Создать организацию
+              </button>
+            </form>
+          </div>
         </div>
       </div>
     );
@@ -711,17 +737,109 @@ export default async function OrgPage() {
   const spent = Number(org?.spent ?? 0);
   const budgetProgress = budget > 0 ? Math.min(100, (spent / budget) * 100) : 0;
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const overviewStats = [
+    {
+      label: "Бюджет",
+      value: `${budget.toFixed(2)} / ${spent.toFixed(2)}`,
+      note: "Потрачено / доступно",
+    },
+    {
+      label: "Сотрудники",
+      value: `${members.length}`,
+      note: "В активной организации",
+    },
+    {
+      label: "Роли",
+      value: `${inviteRoles.length}`,
+      note: "Доступно для инвайтов",
+    },
+    {
+      label: "Центры затрат",
+      value: `${costCenters.length}`,
+      note: "Для учета расходов",
+    },
+  ];
+  const quickLinks = [
+    { href: "#rbac", label: "RBAC" },
+    { href: "#governance", label: "Политики" },
+    { href: "#invites", label: "Приглашения" },
+    { href: "#members", label: "Сотрудники" },
+  ];
+  const workflowSteps = [
+    {
+      title: "Сотрудники",
+      text: "Проверьте статус и роли сотрудников, при необходимости отзовите сессии.",
+    },
+    {
+      title: "Приглашения",
+      text: "Создавайте приглашения только после выбора роли и, если нужно, центра затрат.",
+    },
+    {
+      title: "Роли",
+      text: "Сначала убедитесь, что система ролей отражает реальный процесс команды.",
+    },
+  ];
 
   return (
     <div className="min-h-screen px-6 py-10">
       <div className="max-w-5xl mx-auto space-y-6">
-        <div className="rounded-2xl bg-white/80 border border-white/50 shadow-glass-sm p-6">
-          <h1 className="text-2xl font-semibold text-text-main mb-2 font-display">
-            {org?.name}
-          </h1>
-          <p className="text-sm text-text-secondary">
+        <div className="rounded-3xl bg-white/80 border border-white/60 shadow-glass-sm p-6 md:p-8">
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+            <div className="max-w-2xl">
+              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-primary">
+                Центр управления организацией
+              </p>
+              <h1 className="mt-3 text-3xl font-semibold leading-tight text-text-main font-display">
+                {org?.name}
+              </h1>
+              <p className="mt-3 text-sm leading-6 text-text-secondary">
+                Отсюда начинается управление доступом: приглашения, роли, центры затрат, SCIM и
+                политики собраны в одном пространстве с понятной последовательностью действий.
+              </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {quickLinks.map((link) => (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    className="rounded-full border border-gray-200 bg-white/80 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-white"
+                  >
+                    {link.label}
+                  </Link>
+                ))}
+              </div>
+              <div className="mt-5 grid gap-3 md:grid-cols-3">
+                {workflowSteps.map((step) => (
+                  <div
+                    key={step.title}
+                    className="rounded-xl border border-gray-200 bg-white/70 px-4 py-3"
+                  >
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-text-secondary">
+                      {step.title}
+                    </p>
+                    <p className="mt-2 text-xs leading-5 text-text-secondary">{step.text}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2 lg:w-[420px]">
+              {overviewStats.map((item) => (
+                <div
+                  key={item.label}
+                  className="rounded-2xl border border-white/60 bg-white/70 px-4 py-4"
+                >
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-text-secondary">
+                    {item.label}
+                  </p>
+                  <p className="mt-2 text-xl font-semibold text-text-main">{item.value}</p>
+                  <p className="mt-1 text-xs text-text-secondary">{item.note}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-6 text-sm text-text-secondary">
             Бюджет: {org?.budget.toString() ?? 0} кредитов • Потрачено: {org?.spent.toString() ?? 0}
-          </p>
+          </div>
           {user.role === "ADMIN" && (
             <form action={updateBudget} className="mt-4 flex flex-wrap items-end gap-3">
               <div>
@@ -756,7 +874,7 @@ export default async function OrgPage() {
 
         <div className="rounded-2xl bg-white/80 border border-white/50 shadow-glass-sm p-6">
           <h2 className="text-lg font-semibold text-text-main mb-4 font-display">
-            Cost Analyzer
+            Анализ расходов
           </h2>
           <div className="mb-6">
             <p className="text-xs text-text-secondary mb-3">
@@ -943,33 +1061,35 @@ export default async function OrgPage() {
           </div>
         )}
 
-        <QuotaDlpAuditManager
-          actorPermissionKeys={actorPermissionKeys}
-          orgBudget={canReadGovernanceLimits ? Number(org?.budget ?? 0) : 0}
-          orgSpent={canReadGovernanceLimits ? Number(org?.spent ?? 0) : 0}
-          members={
-            canReadGovernanceLimits
-              ? members.map((member) => ({
-                  id: member.id,
-                  email: member.email,
-                  dailyLimit: member.dailyLimit === null ? null : Number(member.dailyLimit),
-                  monthlyLimit: member.monthlyLimit === null ? null : Number(member.monthlyLimit),
-                  dailySpent: Number(member.dailySpent ?? 0),
-                  monthlySpent: Number(member.monthlySpent ?? 0),
-                }))
-              : []
-          }
-          costCenters={costCenters.map((center) => ({ id: center.id, name: center.name }))}
-          initialDlpPolicy={
-            canReadGovernancePolicies ? dlpPolicy : { enabled: false, action: "block", patterns: [] }
-          }
-          initialModelPolicy={
-            canReadGovernancePolicies ? modelPolicy : { mode: "allowlist", models: [] }
-          }
-        />
+        <section id="governance" className="rounded-2xl bg-white/80 border border-white/50 shadow-glass-sm p-6">
+          <QuotaDlpAuditManager
+            actorPermissionKeys={actorPermissionKeys}
+            orgBudget={canReadGovernanceLimits ? Number(org?.budget ?? 0) : 0}
+            orgSpent={canReadGovernanceLimits ? Number(org?.spent ?? 0) : 0}
+            members={
+              canReadGovernanceLimits
+                ? members.map((member) => ({
+                    id: member.id,
+                    email: member.email,
+                    dailyLimit: member.dailyLimit === null ? null : Number(member.dailyLimit),
+                    monthlyLimit: member.monthlyLimit === null ? null : Number(member.monthlyLimit),
+                    dailySpent: Number(member.dailySpent ?? 0),
+                    monthlySpent: Number(member.monthlySpent ?? 0),
+                  }))
+                : []
+            }
+            costCenters={costCenters.map((center) => ({ id: center.id, name: center.name }))}
+            initialDlpPolicy={
+              canReadGovernancePolicies ? dlpPolicy : { enabled: false, action: "block", patterns: [] }
+            }
+            initialModelPolicy={
+              canReadGovernancePolicies ? modelPolicy : { mode: "allowlist", models: [] }
+            }
+          />
+        </section>
 
         {user.role === "ADMIN" && (
-          <div className="rounded-2xl bg-white/80 border border-white/50 shadow-glass-sm p-6">
+          <section id="scim" className="rounded-2xl bg-white/80 border border-white/50 shadow-glass-sm p-6">
             <h2 className="text-lg font-semibold text-text-main mb-2 font-display">
               SSO и SCIM
             </h2>
@@ -1040,44 +1160,64 @@ export default async function OrgPage() {
                 <ScimTokenManager />
               </div>
             </div>
-          </div>
+          </section>
         )}
 
-        <RbacManager
-          roles={orgRoles.map((role) => ({
-            id: role.id,
-            name: role.name,
-            isSystem: role.isSystem,
-            permissionKeys: role.permissions.map((item) => item.permission.key),
-          }))}
-          actorPermissionKeys={actorPermissionKeys}
-          costCenters={costCenters.map((center) => ({
-            id: center.id,
-            name: center.name,
-          }))}
-          policyContext={{
-            dlpEnabled: dlpPolicy.enabled,
-            dlpAction: dlpPolicy.action,
-            modelPolicyMode: modelPolicy.mode,
-            modelModelsCount: modelPolicy.models.length,
-          }}
-        />
-
-        {canManageInvites && (
-          <InviteManager
-            roleOptions={inviteRoles}
-            costCenterOptions={costCenters.map((center) => ({
+        <section id="rbac">
+          <RbacManager
+            roles={orgRoles.map((role) => ({
+              id: role.id,
+              name: role.name,
+              isSystem: role.isSystem,
+              permissionKeys: role.permissions.map((item) => item.permission.key),
+            }))}
+            actorPermissionKeys={actorPermissionKeys}
+            costCenters={costCenters.map((center) => ({
               id: center.id,
               name: center.name,
             }))}
+            policyContext={{
+              dlpEnabled: dlpPolicy.enabled,
+              dlpAction: dlpPolicy.action,
+              modelPolicyMode: modelPolicy.mode,
+              modelModelsCount: modelPolicy.models.length,
+            }}
           />
+        </section>
+
+        {canManageInvites && (
+          <section id="invites">
+            <InviteManager
+              roleOptions={inviteRoles}
+              costCenterOptions={costCenters.map((center) => ({
+                id: center.id,
+                name: center.name,
+              }))}
+            />
+          </section>
         )}
 
-        <div className="rounded-2xl bg-white/80 border border-white/50 shadow-glass-sm p-6">
+        <section id="members" className="rounded-2xl bg-white/80 border border-white/50 shadow-glass-sm p-6">
           <h2 className="text-lg font-semibold text-text-main mb-4 font-display">
             Сотрудники
           </h2>
+          <div className="mb-4 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-xs text-sky-700">
+            <p className="font-semibold">Подсказка для админа</p>
+            <p className="mt-1">
+              Сначала проверьте роль и активность участника, затем при необходимости обновите
+              центр затрат, лимиты или завершите доступ через отзыв сессий.
+            </p>
+          </div>
           <div className="space-y-3">
+            {members.length === 0 && (
+              <div className="rounded-xl border border-dashed border-gray-300 bg-white/60 px-4 py-4">
+                <p className="text-sm font-medium text-text-main">Пока нет сотрудников</p>
+                <p className="mt-1 text-xs text-text-secondary">
+                  Создайте первое приглашение или подключите SCIM, чтобы сотрудники начали появляться
+                  здесь автоматически.
+                </p>
+              </div>
+            )}
             {members.map((member) => (
               <div
                 key={member.id}
@@ -1166,7 +1306,7 @@ export default async function OrgPage() {
               </div>
             ))}
           </div>
-        </div>
+        </section>
       </div>
     </div>
   );

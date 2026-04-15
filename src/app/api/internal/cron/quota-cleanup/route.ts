@@ -1,18 +1,10 @@
-import { NextResponse } from "next/server";
-
 import { prisma } from "@/lib/db";
 import { DEFAULT_RESERVATION_TTL_MS } from "@/lib/quota-manager";
-
-function unauthorized() {
-  return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
-}
+import { jsonNoStore, requireCronSecret } from "@/lib/internal-http";
 
 export async function POST(req: Request) {
-  const expected = process.env.CRON_SECRET;
-  if (!expected) return unauthorized();
-
-  const provided = req.headers.get("x-cron-secret");
-  if (!provided || provided !== expected) return unauthorized();
+  const unauthorized = requireCronSecret(req);
+  if (unauthorized) return unauthorized;
 
   const now = new Date();
   const cutoff = new Date(now.getTime() - DEFAULT_RESERVATION_TTL_MS);
@@ -44,7 +36,7 @@ export async function POST(req: Request) {
     },
   });
 
-  return NextResponse.json({
+  return jsonNoStore({
     released: res.count,
     activeCount,
     activeAmount: Number(activeSum._sum.amount ?? 0),

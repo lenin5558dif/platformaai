@@ -7,6 +7,7 @@ import TelegramLoginButton from "@/components/auth/TelegramLoginButton";
 import {
   getModeText,
   mapLoginError,
+  type AuthEmailGuardrails,
   type AuthCapabilities,
   type AuthMode,
   type AuthViewState,
@@ -16,6 +17,7 @@ type LoginFormProps = {
   initialMode: AuthMode;
   initialError?: string;
   capabilities: AuthCapabilities;
+  emailGuardrails?: AuthEmailGuardrails;
 };
 
 type AuthFeedback = {
@@ -50,7 +52,7 @@ function fallbackLoginMessage(error?: string | null): AuthFeedback {
   return {
     state: "error",
     title: "Не удалось выполнить вход",
-    message: "Проверьте email и пароль, затем попробуйте снова.",
+    message: "Проверьте почту и пароль, затем попробуйте снова.",
     action: "retry",
   };
 }
@@ -60,8 +62,8 @@ function mapRegisterError(message?: string): AuthFeedback {
   if (normalized.includes("already exists")) {
     return {
       state: "error",
-      title: "Email уже используется",
-      message: "У этого email уже есть аккаунт. Войдите через вкладку «Вход».",
+      title: "Почта уже используется",
+      message: "У этой почты уже есть аккаунт. Войдите через вкладку «Вход».",
       action: "retry",
     };
   }
@@ -97,10 +99,12 @@ export default function LoginForm({
   );
   const [feedback, setFeedback] = useState<AuthFeedback | null>(initialFeedback);
   const [telegramUnavailable, setTelegramUnavailable] = useState(false);
+  const [isHydrated, setIsHydrated] = useState(false);
   const emailRef = useRef<HTMLInputElement>(null);
 
   const modeText = useMemo(() => getModeText(mode), [mode]);
-  const hasAnyMethod = capabilities.email || capabilities.sso;
+  const hasAnyMethod =
+    capabilities.email || capabilities.sso || capabilities.telegram || capabilities.tempAccess;
   const showTelegramWidget = capabilities.telegram && !telegramUnavailable;
 
   useEffect(() => {
@@ -110,6 +114,10 @@ export default function LoginForm({
 
     emitAuthEvent(initialFeedback.state === "expired" ? "expired" : "failure", "credentials");
   }, [initialFeedback]);
+
+  useEffect(() => {
+    setIsHydrated(true);
+  }, []);
 
   function onModeChange(nextMode: AuthMode) {
     setMode(nextMode);
@@ -166,12 +174,12 @@ export default function LoginForm({
 
     if (!normalizedEmail || !password) {
       setStatus("error");
-      setFeedback({
-        state: "error",
+        setFeedback({
+          state: "error",
           title: "Заполните форму",
-        message: "Email и пароль обязательны.",
-        action: "retry",
-      });
+          message: "Почта и пароль обязательны.",
+          action: "retry",
+        });
       return;
     }
 
@@ -392,9 +400,13 @@ export default function LoginForm({
             <button
               type="submit"
               className="w-full rounded-lg bg-primary px-3 py-2.5 text-sm font-semibold text-white hover:bg-primary-hover disabled:opacity-60"
-              disabled={status === "submitting"}
+              disabled={status === "submitting" || !isHydrated}
             >
-              {status === "submitting" ? "Обработка..." : modeText.emailAction}
+              {status === "submitting"
+                ? "Обработка..."
+                : !isHydrated
+                  ? "Подготовка..."
+                  : modeText.emailAction}
             </button>
           </form>
         )}
@@ -446,7 +458,7 @@ export default function LoginForm({
 
         <div className="my-1 flex items-center gap-3">
           <div className="h-px flex-1 bg-gray-200" />
-          <span className="text-xs text-gray-400">Telegram</span>
+          <span className="text-xs text-gray-400">Телеграм</span>
           <div className="h-px flex-1 bg-gray-200" />
         </div>
 
@@ -462,7 +474,7 @@ export default function LoginForm({
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
             <p className="font-semibold">Привязка Telegram скоро появится</p>
             <p className="mt-1">
-              Сервис временно недоступен в этом окружении. Сейчас используйте email + пароль.
+              Сервис временно недоступен в этом окружении. Сейчас используйте почту и пароль.
             </p>
           </div>
         )}

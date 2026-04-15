@@ -2,10 +2,24 @@ import { describe, expect, it } from "vitest";
 import { mapInviteError, parseInviteActionResult } from "@/lib/invite-ui";
 
 describe("invite-ui helpers", () => {
-  it("maps known invite errors to user-safe messages", () => {
-    expect(mapInviteError("INVITE_EXISTS").tone).toBe("warning");
-    expect(mapInviteError("INVITE_EMAIL_MISMATCH").tone).toBe("error");
-    expect(mapInviteError("EMAIL_NOT_VERIFIED").title).toContain("Email");
+  it.each([
+    ["RATE_LIMITED", "warning"],
+    ["INVITE_EXISTS", "warning"],
+    ["INVITE_EXPIRED", "warning"],
+    ["INVITE_REVOKED", "warning"],
+    ["INVITE_ALREADY_USED", "warning"],
+    ["INVITE_EMAIL_MISMATCH", "error"],
+    ["EMAIL_REQUIRED", "warning"],
+    ["EMAIL_NOT_VERIFIED", "warning"],
+    ["EMAIL_DOMAIN_BLOCKED", "error"],
+    ["ROLE_NOT_FOUND", "error"],
+    ["INVALID_TOKEN", "error"],
+    ["UNAUTHORIZED", "warning"],
+  ])("maps %s to a %s tone", (code, tone) => {
+    const message = mapInviteError(code);
+    expect(message.tone).toBe(tone);
+    expect(message.title.length).toBeGreaterThan(0);
+    expect(message.message.length).toBeGreaterThan(0);
   });
 
   it("returns fallback message for unknown errors", () => {
@@ -30,5 +44,14 @@ describe("invite-ui helpers", () => {
     expect(result.ok).toBe(false);
     expect(result.code).toBe("INVITE_REVOKED");
     expect(result.status).toBe(410);
+  });
+
+  it("parses failed action result with invalid JSON", async () => {
+    const response = new Response("not-json", { status: 500 });
+    const result = await parseInviteActionResult(response);
+    expect(result.ok).toBe(false);
+    expect(result.status).toBe(500);
+    expect(result.code).toBeUndefined();
+    expect(result.message).toBeUndefined();
   });
 });

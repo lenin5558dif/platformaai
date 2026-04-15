@@ -12,8 +12,16 @@ import {
   getRateLimitHeaders,
   getRetryAfterHeader,
 } from "@/lib/rate-limit";
+import {
+  evaluateAuthEmailGuardrails,
+  loadAuthEmailGuardrails,
+} from "@/lib/auth-ui";
 
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const INVITE_DOMAIN_LIMIT = 30;
+const INVITE_DOMAIN_WINDOW_MS = 60 * 60 * 1000;
+const INVITE_SUSPICIOUS_DOMAIN_LIMIT = 5;
+const inviteEmailGuardrails = loadAuthEmailGuardrails();
 
 export async function POST(
   request: Request,
@@ -80,6 +88,91 @@ export async function POST(
     }
     if (invite.expiresAt <= new Date()) {
       throw new HttpError(410, "INVITE_EXPIRED", "Invite expired");
+    }
+
+    const emailDecision = evaluateAuthEmailGuardrails(
+      invite.email,
+      inviteEmailGuardrails
+    );
+    if (emailDecision.blocked) {
+      await logAudit({
+        action: AuditAction.POLICY_BLOCKED,
+        orgId: membership.orgId,
+        actorId: session.user.id,
+        targetType: "OrgInvite",
+        targetId: invite.id,
+        ip: request.headers.get("x-forwarded-for") ?? undefined,
+        userAgent: request.headers.get("user-agent") ?? undefined,
+        metadata: {
+          auth: {
+            stage: "invite_resend",
+            reason: "blocked_email_domain",
+            email: emailDecision.normalizedEmail,
+            domain: emailDecision.domain,
+            blocked: true,
+          },
+        },
+      });
+
+      throw new HttpError(
+        403,
+        "EMAIL_DOMAIN_BLOCKED",
+        "Email domain is blocked by policy"
+      );
+    }
+
+    if (emailDecision.domain) {
+      const domainRateLimit = await checkRateLimit({
+        key: `invite:resend-domain:${membership.orgId}:${emailDecision.domain}`,
+        limit: emailDecision.suspicious
+          ? INVITE_SUSPICIOUS_DOMAIN_LIMIT
+          : INVITE_DOMAIN_LIMIT,
+        windowMs: INVITE_DOMAIN_WINDOW_MS,
+      });
+
+      if (!domainRateLimit.ok) {
+        await logAudit({
+          action: AuditAction.POLICY_BLOCKED,
+          orgId: membership.orgId,
+          actorId: session.user.id,
+          targetType: "OrgInvite",
+          targetId: invite.id,
+          ip: request.headers.get("x-forwarded-for") ?? undefined,
+          userAgent: request.headers.get("user-agent") ?? undefined,
+          metadata: {
+            auth: {
+              stage: "invite_resend",
+              reason: emailDecision.suspicious
+                ? "suspicious_domain_throttled"
+                : "domain_throttled",
+              email: emailDecision.normalizedEmail,
+              domain: emailDecision.domain,
+              blocked: true,
+              suspicious: emailDecision.suspicious,
+            },
+          },
+        });
+
+        return NextResponse.json(
+          {
+            error: "Too many resend attempts for this email domain. Please try again later.",
+            code: "RATE_LIMITED",
+          },
+          {
+            status: 429,
+            headers: {
+              ...getRateLimitHeaders({
+                limit: emailDecision.suspicious
+                  ? INVITE_SUSPICIOUS_DOMAIN_LIMIT
+                  : INVITE_DOMAIN_LIMIT,
+                remaining: domainRateLimit.remaining,
+                resetAt: domainRateLimit.resetAt,
+              }),
+              ...getRetryAfterHeader(domainRateLimit.resetAt),
+            },
+          }
+        );
+      }
     }
 
     const { token, tokenHash, tokenPrefix } = generateInviteToken();

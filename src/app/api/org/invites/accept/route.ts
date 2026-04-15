@@ -5,7 +5,6 @@ import { prisma } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import { HttpError } from "@/lib/http-error";
 import { requireSession, toErrorResponse } from "@/lib/authorize";
-import { SYSTEM_ROLE_NAMES } from "@/lib/org-permissions";
 import {
   hashInviteToken,
   inviteTokenPrefix,
@@ -14,20 +13,20 @@ import {
 } from "@/lib/org-invites";
 import {
   checkRateLimit,
+  getClientIp,
   getRateLimitHeaders,
   getRetryAfterHeader,
 } from "@/lib/rate-limit";
-
-function toLegacyRole(roleName: string) {
-  if (roleName === SYSTEM_ROLE_NAMES.ADMIN || roleName === SYSTEM_ROLE_NAMES.OWNER) {
-    return "ADMIN" as const;
-  }
-  return "EMPLOYEE" as const;
-}
+import {
+  evaluateAuthEmailGuardrails,
+  loadAuthEmailGuardrails,
+} from "@/lib/auth-ui";
 
 const acceptSchema = z.object({
   token: z.string().min(1),
 });
+
+const inviteEmailGuardrails = loadAuthEmailGuardrails();
 
 export async function POST(request: Request) {
   try {
@@ -36,22 +35,66 @@ export async function POST(request: Request) {
 
     const sessionEmailRaw = session.user.email ?? undefined;
     if (!sessionEmailRaw) {
-      throw new HttpError(401, "UNAUTHORIZED", "Missing session email");
+      throw new HttpError(
+        401,
+        "EMAIL_REQUIRED",
+        "Invite acceptance requires an email-backed account"
+      );
     }
     const sessionEmail = normalizeInviteEmail(sessionEmailRaw);
+    const emailDecision = evaluateAuthEmailGuardrails(
+      sessionEmail,
+      inviteEmailGuardrails
+    );
+
+    if (emailDecision.blocked) {
+      await logAudit({
+        action: AuditAction.POLICY_BLOCKED,
+        orgId: session.user.orgId ?? undefined,
+        actorId: session.user.id,
+        targetType: "OrgInvite",
+        targetId: null,
+        ip: request.headers.get("x-forwarded-for") ?? undefined,
+        userAgent: request.headers.get("user-agent") ?? undefined,
+        metadata: {
+          auth: {
+            stage: "invite_accept",
+            reason: "blocked_email_domain",
+            email: emailDecision.normalizedEmail,
+            domain: emailDecision.domain,
+            blocked: true,
+          },
+        },
+      });
+
+      throw new HttpError(
+        403,
+        "EMAIL_DOMAIN_BLOCKED",
+        "Email domain is blocked by policy"
+      );
+    }
 
     const token = payload.token;
     const tokenPrefix = inviteTokenPrefix(token);
     const tokenHash = hashInviteToken(token);
+    const clientIp = getClientIp(request);
 
-    // Rate limit: 5 attempts per 15 minutes per token (anti-bruteforce)
-    const acceptRateLimitKey = `invite:accept:${tokenHash}`;
-    const acceptRateLimit = await checkRateLimit({
-      key: acceptRateLimitKey,
-      limit: 5,
-      windowMs: 15 * 60 * 1000,
-    });
-    if (!acceptRateLimit.ok) {
+    // Rate limit: 5 attempts per 15 minutes per invite prefix and per IP (anti-bruteforce)
+    const [tokenRateLimit, ipRateLimit] = await Promise.all([
+      checkRateLimit({
+        key: `invite:accept:${tokenPrefix}`,
+        limit: 5,
+        windowMs: 15 * 60 * 1000,
+      }),
+      checkRateLimit({
+        key: `invite:accept-ip:${clientIp}`,
+        limit: 30,
+        windowMs: 15 * 60 * 1000,
+      }),
+    ]);
+    const acceptRateLimit = !tokenRateLimit.ok ? tokenRateLimit : ipRateLimit;
+    const acceptRateLimitLimit = !tokenRateLimit.ok ? 5 : 30;
+    if (!tokenRateLimit.ok || !ipRateLimit.ok) {
       await logAudit({
         action: AuditAction.ORG_INVITE_ACCEPT_RATE_LIMITED,
         orgId: session.user.orgId ?? undefined,
@@ -69,20 +112,20 @@ export async function POST(request: Request) {
       });
 
       return NextResponse.json(
-        {
-          error: "Too many attempts. Please try again later.",
-          code: "RATE_LIMITED",
-        },
-        {
-          status: 429,
-          headers: {
-            ...getRateLimitHeaders({
-              limit: 5,
-              remaining: acceptRateLimit.remaining,
-              resetAt: acceptRateLimit.resetAt,
-            }),
-            ...getRetryAfterHeader(acceptRateLimit.resetAt),
+          {
+            error: "Too many attempts. Please try again later.",
+            code: "RATE_LIMITED",
           },
+          {
+            status: 429,
+            headers: {
+              ...getRateLimitHeaders({
+                limit: acceptRateLimitLimit,
+                remaining: acceptRateLimit.remaining,
+                resetAt: acceptRateLimit.resetAt,
+              }),
+              ...getRetryAfterHeader(acceptRateLimit.resetAt),
+            },
         }
       );
     }
@@ -95,9 +138,6 @@ export async function POST(request: Request) {
         email: true,
         roleId: true,
         defaultCostCenterId: true,
-        role: {
-          select: { name: true },
-        },
         tokenHash: true,
         expiresAt: true,
         usedAt: true,
@@ -174,14 +214,13 @@ export async function POST(request: Request) {
     }
 
     await prisma.$transaction(async (tx) => {
-      const nextLegacyRole = toLegacyRole(invite.role.name);
-      await tx.user.update({
-        where: { id: session.user.id },
-        data: !existingOrgId
-          ? { orgId: invite.orgId, role: nextLegacyRole }
-          : { role: nextLegacyRole },
-        select: { id: true },
-      });
+      if (!existingOrgId) {
+        await tx.user.update({
+          where: { id: session.user.id },
+          data: { orgId: invite.orgId },
+          select: { id: true },
+        });
+      }
 
       await tx.orgMembership.upsert({
         where: {

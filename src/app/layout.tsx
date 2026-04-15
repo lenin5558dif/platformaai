@@ -15,7 +15,7 @@ const spaceGrotesk = Space_Grotesk({
 
 export const metadata: Metadata = {
   title: "PlatformaAI",
-  description: "AI aggregator platform with unified chat and billing.",
+  description: "Платформа-агрегатор ИИ с единым чатом и биллингом.",
 };
 
 export default function RootLayout({

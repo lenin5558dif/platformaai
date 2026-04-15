@@ -53,7 +53,7 @@ function sanitizeLabelValue(value: string | null | undefined, fallback: string) 
   return v;
 }
 
-function auditActionType(action: AuditAction): string {
+export function auditActionType(action: AuditAction): string {
   const a = String(action);
   switch (a) {
     case "USER_INVITED":

@@ -5,29 +5,47 @@ import {
 } from "@/lib/telegram-audit";
 
 describe("telegram audit metadata", () => {
-  test("buildTelegramLinkAuditMetadata shape", () => {
-    const md = buildTelegramLinkAuditMetadata({
-      telegramId: "123",
-      source: "bot",
-      maskedEmail: "u***r@example.com",
-    });
-
-    expect(md).toEqual({
+  test("includes optional masked email only when present", () => {
+    expect(
+      buildTelegramLinkAuditMetadata({
+        telegramId: "tg-1",
+        source: "bot",
+        maskedEmail: "u***@example.com",
+      })
+    ).toEqual({
       telegram: {
         action: "link",
-        telegramId: "123",
+        telegramId: "tg-1",
         source: "bot",
-        maskedEmail: "u***r@example.com",
+        maskedEmail: "u***@example.com",
+      },
+    });
+
+    expect(
+      buildTelegramLinkAuditMetadata({
+        telegramId: "tg-2",
+        source: "web",
+      })
+    ).toEqual({
+      telegram: {
+        action: "link",
+        telegramId: "tg-2",
+        source: "web",
+        maskedEmail: undefined,
       },
     });
   });
 
-  test("buildTelegramUnlinkAuditMetadata shape", () => {
-    const md = buildTelegramUnlinkAuditMetadata({ telegramId: "123", source: "web" });
-    expect(md).toEqual({
+  test("builds unlink metadata", () => {
+    expect(
+      buildTelegramUnlinkAuditMetadata({
+        telegramId: "tg-3",
+        source: "web",
+      })
+    ).toEqual({
       telegram: {
         action: "unlink",
-        telegramId: "123",
+        telegramId: "tg-3",
         source: "web",
       },
     });

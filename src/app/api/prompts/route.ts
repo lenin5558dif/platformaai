@@ -52,7 +52,7 @@ export async function POST(request: Request) {
   const payload = createSchema.parse(await request.json());
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
-    select: { orgId: true, role: true },
+    select: { orgId: true, role: true, email: true },
   });
 
   const requestedVisibility =

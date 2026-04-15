@@ -264,7 +264,7 @@ export async function checkModelAllowed(
  * Emits POLICY_BLOCKED audit log for block/redact actions.
  * For use by Telegram bot.
  */
-async function checkDlpPolicy(
+export async function checkDlpPolicy(
   content: string,
   ctx: AuthorizationContext
 ): Promise<DlpCheckResult> {

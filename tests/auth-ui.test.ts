@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  describeAuthMethods,
+  evaluateAuthEmailGuardrails,
   getAuthCapabilities,
+  loadAuthEmailGuardrails,
   getModeText,
   mapLoginError,
   resolveAuthMode,
@@ -16,15 +19,23 @@ describe("auth-ui helpers", () => {
 
   it("detects capabilities from env flags", () => {
     const capabilities = getAuthCapabilities({
-      NEXT_PUBLIC_SSO_ENABLED: "1",
-      NEXT_PUBLIC_TELEGRAM_AUTH_ENABLED: "1",
+      UNISENDER_API_KEY: "unisender-key",
+      UNISENDER_SENDER_EMAIL: "no-reply@example.com",
+      SSO_ISSUER: "https://issuer.example",
+      SSO_CLIENT_ID: "id",
+      SSO_CLIENT_SECRET: "secret",
       NEXT_PUBLIC_TELEGRAM_LOGIN_BOT_NAME: "platforma_bot",
+      TELEGRAM_LOGIN_BOT_NAME: "platforma_bot",
+      TELEGRAM_BOT_TOKEN: "telegram-token",
+      NEXT_PUBLIC_TELEGRAM_AUTH_ENABLED: "1",
+      NEXT_PUBLIC_TEMP_ACCESS_ENABLED: "1",
     });
 
     expect(capabilities).toEqual({
       email: true,
       sso: true,
       telegram: true,
+      tempAccess: true,
     });
   });
 
@@ -36,7 +47,69 @@ describe("auth-ui helpers", () => {
     });
 
     expect(capabilities.sso).toBe(true);
+    expect(capabilities.email).toBe(true);
     expect(capabilities.telegram).toBe(false);
+    expect(capabilities.tempAccess).toBe(false);
+  });
+
+  it("keeps password auth available when optional server integrations are incomplete", () => {
+    const capabilities = getAuthCapabilities({
+      UNISENDER_API_KEY: "unisender-key",
+      NEXT_PUBLIC_SSO_ENABLED: "1",
+      NEXT_PUBLIC_TELEGRAM_LOGIN_BOT_NAME: "platforma_bot",
+      TELEGRAM_LOGIN_BOT_NAME: "platforma_bot",
+    });
+
+    expect(capabilities).toEqual({
+      email: true,
+      sso: false,
+      telegram: false,
+      tempAccess: false,
+    });
+  });
+
+  it("hides telegram auth when the token is still a placeholder", () => {
+    const capabilities = getAuthCapabilities({
+      NEXT_PUBLIC_TELEGRAM_LOGIN_BOT_NAME: "platforma_bot",
+      TELEGRAM_LOGIN_BOT_NAME: "platforma_bot",
+      TELEGRAM_BOT_TOKEN: "REPLACE_ME",
+      NEXT_PUBLIC_TELEGRAM_AUTH_ENABLED: "1",
+    });
+
+    expect(capabilities.telegram).toBe(false);
+  });
+
+  it("keeps telegram auth enabled when config is valid and the flag is unset", () => {
+    const capabilities = getAuthCapabilities({
+      NEXT_PUBLIC_TELEGRAM_LOGIN_BOT_NAME: "platforma_bot",
+      TELEGRAM_LOGIN_BOT_NAME: "platforma_bot",
+      TELEGRAM_BOT_TOKEN: "telegram-token",
+    });
+
+    expect(capabilities.telegram).toBe(true);
+  });
+
+  it("allows explicitly hiding telegram auth with the public feature flag", () => {
+    const capabilities = getAuthCapabilities({
+      NEXT_PUBLIC_TELEGRAM_LOGIN_BOT_NAME: "platforma_bot",
+      TELEGRAM_LOGIN_BOT_NAME: "platforma_bot",
+      TELEGRAM_BOT_TOKEN: "telegram-token",
+      NEXT_PUBLIC_TELEGRAM_AUTH_ENABLED: "0",
+    });
+
+    expect(capabilities.telegram).toBe(false);
+  });
+
+  it("allows hiding SSO from the UI when server credentials are present", () => {
+    const capabilities = getAuthCapabilities({
+      SSO_ISSUER: "https://issuer.example",
+      SSO_CLIENT_ID: "id",
+      SSO_CLIENT_SECRET: "secret",
+      NEXT_PUBLIC_SSO_ENABLED: "0",
+    });
+
+    expect(capabilities.sso).toBe(false);
+    expect(capabilities.tempAccess).toBe(false);
   });
 
   it("maps verification errors to expired state", () => {
@@ -45,13 +118,93 @@ describe("auth-ui helpers", () => {
     expect(mapped?.action).toBe("retry");
   });
 
+  it("maps email sign-in throttling to a retryable message", () => {
+    const mapped = mapLoginError("EmailSignInError");
+    expect(mapped?.state).toBe("error");
+    expect(mapped?.action).toBe("retry");
+    expect(mapped?.message).toContain("Подождите");
+  });
+
   it("maps sso requirement and unknown errors safely", () => {
     const ssoRequired = mapLoginError("SSORequired");
     const unknown = mapLoginError("SomethingElse");
+    const blocked = mapLoginError("EmailDomainBlocked");
+    const disabled = mapLoginError("AccountDisabled");
+    const empty = mapLoginError(undefined);
 
     expect(ssoRequired?.action).toBe("use_sso");
     expect(unknown?.state).toBe("error");
     expect(unknown?.action).toBe("retry");
+    expect(blocked?.action).toBe("contact_admin");
+    expect(disabled?.action).toBe("contact_admin");
+    expect(disabled?.title).toContain("Аккаунт отключен");
+    expect(empty).toBeNull();
+  });
+
+  it("loads and evaluates auth email guardrails", () => {
+    const guardrails = loadAuthEmailGuardrails({
+      AUTH_EMAIL_BLOCKLIST: " blocked.example , blocked@tenant.example ",
+      AUTH_EMAIL_SUSPICIOUS_DOMAINS: " temp.example ",
+    });
+
+    expect(evaluateAuthEmailGuardrails("user@blocked.example", guardrails)).toEqual(
+      expect.objectContaining({
+        blocked: true,
+        suspicious: false,
+        domain: "blocked.example",
+      })
+    );
+    expect(evaluateAuthEmailGuardrails("blocked@tenant.example", guardrails)).toEqual(
+      expect.objectContaining({
+        blocked: true,
+        suspicious: false,
+        domain: "tenant.example",
+      })
+    );
+    expect(evaluateAuthEmailGuardrails("user@temp.example", guardrails)).toEqual(
+      expect.objectContaining({
+        blocked: false,
+        suspicious: true,
+        domain: "temp.example",
+      })
+    );
+    expect(evaluateAuthEmailGuardrails("user@mail.temp.example", guardrails)).toEqual(
+      expect.objectContaining({
+        blocked: false,
+        suspicious: false,
+        domain: "mail.temp.example",
+      })
+    );
+    expect(evaluateAuthEmailGuardrails("invalid-email", guardrails)).toEqual(
+      expect.objectContaining({
+        blocked: false,
+        suspicious: false,
+        domain: null,
+      })
+    );
+  });
+
+  it("supports suffix-based suspicious domains and empty guardrails", () => {
+    const guardrails = loadAuthEmailGuardrails({});
+
+    expect(guardrails).toEqual({
+      blockedEntries: [],
+      suspiciousDomains: [],
+    });
+
+    const suffixGuardrails = loadAuthEmailGuardrails({
+      AUTH_EMAIL_SUSPICIOUS_DOMAINS: ".temp.example",
+    });
+
+    expect(evaluateAuthEmailGuardrails("user@mail.temp.example", suffixGuardrails)).toEqual(
+      expect.objectContaining({
+        suspicious: true,
+        blocked: false,
+        domain: "mail.temp.example",
+      })
+    );
+
+    expect(mapLoginError("AccessDenied")?.action).toBe("contact_admin");
   });
 
   it("returns mode-specific copy", () => {
@@ -59,10 +212,28 @@ describe("auth-ui helpers", () => {
     const signinText = getModeText("signin");
 
     expect(registerText.title).toContain("Создание аккаунта");
-    expect(registerText.subtitle).toContain("никнейм");
-    expect(registerText.emailAction).toContain("Создать");
+    expect(registerText.subtitle).toContain("основным идентификатором");
     expect(signinText.title).toContain("Вход");
-    expect(signinText.emailAction).toContain("Войти");
     expect(signinText.ssoAction).toContain("SSO");
+  });
+
+  it("describes available auth methods without promising disabled ones", () => {
+    expect(
+      describeAuthMethods({
+        email: true,
+        sso: false,
+        telegram: false,
+        tempAccess: false,
+      })
+    ).toContain("email");
+
+    expect(
+      describeAuthMethods({
+        email: true,
+        sso: true,
+        telegram: false,
+        tempAccess: false,
+      })
+    ).toContain("email или SSO");
   });
 });

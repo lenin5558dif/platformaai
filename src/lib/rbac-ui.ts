@@ -1,6 +1,6 @@
 import { ORG_PERMISSIONS, type OrgPermissionKey } from "@/lib/org-permissions";
 
-type RbacApiErrorCode =
+export type RbacApiErrorCode =
   | "FORBIDDEN"
   | "LAST_OWNER"
   | "NOT_FOUND"
@@ -41,7 +41,7 @@ export type RbacMemberView = {
   } | null;
 };
 
-type PermissionGroup = {
+export type PermissionGroup = {
   id: string;
   label: string;
   permissions: OrgPermissionKey[];
@@ -55,7 +55,7 @@ export const RBAC_PERMISSION_GROUPS: PermissionGroup[] = [
   },
   {
     id: "role-change",
-    label: "Смена роли",
+    label: "Смена ролей",
     permissions: [ORG_PERMISSIONS.ORG_ROLE_CHANGE],
   },
   {

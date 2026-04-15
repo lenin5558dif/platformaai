@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import Link from "next/link";
+import { useState } from "react";
 import { mapInviteError, parseInviteActionResult, type InviteUiMessage } from "@/lib/invite-ui";
 
 type InviteAcceptanceCardProps = {
@@ -32,17 +33,20 @@ function bannerClass(tone: InviteUiMessage["tone"]) {
 
 export default function InviteAcceptanceCard({ token }: InviteAcceptanceCardProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [status, setStatus] = useState<"idle" | "success" | "error">("idle");
   const [message, setMessage] = useState<InviteUiMessage | null>(null);
 
-  const hasToken = useMemo(() => token.trim().length > 0, [token]);
+  const hasToken = token.trim().length > 0;
 
   async function acceptInvite() {
     if (!hasToken) {
       setMessage(mapInviteError("INVALID_TOKEN"));
+      setStatus("error");
       return;
     }
 
     setIsSubmitting(true);
+    setStatus("idle");
     setMessage(null);
     emitInviteAcceptEvent("submit");
 
@@ -56,6 +60,7 @@ export default function InviteAcceptanceCard({ token }: InviteAcceptanceCardProp
       const result = await parseInviteActionResult(response);
       if (!result.ok) {
         setMessage(mapInviteError(result.code));
+        setStatus("error");
         emitInviteAcceptEvent(result.code === "RATE_LIMITED" ? "rate_limited" : "failure");
         return;
       }
@@ -65,9 +70,11 @@ export default function InviteAcceptanceCard({ token }: InviteAcceptanceCardProp
         message: "Доступ в организацию успешно предоставлен. Можно перейти к работе.",
         tone: "success",
       });
+      setStatus("success");
       emitInviteAcceptEvent("success");
     } catch {
       setMessage(mapInviteError());
+      setStatus("error");
       emitInviteAcceptEvent("failure");
     } finally {
       setIsSubmitting(false);
@@ -75,11 +82,37 @@ export default function InviteAcceptanceCard({ token }: InviteAcceptanceCardProp
   }
 
   return (
-    <div className="rounded-2xl bg-white/80 border border-white/50 shadow-glass-sm p-6 space-y-4">
-      <h1 className="text-2xl font-semibold text-text-main font-display">Принятие приглашения</h1>
-      <p className="text-sm text-text-secondary">
-        Войдите в аккаунт с тем же email, на который отправлено приглашение, затем подтвердите действие.
-      </p>
+    <div className="rounded-3xl border border-white/60 bg-white/80 p-6 shadow-glass-sm space-y-4 md:p-8">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary">
+            Приглашение в организацию
+          </p>
+          <h1 className="mt-3 text-2xl font-semibold text-text-main font-display">
+            Принятие приглашения
+          </h1>
+          <p className="mt-2 text-sm text-text-secondary">
+            Войдите в аккаунт с той же почтой, на которую отправлено приглашение, затем подтвердите
+            действие и сразу откройте организацию.
+          </p>
+          <p className="mt-2 text-xs text-text-secondary">
+            Аккаунт только с Telegram без почты не сможет принять приглашение.
+          </p>
+        </div>
+        <div className="rounded-2xl border border-white/60 bg-white/70 px-4 py-3 text-xs text-text-secondary">
+          <p className="font-semibold text-text-main">Что дальше</p>
+          <p className="mt-1">Права, лимиты и центры затрат уже будут видны после принятия.</p>
+        </div>
+      </div>
+
+      {!hasToken && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          <p className="font-semibold">Нужна ссылка из письма</p>
+          <p className="mt-1">
+            Откройте письмо-приглашение, войдите с той же почтой и вернитесь по ссылке с токеном.
+          </p>
+        </div>
+      )}
 
       {message && (
         <div className={`rounded-lg border px-3 py-2 text-sm ${bannerClass(message.tone)}`}>
@@ -88,14 +121,36 @@ export default function InviteAcceptanceCard({ token }: InviteAcceptanceCardProp
         </div>
       )}
 
+      <div className="grid gap-3 md:grid-cols-3">
+        {[
+          {
+            title: "1. Войти",
+            text: "Используйте тот же аккаунт, на который пришёл инвайт.",
+          },
+          {
+            title: "2. Принять",
+            text: "Подтвердите приглашение по токену из письма.",
+          },
+          {
+            title: "3. Перейти",
+            text: "Откройте организацию и продолжите работу в команде.",
+          },
+        ].map((item) => (
+          <div key={item.title} className="rounded-2xl border border-white/60 bg-white/70 px-4 py-4">
+            <p className="text-sm font-semibold text-text-main">{item.title}</p>
+            <p className="mt-2 text-xs leading-5 text-text-secondary">{item.text}</p>
+          </div>
+        ))}
+      </div>
+
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
           className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-hover disabled:opacity-60"
-          disabled={isSubmitting}
+          disabled={isSubmitting || !hasToken}
           onClick={() => void acceptInvite()}
         >
-          {isSubmitting ? "Проверяем..." : "Принять приглашение"}
+          {isSubmitting ? "Проверяем..." : status === "success" ? "Принято" : "Принять приглашение"}
         </button>
         <a
           href="/org"
@@ -103,7 +158,19 @@ export default function InviteAcceptanceCard({ token }: InviteAcceptanceCardProp
         >
           Перейти в организацию
         </a>
+        <Link
+          href="/login?mode=signin"
+          className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-white"
+        >
+          Войти заново
+        </Link>
       </div>
+
+      {status === "success" && (
+        <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+          Теперь можно открыть организацию или вернуться в чат.
+        </p>
+      )}
     </div>
   );
 }

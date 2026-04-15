@@ -13,18 +13,17 @@ import {
   type AiQuotaHold,
 } from "@/lib/billing";
 import { mapBillingError } from "@/lib/billing-errors";
-import { fetchWithTimeout, isFetchTimeoutError } from "@/lib/fetch-timeout";
 import {
   estimateChatPromptTokens,
   estimateUpperBoundCredits,
 } from "@/lib/quota-estimation";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { logEvent } from "@/lib/telemetry";
+import { getUserOpenRouterKey } from "@/lib/user-settings";
 import { buildPersonalizationSystemPrompt } from "@/lib/personalization";
 import { searchWeb } from "@/lib/search";
 import { checkModeration } from "@/lib/moderation";
 import { getOrgDlpPolicy, getOrgModelPolicy } from "@/lib/org-settings";
-import { filterFreeOpenRouterModelIds } from "@/lib/models";
 import {
   validateModelPolicy,
   filterFallbackModels,
@@ -40,20 +39,13 @@ import {
 } from "@/lib/cache";
 import { updateChatSummary } from "@/lib/summary";
 import { requestSchema } from "@/lib/chat-request-schema";
-import { getPlatformConfig } from "@/lib/platform-config";
-import { resolveOpenRouterApiKey } from "@/lib/provider-credentials";
-import { getOpenRouterRateLimitPayload } from "@/lib/openrouter-metrics";
-
-const OPENROUTER_CHAT_TIMEOUT_MS = 30_000;
+import { getSpendableCredits } from "@/lib/subscriptions";
 
 export async function POST(request: Request) {
-  const session = await auth();
+  const session = await auth(request);
 
   if (!session?.user?.id) {
-    return NextResponse.json(
-      { error: "Сессия истекла. Войдите снова.", code: "AUTH_UNAUTHORIZED" },
-      { status: 401 }
-    );
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const userId = session.user.id;
 
@@ -70,6 +62,10 @@ export async function POST(request: Request) {
     );
   }
 
+  const allowUserKey =
+    process.env.AUTH_BYPASS === "1" ||
+    process.env.ALLOW_USER_OPENROUTER_KEYS === "1";
+
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
     select: {
@@ -77,32 +73,34 @@ export async function POST(request: Request) {
       settings: true,
       costCenterId: true,
       orgId: true,
+      subscription: {
+        select: {
+          status: true,
+          currentPeriodEnd: true,
+          includedCredits: true,
+          includedCreditsUsed: true,
+        },
+      },
     },
   });
 
-  if (!user) {
-    return NextResponse.json({ error: "User not found" }, { status: 404 });
+  const spendableCredits = getSpendableCredits({
+    balance: user?.balance,
+    subscription: user?.subscription,
+  });
+
+  if (!user || spendableCredits.total <= 0) {
+    return NextResponse.json({ error: "Insufficient balance" }, { status: 402 });
   }
 
-  const [org, platformConfig, openRouterApiKey] = await Promise.all([
-    user.orgId
-      ? prisma.organization.findUnique({
-          where: { id: user.orgId },
-          select: { settings: true },
-        })
-      : null,
-    getPlatformConfig(),
-    resolveOpenRouterApiKey({ orgId: user.orgId }),
-  ]);
+  const org = user.orgId
+    ? await prisma.organization.findUnique({
+        where: { id: user.orgId },
+        select: { settings: true },
+      })
+    : null;
   const modelPolicy = getOrgModelPolicy(org?.settings ?? null);
   const dlpPolicy = getOrgDlpPolicy(org?.settings ?? null);
-  const globalDisabledModels = new Set(
-    platformConfig.disabledModelIds
-      .map((modelId) => modelId.trim().toLowerCase())
-      .filter((modelId) => modelId.length > 0)
-  );
-  const isGloballyDisabled = (modelId: string) =>
-    globalDisabledModels.has(modelId.trim().toLowerCase());
 
   const parsedBody = requestSchema.safeParse(await request.json());
   if (!parsedBody.success) {
@@ -192,71 +190,16 @@ export async function POST(request: Request) {
     );
   }
 
-  if (isGloballyDisabled(body.model)) {
-    return NextResponse.json(
-      { error: "Модель временно отключена администратором платформы." },
-      { status: 403 }
-    );
-  }
-
-  const rawAllowedFallbacks = filterFallbackModels(
+  const allowedFallbacks = filterFallbackModels(
     body.fallbackModels ?? [],
     modelPolicy
-  ).filter((modelId) => !isGloballyDisabled(modelId));
-  const hasPaidAccess = Number(user.balance ?? 0) > 0;
-  let allowedFallbacks = rawAllowedFallbacks;
-  let modelsToTry = [body.model, ...allowedFallbacks];
-  let reserveEstimateModelId = body.model;
-  let requiresPaidBilling = true;
-
-  if (!hasPaidAccess) {
-    const candidateModelIds = [body.model, ...rawAllowedFallbacks];
-    let freeModelIds: Set<string>;
-
-    try {
-      freeModelIds = new Set(
-        await filterFreeOpenRouterModelIds(candidateModelIds, openRouterApiKey ?? undefined)
-      );
-    } catch (error) {
-      await logEvent({
-        type: "AI_ERROR",
-        userId: session.user.id,
-        chatId: body.chatId,
-        modelId: body.model,
-        message:
-          error instanceof Error
-            ? `Free model lookup failed: ${error.message}`
-            : "Free model lookup failed",
-      });
-      return NextResponse.json(
-        { error: "OpenRouter models error" },
-        { status: 503 }
-      );
-    }
-
-    const requestedModelIsFree = freeModelIds.has(body.model);
-
-    if (!requestedModelIsFree) {
-      return NextResponse.json({ error: "Insufficient balance" }, { status: 402 });
-    }
-
-    allowedFallbacks = rawAllowedFallbacks.filter((modelId) => freeModelIds.has(modelId));
-    modelsToTry = [body.model, ...allowedFallbacks];
-    reserveEstimateModelId = body.model;
-    requiresPaidBilling = false;
-  }
+  );
 
   const personalization = buildPersonalizationSystemPrompt(
     user?.settings ?? null
   );
 
   const systemMessages: Array<{ role: "system"; content: string }> = [];
-  if (platformConfig.globalSystemPrompt?.trim()) {
-    systemMessages.push({
-      role: "system",
-      content: platformConfig.globalSystemPrompt.trim(),
-    });
-  }
   if (personalization) {
     systemMessages.push({ role: "system", content: personalization });
   }
@@ -359,67 +302,61 @@ export async function POST(request: Request) {
 
   const trimmedMessages = trimMessages(enrichedMessages, body.contextLength);
 
+  const userKey = allowUserKey
+    ? getUserOpenRouterKey(user?.settings ?? null)
+    : undefined;
+
   const idempotencyKey = crypto.randomUUID();
   let quotaHold: AiQuotaHold | null = null;
 
-  if (requiresPaidBilling) {
-    try {
-      const promptTokensEstimate = estimateChatPromptTokens(trimmedMessages);
-      const estimatedCredits = await estimateUpperBoundCredits({
-        modelId: reserveEstimateModelId,
-        promptTokensEstimate,
-        maxTokens: body.max_tokens,
-        apiKey: openRouterApiKey ?? undefined,
-      });
+  try {
+    const promptTokensEstimate = estimateChatPromptTokens(trimmedMessages);
+    const estimatedCredits = await estimateUpperBoundCredits({
+      modelId: body.model,
+      promptTokensEstimate,
+      maxTokens: body.max_tokens,
+      apiKey: userKey,
+    });
 
-      const reserveAmount = Math.max(1, estimatedCredits);
-      quotaHold = await reserveAiQuotaHold({
+    const reserveAmount = Math.max(1, estimatedCredits);
+    quotaHold = await reserveAiQuotaHold({
+      userId: session.user.id,
+      amount: reserveAmount,
+      idempotencyKey,
+      costCenterId,
+    });
+
+    if (!quotaHold) {
+      await preflightCredits({
         userId: session.user.id,
-        amount: reserveAmount,
-        idempotencyKey,
-        costCenterId,
+        minAmount: reserveAmount,
       });
-
-      if (!quotaHold) {
-        await preflightCredits({
-          userId: session.user.id,
-          minAmount: reserveAmount,
-        });
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "BILLING_ERROR";
-      const mapped = mapBillingError(message);
-      if (mapped) {
-        return NextResponse.json({ error: mapped.error }, { status: mapped.status });
-      }
-      return NextResponse.json({ error: "Billing error" }, { status: 500 });
     }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "BILLING_ERROR";
+    const mapped = mapBillingError(message);
+    if (mapped) {
+      return NextResponse.json({ error: mapped.error }, { status: mapped.status });
+    }
+    return NextResponse.json({ error: "Billing error" }, { status: 500 });
   }
 
+  await logEvent({
+    type: "AI_REQUEST",
+    userId: session.user.id,
+    chatId: body.chatId,
+    modelId: body.model,
+    payload: {
+      model: body.model,
+      stream: body.stream ?? true,
+      messageCount: trimmedMessages.length,
+    },
+  });
   const baseUrl = getOpenRouterBaseUrl();
   let requestHeaders: Record<string, string>;
 
-  if (!openRouterApiKey) {
-    await releaseAiQuotaHold({ hold: quotaHold });
-    await logEvent({
-      type: "AI_ERROR",
-      userId: session.user.id,
-      chatId: body.chatId,
-      modelId: body.model,
-      message: "OPENROUTER_API_KEY is not set",
-      payload: {
-        source: "web",
-        orgId: user.orgId ?? null,
-      },
-    });
-    return NextResponse.json(
-      { error: "OpenRouter API key is not configured" },
-      { status: 401 }
-    );
-  }
-
   try {
-    requestHeaders = getOpenRouterHeaders(openRouterApiKey);
+    requestHeaders = getOpenRouterHeaders(userKey);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Missing config";
     await releaseAiQuotaHold({ hold: quotaHold });
@@ -458,7 +395,7 @@ export async function POST(request: Request) {
           modelId: cached.modelId,
           promptTokens: cached.usage.prompt_tokens ?? 0,
           completionTokens: cached.usage.completion_tokens ?? 0,
-          apiKey: openRouterApiKey ?? undefined,
+          apiKey: userKey,
         });
       }
 
@@ -506,20 +443,7 @@ export async function POST(request: Request) {
     void updateChatSummary({
       chatId,
       userId: session.user.id,
-    });
-
-    await logEvent({
-      type: "AI_REQUEST",
-      userId: session.user.id,
-      chatId: body.chatId,
-      modelId: cached.modelId,
-      payload: {
-        source: "web",
-        model: cached.modelId,
-        stream: body.stream ?? true,
-        messageCount: trimmedMessages.length,
-        cacheHit: true,
-      },
+      apiKey: userKey,
     });
 
     if (!body.stream) {
@@ -551,14 +475,14 @@ export async function POST(request: Request) {
     });
   }
 
-  const providerRequestStartedAt = Date.now();
+  const modelsToTry = [body.model, ...allowedFallbacks];
   let response: Response | null = null;
   let usedModel = body.model;
 
   try {
     for (const modelId of modelsToTry) {
       usedModel = modelId;
-      response = await fetchWithTimeout(`${baseUrl}/chat/completions`, {
+      response = await fetch(`${baseUrl}/chat/completions`, {
         method: "POST",
         headers: requestHeaders,
         body: JSON.stringify({
@@ -569,8 +493,6 @@ export async function POST(request: Request) {
           stream: body.stream ?? true,
           stream_options: { include_usage: true },
         }),
-        timeoutMs: OPENROUTER_CHAT_TIMEOUT_MS,
-        timeoutLabel: "OpenRouter chat completion",
       });
 
       if (response.ok) {
@@ -586,66 +508,26 @@ export async function POST(request: Request) {
   } catch (error) {
     await releaseAiQuotaHold({ hold: quotaHold });
     const message = error instanceof Error ? error.message : "OpenRouter error";
-    const status = isFetchTimeoutError(error) ? 504 : 502;
-    const durationMs = Date.now() - providerRequestStartedAt;
-    await logEvent({
-      type: "AI_REQUEST",
-      userId: session.user.id,
-      chatId: body.chatId,
-      modelId: usedModel,
-      payload: {
-        source: "web",
-        model: usedModel,
-        stream: body.stream ?? true,
-        messageCount: trimmedMessages.length,
-        status,
-        durationMs,
-        error: true,
-      },
-    });
     await logEvent({
       type: "AI_ERROR",
       userId: session.user.id,
       chatId: body.chatId,
       modelId: usedModel,
       message,
-      payload: {
-        source: "web",
-        durationMs,
-      },
     });
-    return NextResponse.json(
-      { error: isFetchTimeoutError(error) ? "OpenRouter timeout" : "OpenRouter error" },
-      { status }
-    );
+    return NextResponse.json({ error: "OpenRouter error" }, { status: 502 });
   }
 
   if (!response || !response.ok) {
     await releaseAiQuotaHold({ hold: quotaHold });
     const text = response ? await response.text() : "No response";
     const status = response?.status ?? 502;
-    const durationMs = Date.now() - providerRequestStartedAt;
-    const rateLimitPayload = getOpenRouterRateLimitPayload(response?.headers);
     let message = "OpenRouter error";
     if (status === 401) {
-      message = "OpenRouter: ключ недействителен или отсутствует.";
+      message = userKey
+        ? "OpenRouter: неверный ключ. Проверьте ключ в настройках."
+        : "OpenRouter: ключ из .env.local недействителен или отсутствует.";
     }
-    await logEvent({
-      type: "AI_REQUEST",
-      userId: session.user.id,
-      chatId: body.chatId,
-      modelId: usedModel,
-      payload: {
-        source: "web",
-        model: usedModel,
-        stream: body.stream ?? true,
-        messageCount: trimmedMessages.length,
-        status,
-        durationMs,
-        error: true,
-        ...rateLimitPayload,
-      },
-    });
     await logEvent({
       type: "AI_ERROR",
       userId: session.user.id,
@@ -655,9 +537,6 @@ export async function POST(request: Request) {
         status,
         details: text.slice(0, 500),
         model: usedModel,
-        durationMs,
-        source: "web",
-        ...rateLimitPayload,
       },
     });
     return NextResponse.json(
@@ -670,14 +549,13 @@ export async function POST(request: Request) {
     let data = await response.json();
     let usage = data?.usage;
     let assistantContent = data?.choices?.[0]?.message?.content ?? "";
-    let telemetryHeaders: Headers | null = response.headers;
 
     if (!assistantContent.trim() && modelsToTry.length > 1) {
       const fallback = modelsToTry.find((modelId) => modelId !== usedModel);
       if (fallback) {
-        let fallbackResponse: Response | null = null;
-        try {
-          fallbackResponse = await fetchWithTimeout(`${baseUrl}/chat/completions`, {
+        const fallbackResponse = await fetch(
+          `${baseUrl}/chat/completions`,
+          {
             method: "POST",
             headers: requestHeaders,
             body: JSON.stringify({
@@ -687,19 +565,14 @@ export async function POST(request: Request) {
               max_tokens: body.max_tokens,
               stream: false,
             }),
-            timeoutMs: OPENROUTER_CHAT_TIMEOUT_MS,
-            timeoutLabel: "OpenRouter chat fallback",
-          });
-        } catch {
-          fallbackResponse = null;
-        }
+          }
+        );
 
-        if (fallbackResponse?.ok) {
+        if (fallbackResponse.ok) {
           usedModel = fallback;
           data = await fallbackResponse.json();
           usage = data?.usage;
           assistantContent = data?.choices?.[0]?.message?.content ?? "";
-          telemetryHeaders = fallbackResponse.headers;
         }
       }
     }
@@ -713,7 +586,7 @@ export async function POST(request: Request) {
           modelId: usedModel,
           promptTokens: usage.prompt_tokens ?? 0,
           completionTokens: usage.completion_tokens ?? 0,
-          apiKey: openRouterApiKey ?? undefined,
+          apiKey: userKey,
         });
 
         if (creditsResult.credits > 0) {
@@ -767,30 +640,13 @@ export async function POST(request: Request) {
         temperature: body.temperature,
         max_tokens: body.max_tokens,
       });
-      await setCachedResponse(finalCacheKey, {
+      setCachedResponse(finalCacheKey, {
         content: assistantContent,
         usage,
         modelId: usedModel,
         createdAt: Date.now(),
       });
     }
-
-    await logEvent({
-      type: "AI_REQUEST",
-      userId: session.user.id,
-      chatId: body.chatId,
-      modelId: usedModel,
-      payload: {
-        source: "web",
-        model: usedModel,
-        stream: false,
-        messageCount: trimmedMessages.length,
-        status: 200,
-        durationMs: Date.now() - providerRequestStartedAt,
-        totalTokens: tokenCount,
-        ...getOpenRouterRateLimitPayload(telemetryHeaders),
-      },
-    });
 
     return NextResponse.json(data);
   }
@@ -806,41 +662,10 @@ export async function POST(request: Request) {
   let assistantText = "";
   let usage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | null = null;
   let sentAny = false;
-  let streamTelemetryHeaders: Headers | null = response.headers;
   const reader = response.body?.getReader();
 
   if (!reader) {
     await releaseAiQuotaHold({ hold: quotaHold });
-    const durationMs = Date.now() - providerRequestStartedAt;
-    const rateLimitPayload = getOpenRouterRateLimitPayload(streamTelemetryHeaders);
-    await logEvent({
-      type: "AI_REQUEST",
-      userId,
-      chatId,
-      modelId: usedModel,
-      payload: {
-        source: "web",
-        model: usedModel,
-        stream: true,
-        messageCount: trimmedMessages.length,
-        status: 502,
-        durationMs,
-        error: true,
-        ...rateLimitPayload,
-      },
-    });
-    await logEvent({
-      type: "AI_ERROR",
-      userId,
-      chatId,
-      modelId: usedModel,
-      message: "OpenRouter response stream is missing",
-      payload: {
-        source: "web",
-        durationMs,
-        ...rateLimitPayload,
-      },
-    });
     return NextResponse.json({ error: "OpenRouter error" }, { status: 502 });
   }
 
@@ -854,7 +679,7 @@ export async function POST(request: Request) {
           modelId: usedModel,
           promptTokens: usage.prompt_tokens ?? 0,
           completionTokens: usage.completion_tokens ?? 0,
-          apiKey: openRouterApiKey ?? undefined,
+          apiKey: userKey,
         });
 
         if (creditsResult.credits > 0) {
@@ -901,6 +726,7 @@ export async function POST(request: Request) {
     void updateChatSummary({
       chatId,
       userId,
+      apiKey: userKey,
     });
 
     if (useCache && assistantText.trim()) {
@@ -911,30 +737,13 @@ export async function POST(request: Request) {
         temperature: body.temperature,
         max_tokens: body.max_tokens,
       });
-      await setCachedResponse(finalCacheKey, {
+      setCachedResponse(finalCacheKey, {
         content: assistantText,
         usage: usage ?? undefined,
         modelId: usedModel,
         createdAt: Date.now(),
       });
     }
-
-    await logEvent({
-      type: "AI_REQUEST",
-      userId,
-      chatId,
-      modelId: usedModel,
-      payload: {
-        source: "web",
-        model: usedModel,
-        stream: true,
-        messageCount: trimmedMessages.length,
-        status: 200,
-        durationMs: Date.now() - providerRequestStartedAt,
-        totalTokens: tokenCount,
-        ...getOpenRouterRateLimitPayload(streamTelemetryHeaders),
-      },
-    });
   }
 
   const stream = new ReadableStream<Uint8Array>({
@@ -979,9 +788,9 @@ export async function POST(request: Request) {
         if (!assistantText.trim() && !sentAny && modelsToTry.length > 1) {
           const fallback = modelsToTry.find((modelId) => modelId !== usedModel);
           if (fallback) {
-            let fallbackResponse: Response | null = null;
-            try {
-              fallbackResponse = await fetchWithTimeout(`${baseUrl}/chat/completions`, {
+            const fallbackResponse = await fetch(
+              `${baseUrl}/chat/completions`,
+              {
                 method: "POST",
                 headers: requestHeaders,
                 body: JSON.stringify({
@@ -991,14 +800,10 @@ export async function POST(request: Request) {
                   max_tokens: body.max_tokens,
                   stream: false,
                 }),
-                timeoutMs: OPENROUTER_CHAT_TIMEOUT_MS,
-                timeoutLabel: "OpenRouter chat stream fallback",
-              });
-            } catch {
-              fallbackResponse = null;
-            }
+              }
+            );
 
-            if (fallbackResponse?.ok) {
+            if (fallbackResponse.ok) {
               const fallbackData = await fallbackResponse.json();
               const fallbackText =
                 fallbackData?.choices?.[0]?.message?.content ?? "";
@@ -1007,7 +812,6 @@ export async function POST(request: Request) {
                 usedModel = fallback;
                 assistantText = fallbackText;
                 usage = fallbackUsage;
-                streamTelemetryHeaders = fallbackResponse.headers;
                 const payload = JSON.stringify({
                   choices: [{ delta: { content: fallbackText } }],
                 });

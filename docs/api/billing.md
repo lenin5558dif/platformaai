@@ -1,5 +1,50 @@
 # Billing API
 
+## Billing Summary
+
+`GET /api/billing/summary`
+
+Returns the current user billing snapshot for the active period.
+
+### Authorization
+
+- Session required
+
+### Response shape
+
+```json
+{
+  "balance": "30",
+  "topUpBalance": "30",
+  "includedCreditsRemaining": "75",
+  "dailySpent": "5",
+  "monthlySpent": "2",
+  "dailyLimit": "50",
+  "monthlyLimit": "100",
+  "subscription": {
+    "status": "ACTIVE",
+    "currentPeriodStart": "2026-04-01T00:00:00.000Z",
+    "currentPeriodEnd": "2026-05-01T00:00:00.000Z",
+    "includedCredits": "100.00",
+    "includedCreditsUsed": "25.00",
+    "cancelAtPeriodEnd": false,
+    "plan": {
+      "code": "creator",
+      "name": "Креатор",
+      "monthlyPriceUsd": "29.00",
+      "includedCreditsPerMonth": "100.00"
+    }
+  },
+  "org": null,
+  "transactions": []
+}
+```
+
+Current spending logic is hybrid:
+
+- credits included in the active subscription are spent first
+- top-up balance is spent after included credits are exhausted
+
 ## Refill Balance
 
 `POST /api/billing/refill`

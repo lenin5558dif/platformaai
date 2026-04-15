@@ -5,14 +5,19 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
+    "start": "node scripts/start-production.mjs",
     "lint": "eslint",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
+    "server:lint": "bash ./scripts/server-lint.sh",
+    "server:test": "bash ./scripts/server-test.sh",
+    "server:e2e": "bash ./scripts/server-e2e.sh",
+    "server:check": "bash ./scripts/server-check.sh",
     "bot:dev": "tsx src/bot/index.ts",
     "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev",
+    "prisma:migrate": "prisma migrate deploy",
+    "prisma:migrate:dev": "prisma migrate dev",
     "prisma:seed": "prisma db seed"
   },
   "dependencies": {
@@ -26,7 +31,7 @@
     "highlight.js": "^11.11.1",
     "lightningcss": "^1.30.2",
     "mammoth": "^1.8.0",
-    "next": "^15.5.9",
+    "next": "^15.5.15",
     "next-auth": "^5.0.0-beta.25",
     "papaparse": "^5.4.1",
     "pdf-parse": "^1.1.1",
@@ -48,7 +53,7 @@
     "@types/react-dom": "^19",
     "@vitest/coverage-v8": "^3.0.4",
     "eslint": "^9",
-    "eslint-config-next": "15.5.9",
+    "eslint-config-next": "15.5.15",
     "jsdom": "^26.0.0",
     "prisma": "^5.22.0",
     "tailwindcss": "^4",
@@ -57,7 +62,11 @@
     "vitest": "^3.0.4"
   },
   "overrides": {
-    "@auth/core": "0.41.1"
+    "@auth/core": "0.41.1",
+    "@xmldom/xmldom": "0.8.12",
+    "qs": "6.15.1",
+    "undici": "7.24.0",
+    "underscore": "1.13.8"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

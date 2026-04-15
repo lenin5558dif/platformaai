@@ -1,3 +1,5 @@
+import "@/lib/env";
+
 import { PrismaClient } from "@prisma/client";
 import { startAuditLogPurgeScheduler } from "@/lib/audit-log-purge-scheduler";
 

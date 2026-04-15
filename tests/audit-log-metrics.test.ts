@@ -97,4 +97,113 @@ describe("audit log metrics", () => {
     });
     expect(value).toBe(1);
   });
+
+  test("auditActionType maps all known action families", async () => {
+    const { auditActionType } = await import("@/lib/audit-metrics");
+
+    expect(auditActionType("USER_INVITED" as AuditAction)).toBe("CREATE");
+    expect(auditActionType("SCIM_TOKEN_CREATED" as AuditAction)).toBe("CREATE");
+    expect(auditActionType("ORG_UPDATED" as AuditAction)).toBe("UPDATE");
+    expect(auditActionType("COST_CENTER_ASSIGNED" as AuditAction)).toBe("UPDATE");
+    expect(auditActionType("COST_CENTER_DELETED" as AuditAction)).toBe("DELETE");
+    expect(auditActionType("USER_DISABLED" as AuditAction)).toBe("DELETE");
+    expect(auditActionType("TELEGRAM_LINKED" as AuditAction)).toBe("AUTH");
+    expect(auditActionType("ORG_INVITE_ACCEPT_RATE_LIMITED" as AuditAction)).toBe("AUTH");
+    expect(auditActionType("POLICY_BLOCKED" as AuditAction)).toBe("POLICY");
+    expect(auditActionType("BILLING_REFILL" as AuditAction)).toBe("BILLING");
+    expect(auditActionType("SOMETHING_NEW" as AuditAction)).toBe("OTHER");
+  });
+
+  test("audit metrics sanitize labels, honor whitelists, and handle purge counters", async () => {
+    process.env.AUDIT_LOG_METRICS_ACTION_TYPES = "CREATE,UPDATE";
+    const { recordAuditEntry, recordAuditError, recordPurgeMetrics, __metrics } = await import(
+      "@/lib/audit-metrics"
+    );
+
+    recordAuditEntry({
+      action: AuditAction.USER_INVITED,
+      targetType: "user",
+    });
+    recordAuditEntry({
+      action: AuditAction.TELEGRAM_LINKED,
+      targetType: "user",
+    });
+
+    expect(
+      metricsRegistry.getCounterValue(__metrics.entriesTotal as any, {
+        action_type: "CREATE",
+        entity_type: "USER",
+      })
+    ).toBe(1);
+
+    expect(
+      metricsRegistry.getCounterValue(__metrics.entriesTotal as any, {
+        action_type: "OTHER",
+        entity_type: "USER",
+      })
+    ).toBe(1);
+
+    recordAuditError("  bad-type  ");
+    recordAuditError("x".repeat(40));
+
+    expect(
+      metricsRegistry.getCounterValue(__metrics.auditErrorsTotal as any, {
+        error_type: "UNKNOWN",
+      })
+    ).toBe(2);
+
+    recordPurgeMetrics({
+      deleted: 0,
+      durationSeconds: 2,
+      errors: 1,
+    });
+
+    expect(metricsRegistry.getCounterValue(__metrics.purgeRecordsTotal as any, undefined)).toBe(0);
+    expect(metricsRegistry.getCounterValue(__metrics.purgeErrorsTotal as any, undefined)).toBe(1);
+    expect(metricsRegistry.getHistogramCount(__metrics.purgeDuration as any, undefined)).toBe(1);
+    expect(metricsRegistry.getGaugeValue(__metrics.purgeLastSuccessTs as any, undefined)).toBe(0);
+    expect(metricsRegistry.getGaugeValue(__metrics.oldestRetainedAge as any, undefined)).toBe(0);
+  });
+
+  test("audit metrics stay quiet when disabled", async () => {
+    process.env.AUDIT_LOG_METRICS_ENABLED = "0";
+    const { recordAuditEntry, recordAuditError, recordPurgeMetrics, __metrics } = await import(
+      "@/lib/audit-metrics"
+    );
+
+    recordAuditEntry({
+      action: AuditAction.USER_INVITED,
+      targetType: "USER",
+    });
+    recordAuditError("DB");
+    recordPurgeMetrics({
+      deleted: 5,
+      durationSeconds: 1,
+      errors: 2,
+      nowSeconds: 123,
+      oldestRetainedAgeSeconds: 456,
+    });
+
+    expect(metricsRegistry.getCounterValue(__metrics.entriesTotal as any, {
+      action_type: "CREATE",
+      entity_type: "USER",
+    })).toBe(0);
+    expect(metricsRegistry.getCounterValue(__metrics.auditErrorsTotal as any, {
+      error_type: "DB",
+    })).toBe(0);
+    expect(metricsRegistry.getCounterValue(__metrics.purgeRecordsTotal as any, undefined)).toBe(0);
+    expect(metricsRegistry.getCounterValue(__metrics.purgeErrorsTotal as any, undefined)).toBe(0);
+    expect(metricsRegistry.getHistogramCount(__metrics.purgeDuration as any, undefined)).toBe(0);
+  });
+
+  test("logAudit exits early when audit logging is disabled", async () => {
+    process.env.AUDIT_LOG_ENABLED = "0";
+
+    const { logAudit } = await import("@/lib/audit");
+    await logAudit({
+      action: AuditAction.USER_UPDATED,
+    });
+
+    expect(prisma.auditLog.create).not.toHaveBeenCalled();
+  });
 });
