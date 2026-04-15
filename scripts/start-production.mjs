@@ -4,7 +4,8 @@ import path from "node:path";
 
 const cwd = process.cwd();
 const standaloneServer = path.join(cwd, ".next", "standalone", "server.js");
-const command = existsSync(standaloneServer)
+const standaloneStaticDir = path.join(cwd, ".next", "standalone", ".next", "static");
+const command = existsSync(standaloneServer) && existsSync(standaloneStaticDir)
   ? { bin: "node", args: [standaloneServer] }
   : { bin: "npx", args: ["next", "start"] };
 
