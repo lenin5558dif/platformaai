@@ -23,7 +23,6 @@ import {
 import { findOwnedChat } from "@/lib/chat-ownership";
 import { resolveOrgCostCenterId } from "@/lib/cost-centers";
 import { HttpError } from "@/lib/http-error";
-import { getSpendableCredits } from "@/lib/subscriptions";
 
 const requestSchema = z.object({
   attachmentId: z.string().min(1),
@@ -86,13 +85,8 @@ export async function POST(request: Request) {
     },
   });
 
-  const spendableCredits = getSpendableCredits({
-    balance: user?.balance,
-    subscription: user?.subscription,
-  });
-
-  if (!user || spendableCredits.total <= 0) {
-    return NextResponse.json({ error: "Insufficient balance" }, { status: 402 });
+  if (!user) {
+    return NextResponse.json({ error: "User not found" }, { status: 404 });
   }
 
   let costCenterId: string | undefined = undefined;
@@ -192,19 +186,21 @@ export async function POST(request: Request) {
       apiKey: userKey,
     });
 
-    const reserveAmount = Math.max(1, estimatedCredits);
-    quotaHold = await reserveAiQuotaHold({
-      userId: session.user.id,
-      amount: reserveAmount,
-      idempotencyKey,
-      costCenterId,
-    });
-
-    if (!quotaHold) {
-      await preflightCredits({
+    if (estimatedCredits > 0) {
+      const reserveAmount = Math.max(1, estimatedCredits);
+      quotaHold = await reserveAiQuotaHold({
         userId: session.user.id,
-        minAmount: reserveAmount,
+        amount: reserveAmount,
+        idempotencyKey,
+        costCenterId,
       });
+
+      if (!quotaHold) {
+        await preflightCredits({
+          userId: session.user.id,
+          minAmount: reserveAmount,
+        });
+      }
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : "BILLING_ERROR";

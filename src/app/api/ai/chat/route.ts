@@ -39,7 +39,6 @@ import {
 } from "@/lib/cache";
 import { updateChatSummary } from "@/lib/summary";
 import { requestSchema } from "@/lib/chat-request-schema";
-import { getSpendableCredits } from "@/lib/subscriptions";
 
 export async function POST(request: Request) {
   const session = await auth(request);
@@ -84,13 +83,8 @@ export async function POST(request: Request) {
     },
   });
 
-  const spendableCredits = getSpendableCredits({
-    balance: user?.balance,
-    subscription: user?.subscription,
-  });
-
-  if (!user || spendableCredits.total <= 0) {
-    return NextResponse.json({ error: "Insufficient balance" }, { status: 402 });
+  if (!user) {
+    return NextResponse.json({ error: "User not found" }, { status: 404 });
   }
 
   const org = user.orgId
@@ -318,19 +312,21 @@ export async function POST(request: Request) {
       apiKey: userKey,
     });
 
-    const reserveAmount = Math.max(1, estimatedCredits);
-    quotaHold = await reserveAiQuotaHold({
-      userId: session.user.id,
-      amount: reserveAmount,
-      idempotencyKey,
-      costCenterId,
-    });
-
-    if (!quotaHold) {
-      await preflightCredits({
+    if (estimatedCredits > 0) {
+      const reserveAmount = Math.max(1, estimatedCredits);
+      quotaHold = await reserveAiQuotaHold({
         userId: session.user.id,
-        minAmount: reserveAmount,
+        amount: reserveAmount,
+        idempotencyKey,
+        costCenterId,
       });
+
+      if (!quotaHold) {
+        await preflightCredits({
+          userId: session.user.id,
+          minAmount: reserveAmount,
+        });
+      }
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : "BILLING_ERROR";

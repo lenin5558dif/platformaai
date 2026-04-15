@@ -349,14 +349,36 @@ describe("ai image route", () => {
     });
   });
 
-  test("returns 402 when the user has no balance", async () => {
+  test("allows image description without balance when the request is free", async () => {
     state.prisma.user.findUnique.mockResolvedValueOnce({
       balance: 0,
       settings: null,
       org: null,
       orgId: null,
       costCenterId: null,
+      subscription: null,
     });
+    state.estimateUpperBoundCredits.mockResolvedValueOnce(0);
+    state.calculateCreditsFromUsage.mockResolvedValueOnce({ credits: 0 });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            choices: [{ message: { content: "Описание" } }],
+            usage: {
+              prompt_tokens: 10,
+              completion_tokens: 5,
+              total_tokens: 15,
+            },
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }
+        )
+      )
+    );
 
     const response = await imageDescription(
       new Request("http://localhost/api/ai/image", {
@@ -365,8 +387,13 @@ describe("ai image route", () => {
       })
     );
 
-    assert.equal(response.status, 402);
-    assert.deepEqual(await jsonResponse(response), { error: "Insufficient balance" });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await jsonResponse(response), {
+      data: { description: "Описание" },
+    });
+    expect(state.preflightCredits).not.toHaveBeenCalled();
+    expect(state.reserveAiQuotaHold).not.toHaveBeenCalled();
+    expect(state.spendCredits).not.toHaveBeenCalled();
   });
 
   test("returns 401 when OpenRouter headers cannot be created", async () => {
