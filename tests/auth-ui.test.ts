@@ -79,11 +79,22 @@ describe("auth-ui helpers", () => {
     expect(capabilities.telegram).toBe(false);
   });
 
-  it("keeps telegram auth hidden until the explicit feature flag is enabled", () => {
+  it("keeps telegram auth enabled when config is valid and the flag is unset", () => {
     const capabilities = getAuthCapabilities({
       NEXT_PUBLIC_TELEGRAM_LOGIN_BOT_NAME: "platforma_bot",
       TELEGRAM_LOGIN_BOT_NAME: "platforma_bot",
       TELEGRAM_BOT_TOKEN: "telegram-token",
+    });
+
+    expect(capabilities.telegram).toBe(true);
+  });
+
+  it("allows explicitly hiding telegram auth with the public feature flag", () => {
+    const capabilities = getAuthCapabilities({
+      NEXT_PUBLIC_TELEGRAM_LOGIN_BOT_NAME: "platforma_bot",
+      TELEGRAM_LOGIN_BOT_NAME: "platforma_bot",
+      TELEGRAM_BOT_TOKEN: "telegram-token",
+      NEXT_PUBLIC_TELEGRAM_AUTH_ENABLED: "0",
     });
 
     expect(capabilities.telegram).toBe(false);

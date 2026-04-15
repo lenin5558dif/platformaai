@@ -93,7 +93,7 @@ After a user performs a **revoke-all sessions** action:
 
 ### Telegram Login Widget Requirements
 
-- `NEXT_PUBLIC_TELEGRAM_AUTH_ENABLED=1`
+- `NEXT_PUBLIC_TELEGRAM_AUTH_ENABLED=0` explicitly hides Telegram login in the UI. If the flag is omitted, Telegram login is allowed when the bot config is valid.
 - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_LOGIN_BOT_NAME`, and `NEXT_PUBLIC_TELEGRAM_LOGIN_BOT_NAME` must all be set and refer to the same bot.
 - The exact public HTTPS domain must be configured in BotFather for the Telegram Login Widget.
 - After changing Telegram env values, do a full rebuild and redeploy, not only a process restart.

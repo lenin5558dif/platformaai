@@ -8,7 +8,7 @@ export type TelegramAuthConfig = {
 export function getTelegramAuthConfig(
   env: Record<string, string | undefined> = process.env
 ): TelegramAuthConfig {
-  const enabledByFlag = env.NEXT_PUBLIC_TELEGRAM_AUTH_ENABLED === "1";
+  const enabledByFlag = env.NEXT_PUBLIC_TELEGRAM_AUTH_ENABLED !== "0";
   const publicBotName = hasRealConfiguredValue(env.NEXT_PUBLIC_TELEGRAM_LOGIN_BOT_NAME)
     ? env.NEXT_PUBLIC_TELEGRAM_LOGIN_BOT_NAME!.trim()
     : null;
