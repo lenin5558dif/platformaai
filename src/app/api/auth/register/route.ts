@@ -3,12 +3,14 @@ import { Prisma } from "@prisma/client";
 import { hash } from "bcryptjs";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
+import { issueEmailVerificationToken } from "@/lib/email-verification";
 import {
   checkRateLimit,
   getRateLimitHeaders,
   getRetryAfterHeader,
 } from "@/lib/rate-limit";
 import { getClientIp } from "@/lib/request-ip";
+import { sendEmailVerificationEmail } from "@/lib/unisender";
 
 const registerSchema = z
   .object({
@@ -164,11 +166,28 @@ export async function POST(request: Request) {
       },
     });
 
+    let verificationSent = false;
+    try {
+      const token = await issueEmailVerificationToken({
+        userId: user.id,
+        email,
+      });
+
+      await sendEmailVerificationEmail({
+        email,
+        verificationUrl: token.verificationUrl,
+      });
+      verificationSent = true;
+    } catch {
+      verificationSent = false;
+    }
+
     return NextResponse.json(
       {
         data: {
           id: user.id,
           email: user.email,
+          verificationSent,
         },
       },
       { status: 201 }

@@ -81,6 +81,28 @@ function mapRegisterError(message?: string): AuthFeedback {
   };
 }
 
+function mapRegisterSuccess(params: {
+  email: string;
+  verificationSent?: boolean;
+}): AuthFeedback {
+  if (params.verificationSent) {
+    return {
+      state: "success",
+      title: "Аккаунт создан",
+      message: `Мы отправили письмо на ${params.email}. Подтвердите email, затем войдите в аккаунт.`,
+      action: null,
+    };
+  }
+
+  return {
+    state: "success",
+    title: "Аккаунт создан",
+    message:
+      "Аккаунт создан, но письмо подтверждения пока не отправилось. Попробуйте войти и запросить письмо повторно в настройках.",
+    action: null,
+  };
+}
+
 export default function LoginForm({
   initialMode,
   initialError,
@@ -232,8 +254,23 @@ export default function LoginForm({
           return;
         }
 
+        const payload = (await response.json().catch(() => ({}))) as {
+          data?: {
+            email?: string;
+            verificationSent?: boolean;
+          };
+        };
+
+        const successFeedback = mapRegisterSuccess({
+          email: payload?.data?.email ?? normalizedEmail,
+          verificationSent: payload?.data?.verificationSent,
+        });
+        setMode("signin");
+        setConfirmPassword("");
+        setPassword("");
+        setStatus(successFeedback.state);
+        setFeedback(successFeedback);
         emitAuthEvent("success", "register");
-        await signInWithPassword(normalizedEmail, password);
       } catch {
         const nextFeedback = mapRegisterError();
         setStatus(nextFeedback.state);

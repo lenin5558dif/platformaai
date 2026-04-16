@@ -30,9 +30,25 @@ const prisma = {
   },
 } as any;
 
+const issueEmailVerificationToken = vi.hoisted(() =>
+  vi.fn(async ({ email }: { email: string }) => ({
+    token: "verify_token",
+    expires: new Date("2026-04-17T00:00:00.000Z"),
+    verificationUrl: `https://app.example.com/api/auth/email/verify?email=${email}`,
+  }))
+);
+
+const sendEmailVerificationEmail = vi.hoisted(() => vi.fn(async () => undefined));
+
 vi.mock("@/lib/db", () => ({ prisma }));
 vi.mock("bcryptjs", () => ({
   hash: vi.fn(async (value: string) => `hashed:${value}`),
+}));
+vi.mock("@/lib/email-verification", () => ({
+  issueEmailVerificationToken,
+}));
+vi.mock("@/lib/unisender", () => ({
+  sendEmailVerificationEmail,
 }));
 
 describe("auth register route", () => {
@@ -162,6 +178,50 @@ describe("auth register route", () => {
         userId: "user_1",
         channel: "WEB",
         externalId: "user_1",
+      },
+    });
+    expect(issueEmailVerificationToken).toHaveBeenCalledWith({
+      userId: "user_1",
+      email: "name@example.com",
+    });
+    expect(sendEmailVerificationEmail).toHaveBeenCalledWith({
+      email: "name@example.com",
+      verificationUrl: "https://app.example.com/api/auth/email/verify?email=name@example.com",
+    });
+    expect(await res.json()).toMatchObject({
+      data: {
+        id: "user_1",
+        email: "name@example.com",
+        verificationSent: true,
+      },
+    });
+  });
+
+  test("creates user even if verification email delivery fails", async () => {
+    sendEmailVerificationEmail.mockRejectedValueOnce(new Error("smtp down"));
+
+    const { POST } = await import("../src/app/api/auth/register/route");
+    const res = await POST(
+      new Request("http://localhost/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nickname: "nickname",
+          email: "Name@Example.com",
+          password: "password1",
+          confirmPassword: "password1",
+        }),
+      })
+    );
+
+    expect(res.status).toBe(201);
+    expect(prisma.user.create).toHaveBeenCalledTimes(1);
+    expect(issueEmailVerificationToken).toHaveBeenCalledTimes(1);
+    expect(sendEmailVerificationEmail).toHaveBeenCalledTimes(1);
+    expect(await res.json()).toMatchObject({
+      data: {
+        email: "name@example.com",
+        verificationSent: false,
       },
     });
   });
