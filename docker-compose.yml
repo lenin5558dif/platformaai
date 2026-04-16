@@ -16,7 +16,7 @@ services:
       NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
       AUTH_SECRET: ${AUTH_SECRET:?Set AUTH_SECRET in .env}
       ADMIN_SECRETS_ENCRYPTION_KEY: ${ADMIN_SECRETS_ENCRYPTION_KEY:-}
-      DATABASE_URL: postgresql://${POSTGRES_USER:-platformaai}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-platformaai}?schema=public
+      DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-platformaai}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-platformaai}?schema=public}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       OPENROUTER_BASE_URL: ${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
       OPENROUTER_SITE_URL: ${OPENROUTER_SITE_URL:-http://localhost:3000}
@@ -56,13 +56,12 @@ services:
       dockerfile: Dockerfile
     container_name: platformaai-bot
     restart: unless-stopped
-    profiles: ["bot"]
     depends_on:
       postgres:
         condition: service_healthy
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://${POSTGRES_USER:-platformaai}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-platformaai}?schema=public
+      DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-platformaai}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-platformaai}?schema=public}
       AUTH_SECRET: ${AUTH_SECRET:?Set AUTH_SECRET in .env}
       ADMIN_SECRETS_ENCRYPTION_KEY: ${ADMIN_SECRETS_ENCRYPTION_KEY:-}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}

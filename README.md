@@ -139,14 +139,15 @@ docker compose up -d --build
 What starts by default:
 - `app` — Next.js production server on port `3000`
 - `postgres` — PostgreSQL 16 with persistent volume
+- `bot` — Telegram bot connected to the same database and env
 
 Optional services:
-- `docker compose --profile bot up -d --build` — starts Telegram bot too
 - `docker compose --profile tools up -d` — starts pgAdmin
 
 Notes:
 - the app container runs `prisma migrate deploy` automatically before `next start`
 - inside Docker, `DATABASE_URL` is pointed to the `postgres` service automatically
+- if `DATABASE_URL` is already set in `.env`, `app` and `bot` will reuse that external database instead
 - for public deployment set `NEXT_PUBLIC_APP_URL` and `NEXTAUTH_URL` to your real domain
 
 Required environment variables:
