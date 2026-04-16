@@ -6,6 +6,7 @@ import { getOrgModelPolicy } from "@/lib/org-settings";
 import { filterModels } from "@/lib/model-policy";
 import { getPlatformConfig } from "@/lib/platform-config";
 import { resolveOpenRouterApiKey } from "@/lib/provider-credentials";
+import { getBillingTier, isFreeBillingTier } from "@/lib/billing-tiers";
 
 export async function GET() {
   const session = await auth();
@@ -23,9 +24,11 @@ export async function GET() {
       id: true,
       balance: true,
       orgId: true,
+      settings: true,
       org: { select: { settings: true } },
     },
   });
+  const billingTier = getBillingTier(user?.settings ?? null, user?.balance);
 
   try {
     const [platformConfig, openRouterApiKey] = await Promise.all([
@@ -49,10 +52,9 @@ export async function GET() {
     const filtered = filterModels(data, modelPolicy).filter(
       (model) => !disabledModels.has(model.id.trim().toLowerCase())
     );
-    const hasPaidAccess = Number(user?.balance ?? 0) > 0;
-    const visibleModels = hasPaidAccess
-      ? filtered
-      : filterFreeOpenRouterModels(filtered);
+    const visibleModels = isFreeBillingTier(billingTier)
+      ? filterFreeOpenRouterModels(filtered)
+      : filtered;
 
     return NextResponse.json({ data: { data: visibleModels } });
   } catch (error) {

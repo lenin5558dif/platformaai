@@ -13,6 +13,7 @@ import { ensureOrgSystemRolesAndPermissions } from "@/lib/org-rbac";
 import { compare } from "bcryptjs";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { getClientIp } from "@/lib/request-ip";
+import { getBillingTierLabel } from "@/lib/billing-tiers";
 
 const telegramSchema = z.object({
   id: z.number(),
@@ -183,6 +184,11 @@ const nextAuth = NextAuth({
           create: {
             telegramId,
             role: "USER",
+            settings: {
+              onboarded: true,
+              billingTier: "free",
+              planName: getBillingTierLabel("free"),
+            },
           },
         });
 

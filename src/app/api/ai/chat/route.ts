@@ -43,6 +43,11 @@ import { requestSchema } from "@/lib/chat-request-schema";
 import { getPlatformConfig } from "@/lib/platform-config";
 import { resolveOpenRouterApiKey } from "@/lib/provider-credentials";
 import { getOpenRouterRateLimitPayload } from "@/lib/openrouter-metrics";
+import {
+  getBillingTier,
+  getBillingTierLabel,
+  isFreeBillingTier,
+} from "@/lib/billing-tiers";
 
 const OPENROUTER_CHAT_TIMEOUT_MS = 30_000;
 
@@ -84,6 +89,8 @@ export async function POST(request: Request) {
   if (!user) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }
+  const billingTier = getBillingTier(user.settings, user.balance);
+  const billingTierLabel = getBillingTierLabel(billingTier);
 
   const [org, platformConfig, openRouterApiKey] = await Promise.all([
     user.orgId
@@ -204,13 +211,13 @@ export async function POST(request: Request) {
     body.fallbackModels ?? [],
     modelPolicy
   ).filter((modelId) => !isGloballyDisabled(modelId));
-  const hasPaidAccess = Number(user.balance ?? 0) > 0;
+  const isFreeTier = isFreeBillingTier(billingTier);
   let allowedFallbacks = rawAllowedFallbacks;
   let modelsToTry = [body.model, ...allowedFallbacks];
   let reserveEstimateModelId = body.model;
   let requiresPaidBilling = true;
 
-  if (!hasPaidAccess) {
+  if (isFreeTier) {
     const candidateModelIds = [body.model, ...rawAllowedFallbacks];
     let freeModelIds: Set<string>;
 
@@ -238,7 +245,10 @@ export async function POST(request: Request) {
     const requestedModelIsFree = freeModelIds.has(body.model);
 
     if (!requestedModelIsFree) {
-      return NextResponse.json({ error: "Insufficient balance" }, { status: 402 });
+      return NextResponse.json(
+        { error: `Модель недоступна на тарифе ${billingTierLabel}.` },
+        { status: 402 }
+      );
     }
 
     allowedFallbacks = rawAllowedFallbacks.filter((modelId) => freeModelIds.has(modelId));
@@ -373,19 +383,21 @@ export async function POST(request: Request) {
         apiKey: openRouterApiKey ?? undefined,
       });
 
-      const reserveAmount = Math.max(1, estimatedCredits);
-      quotaHold = await reserveAiQuotaHold({
-        userId: session.user.id,
-        amount: reserveAmount,
-        idempotencyKey,
-        costCenterId,
-      });
-
-      if (!quotaHold) {
-        await preflightCredits({
+      const reserveAmount = Math.max(0, Math.ceil(estimatedCredits));
+      if (reserveAmount > 0) {
+        quotaHold = await reserveAiQuotaHold({
           userId: session.user.id,
-          minAmount: reserveAmount,
+          amount: reserveAmount,
+          idempotencyKey,
+          costCenterId,
         });
+
+        if (!quotaHold) {
+          await preflightCredits({
+            userId: session.user.id,
+            minAmount: reserveAmount,
+          });
+        }
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "BILLING_ERROR";

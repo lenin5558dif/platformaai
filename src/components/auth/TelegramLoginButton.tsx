@@ -23,8 +23,6 @@ type PollResponse =
 
 function getErrorMessage(code?: string) {
   switch (code) {
-    case "ACCOUNT_NOT_LINKED":
-      return "Этот Telegram пока не привязан к аккаунту. Сначала войдите по email и привяжите его в профиле или настройках.";
     case "ACCOUNT_INACTIVE":
       return "Этот аккаунт отключен. Обратитесь к администратору.";
     case "TOKEN_EXPIRED":
@@ -53,6 +51,23 @@ function TelegramIcon() {
   );
 }
 
+function buildPopupFeatures() {
+  const width = 520;
+  const height = 760;
+  const left = Math.max(0, Math.round((window.screen.width - width) / 2));
+  const top = Math.max(0, Math.round((window.screen.height - height) / 2));
+
+  return [
+    `width=${width}`,
+    `height=${height}`,
+    `left=${left}`,
+    `top=${top}`,
+    "popup=yes",
+    "resizable=yes",
+    "scrollbars=yes",
+  ].join(",");
+}
+
 export default function TelegramLoginButton({
   onStarted,
   onError,
@@ -60,14 +75,8 @@ export default function TelegramLoginButton({
   const [status, setStatus] = useState<LoginStatus>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [pollToken, setPollToken] = useState<string | null>(null);
-  const startedRef = useRef(onStarted);
-  const errorRef = useRef(onError);
+  const popupRef = useRef<Window | null>(null);
   const signInTriggeredRef = useRef(false);
-
-  useEffect(() => {
-    startedRef.current = onStarted;
-    errorRef.current = onError;
-  }, [onError, onStarted]);
 
   useEffect(() => {
     if (!pollToken) {
@@ -91,6 +100,12 @@ export default function TelegramLoginButton({
         const payload = (await response.json()) as PollResponse;
         if (payload.state === "pending") {
           setStatus("waiting");
+
+          if (popupRef.current?.closed) {
+            timer = window.setTimeout(poll, 1500);
+            return;
+          }
+
           timer = window.setTimeout(poll, 2000);
           return;
         }
@@ -99,6 +114,7 @@ export default function TelegramLoginButton({
           setStatus("error");
           setPollToken(null);
           setErrorMessage(getErrorMessage(payload.code));
+          popupRef.current?.close();
           return;
         }
 
@@ -118,9 +134,11 @@ export default function TelegramLoginButton({
           setStatus("error");
           setPollToken(null);
           setErrorMessage(getErrorMessage(result.error));
+          popupRef.current?.close();
           return;
         }
 
+        popupRef.current?.close();
         window.location.assign(result?.url ?? "/");
       } catch {
         if (controller.signal.aborted) {
@@ -143,18 +161,31 @@ export default function TelegramLoginButton({
     };
   }, [pollToken]);
 
-  function openInNewTab(url: string) {
-    const nextWindow = window.open(url, "_blank", "noopener,noreferrer");
-    if (nextWindow) {
-      nextWindow.opener = null;
-      return true;
-    }
-    return false;
-  }
-
   async function handleClick() {
     setStatus("starting");
     setErrorMessage(null);
+
+    const popup = window.open(
+      "",
+      "platformaai-telegram-login",
+      buildPopupFeatures()
+    );
+
+    if (!popup) {
+      onError?.();
+      setStatus("error");
+      setErrorMessage(
+        "Браузер заблокировал дополнительное окно. Разрешите pop-up для этого сайта и попробуйте снова."
+      );
+      return;
+    }
+
+    popupRef.current = popup;
+    popup.document.write(
+      "<!doctype html><title>Telegram Login</title><body style='font-family:system-ui;padding:24px'>Открываем Telegram…</body>"
+    );
+    popup.document.close();
+    popup.focus();
 
     try {
       const response = await fetch("/api/auth/telegram/login-token", {
@@ -166,26 +197,23 @@ export default function TelegramLoginButton({
         | { code?: string };
 
       if (!response.ok || !("token" in payload)) {
+        popup.close();
         setStatus("error");
         setErrorMessage(getErrorMessage("code" in payload ? payload.code : undefined));
-        errorRef.current?.();
+        onError?.();
         return;
       }
 
-      startedRef.current?.();
+      onStarted?.();
       setPollToken(payload.token);
       setStatus("waiting");
 
-      const openedApp = openInNewTab(payload.appDeepLink);
-      window.setTimeout(() => {
-        if (document.visibilityState === "visible" || !openedApp) {
-          openInNewTab(payload.deepLink);
-        }
-      }, 900);
+      popup.location.replace(payload.deepLink);
     } catch {
+      popup.close();
       setStatus("error");
       setErrorMessage(getErrorMessage());
-      errorRef.current?.();
+      onError?.();
     }
   }
 
@@ -193,10 +221,10 @@ export default function TelegramLoginButton({
     status === "starting"
       ? "Открываем Telegram..."
       : status === "waiting"
-        ? "Подтвердите вход в Telegram"
+        ? "Ожидаем подтверждение в Telegram"
         : status === "signing-in"
           ? "Завершаем вход..."
-          : "Открыть Telegram для входа";
+          : "Войти или зарегистрироваться через Telegram";
 
   return (
     <div className="space-y-3">
@@ -211,7 +239,7 @@ export default function TelegramLoginButton({
       </button>
 
       <p className="text-center text-xs text-text-secondary">
-        Кнопка откроет Telegram app и вернет вас сюда после подтверждения.
+        Откроется отдельное окно со страницей входа Telegram. Текущая страница сервиса останется открытой.
       </p>
 
       {errorMessage ? (

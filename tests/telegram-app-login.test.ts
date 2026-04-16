@@ -14,6 +14,7 @@ const state = vi.hoisted(() => ({
     expires: new Date("2026-04-15T12:10:00.000Z"),
   },
   userByTelegramId: null as null | { id: string; isActive: boolean },
+  createdUser: null as null | { id: string; isActive: boolean },
   userById: null as null | any,
 }));
 
@@ -33,6 +34,7 @@ const prisma = {
       }
       return null;
     }),
+    create: vi.fn(async () => state.createdUser),
   },
 } as any;
 
@@ -43,6 +45,7 @@ describe("telegram app login helpers", () => {
       expires: new Date("2026-04-15T12:10:00.000Z"),
     };
     state.userByTelegramId = null;
+    state.createdUser = null;
     state.userById = null;
     vi.clearAllMocks();
   });
@@ -91,20 +94,37 @@ describe("telegram app login helpers", () => {
     });
   });
 
-  test("stores not-linked error for unknown Telegram accounts", async () => {
+  test("creates a new user for unknown Telegram accounts", async () => {
+    state.createdUser = { id: "user_new", isActive: true };
+
     const result = await completeTelegramLogin({
       prisma,
       token: "token_1",
       telegramId: "999",
+      telegramUsername: "new_user",
+      firstName: "Nico",
       now: new Date("2026-04-15T12:00:00.000Z"),
     });
 
-    expect(result.ok).toBe(false);
-    expect(result.code).toBe("ACCOUNT_NOT_LINKED");
+    expect(result.ok).toBe(true);
+    expect(result.code).toBe("CONFIRMED");
+    expect(prisma.user.create).toHaveBeenCalledWith({
+      data: {
+        telegramId: "999",
+        role: "USER",
+        settings: {
+          onboarded: true,
+          billingTier: "free",
+          planName: "Free",
+          profileFirstName: "Nico",
+        },
+      },
+      select: { id: true, isActive: true },
+    });
     expect(prisma.verificationToken.update).toHaveBeenCalledWith({
       where: { token: "token_1" },
       data: {
-        identifier: "telegram-login:error:ACCOUNT_NOT_LINKED",
+        identifier: "telegram-login:confirmed:user_new",
       },
     });
   });

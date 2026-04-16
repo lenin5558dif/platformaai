@@ -2,6 +2,13 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { applyLimitResets } from "@/lib/limits";
+import {
+  DEFAULT_BILLING_MARKUP,
+  formatCredits,
+  formatCreditsLabel,
+  formatSignedCredits,
+  formatTransactionDirection,
+} from "@/lib/billing-display";
 
 export const dynamic = "force-dynamic";
 
@@ -70,18 +77,28 @@ export async function GET() {
   const serializedTransactions = transactions.map((transaction) => ({
     ...transaction,
     amount: transaction.amount.toString(),
+    amountLabel: formatSignedCredits(
+      transaction.amount.toString(),
+      transaction.type === "REFILL" ? "+" : "-"
+    ),
+    direction: formatTransactionDirection(transaction.type),
   }));
 
   return NextResponse.json({
+    markup: DEFAULT_BILLING_MARKUP,
     balance: user?.balance?.toString() ?? "0",
+    balanceLabel: formatCreditsLabel(user?.balance?.toString() ?? "0"),
     dailySpent: effectiveDailySpent.toString(),
+    dailySpentLabel: formatCreditsLabel(effectiveDailySpent.toString()),
     monthlySpent: effectiveMonthlySpent.toString(),
+    monthlySpentLabel: formatCreditsLabel(effectiveMonthlySpent.toString()),
     dailyLimit: user?.dailyLimit?.toString() ?? null,
     monthlyLimit: user?.monthlyLimit?.toString() ?? null,
     org: user?.org
       ? {
           budget: user.org.budget.toString(),
           spent: user.org.spent.toString(),
+          spentLabel: formatCreditsLabel(user.org.spent.toString()),
         }
       : null,
     transactions: serializedTransactions,

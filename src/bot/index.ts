@@ -765,6 +765,9 @@ bot.start(async (ctx) => {
         prisma,
         token: loginToken,
         telegramId,
+        telegramUsername: ctx.from?.username ?? null,
+        firstName: ctx.from?.first_name ?? null,
+        lastName: ctx.from?.last_name ?? null,
       });
       await ctx.reply(res.message);
       return;

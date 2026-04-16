@@ -1,3 +1,8 @@
+import {
+  DEFAULT_BILLING_MARKUP,
+  formatModelPricing,
+} from "@/lib/billing-display";
+
 export type ModelPricing = {
   prompt?: string;
   completion?: string;
@@ -58,19 +63,7 @@ export function getChatGroups<T extends ChatListItem>(chats: T[]): ChatGroup<T>[
 }
 
 export function formatPricing(pricing?: ModelPricing) {
-  if (!pricing?.prompt && !pricing?.completion) return "—";
-  const formatPerMillion = (value?: string) => {
-    if (!value) return "—";
-    const perToken = Number(value);
-    if (!Number.isFinite(perToken)) return "—";
-    const perMillion = perToken * 1_000_000;
-    const decimals = perMillion < 1 ? 4 : perMillion < 10 ? 3 : 2;
-    return `$${perMillion.toFixed(decimals)}/1M`;
-  };
-
-  return `Prompt ${formatPerMillion(pricing.prompt)} · Completion ${formatPerMillion(
-    pricing.completion
-  )}`;
+  return formatModelPricing(pricing, DEFAULT_BILLING_MARKUP);
 }
 
 export function estimateTokens(text: string) {
@@ -92,8 +85,9 @@ export function estimateUsdCost(params: {
     return 0;
   }
   return (
-    params.promptTokens * promptPrice +
-    params.completionTokens * completionPrice
+    (params.promptTokens * promptPrice +
+      params.completionTokens * completionPrice) *
+    DEFAULT_BILLING_MARKUP
   );
 }
 
@@ -106,7 +100,7 @@ export function getModelCostPerMillion(model: ModelInfo) {
   const hasCompletion = Number.isFinite(completion);
   if (!hasPrompt && !hasCompletion) return Number.POSITIVE_INFINITY;
   const total = (hasPrompt ? prompt : 0) + (hasCompletion ? completion : 0);
-  return total * 1_000_000;
+  return total * 1_000_000 * DEFAULT_BILLING_MARKUP;
 }
 
 export function getModelSpeedLabel(modelId: string) {

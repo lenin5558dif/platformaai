@@ -1,4 +1,5 @@
 import { getModelPricing } from "@/lib/models";
+import { DEFAULT_BILLING_MARKUP } from "@/lib/billing-display";
 
 import { DEFAULT_MAX_TOKENS } from "@/lib/quota-manager";
 
@@ -45,7 +46,10 @@ export async function estimateUpperBoundCredits(params: {
   const totalTokens = params.promptTokensEstimate + maxTokens;
   const usdPerToken = Math.max(promptUsdPerToken, completionUsdPerToken);
 
-  const openRouterMarkup = envNumber("OPENROUTER_MARKUP", 1);
+  const openRouterMarkup = envNumber(
+    "OPENROUTER_MARKUP",
+    DEFAULT_BILLING_MARKUP
+  );
   const usdPerCredit = envNumber("USD_PER_CREDIT", 0.01);
 
   const worstCaseUsd = totalTokens * usdPerToken * openRouterMarkup;

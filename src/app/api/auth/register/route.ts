@@ -135,6 +135,8 @@ export async function POST(request: Request) {
       emailVerifiedByProvider: null,
       settings: {
         profileFirstName: nickname,
+        billingTier: "free",
+        planName: "Free",
         onboarded: false,
       },
     } as unknown as Prisma.UserCreateInput;

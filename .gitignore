@@ -12,6 +12,7 @@
 
 # testing
 /coverage
+/test-results
 
 # next.js
 /.next/
@@ -28,6 +29,7 @@
 screen.png
 code.html
 front/
+server.md
 
 # internal docs (not for public)
 Plan Platforma AI.md
@@ -58,3 +60,9 @@ AGENTS.md
 .github/prompts/
 
 codebase/
+
+# local automation and debugging artifacts
+/.playwright-mcp/
+/.server/
+/artifacts/
+/ui-audit-*.png

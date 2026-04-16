@@ -126,6 +126,29 @@ npm run prisma:migrate:deploy
 
 Use `prisma:seed` only for local/dev bootstrap flows.
 
+### Docker Deployment
+
+Server deployment is packaged with Docker:
+
+```bash
+cp .env.example .env
+# fill AUTH_SECRET, POSTGRES_PASSWORD, OPENROUTER_API_KEY and other required secrets
+docker compose up -d --build
+```
+
+What starts by default:
+- `app` — Next.js production server on port `3000`
+- `postgres` — PostgreSQL 16 with persistent volume
+
+Optional services:
+- `docker compose --profile bot up -d --build` — starts Telegram bot too
+- `docker compose --profile tools up -d` — starts pgAdmin
+
+Notes:
+- the app container runs `prisma migrate deploy` automatically before `next start`
+- inside Docker, `DATABASE_URL` is pointed to the `postgres` service automatically
+- for public deployment set `NEXT_PUBLIC_APP_URL` and `NEXTAUTH_URL` to your real domain
+
 Required environment variables:
 - `DATABASE_URL` — PostgreSQL connection string
 - `AUTH_SECRET` — NextAuth secret

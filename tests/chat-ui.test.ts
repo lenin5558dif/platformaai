@@ -21,7 +21,26 @@ test("estimateUsdCost computes price with prompt and completion", () => {
     completionTokens: 500,
     pricing: { prompt: "0.000001", completion: "0.000002" },
   });
-  assert.equal(cost, 0.000001 * 1000 + 0.000002 * 500);
+  assert.equal(cost, (0.000001 * 1000 + 0.000002 * 500) * 2);
+});
+
+test("estimateUsdCost falls back to zero for missing or invalid pricing", () => {
+  assert.equal(
+    estimateUsdCost({
+      promptTokens: 100,
+      completionTokens: 100,
+      pricing: { prompt: "oops", completion: "0.000001" },
+    }),
+    0,
+  );
+  assert.equal(
+    estimateUsdCost({
+      promptTokens: 100,
+      completionTokens: 100,
+      pricing: {},
+    }),
+    0,
+  );
 });
 
 test("formatPricing handles empty and valid pricing", () => {
@@ -29,7 +48,7 @@ test("formatPricing handles empty and valid pricing", () => {
   assert.equal(formatPricing({}), "—");
   assert.match(
     formatPricing({ prompt: "0.000001", completion: "0.000002" }),
-    /Prompt/,
+    /Prompt .*→.*Completion/,
   );
 });
 
@@ -37,7 +56,14 @@ test("getModelCostPerMillion handles missing pricing", () => {
   assert.equal(getModelCostPerMillion({ id: "test" }), Number.POSITIVE_INFINITY);
   assert.equal(
     getModelCostPerMillion({ id: "test", pricing: { prompt: "0.000001" } }),
-    1,
+    2,
+  );
+  assert.equal(
+    getModelCostPerMillion({
+      id: "test",
+      pricing: { prompt: "0.000001", completion: "0.000002" },
+    }),
+    6,
   );
 });
 
@@ -54,11 +80,13 @@ test("getChatGroups places pinned chats first and groups by date", () => {
   );
   const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
   const older = new Date(today.getTime() - 10 * 24 * 60 * 60 * 1000);
+  const previousWeek = new Date(today.getTime() - 3 * 24 * 60 * 60 * 1000);
 
   const chats = [
     { id: "pinned", pinned: true, updatedAt: older.toISOString() },
     { id: "today", updatedAt: today.toISOString() },
     { id: "yesterday", updatedAt: yesterday.toISOString() },
+    { id: "week", updatedAt: previousWeek.toISOString() },
     { id: "older", updatedAt: older.toISOString() },
   ];
 
@@ -68,5 +96,6 @@ test("getChatGroups places pinned chats first and groups by date", () => {
   assert.ok(groupMap.get("Pinned")?.some((chat) => chat.id === "pinned"));
   assert.ok(groupMap.get("Today")?.some((chat) => chat.id === "today"));
   assert.ok(groupMap.get("Yesterday")?.some((chat) => chat.id === "yesterday"));
+  assert.ok(groupMap.get("Previous 7 Days")?.some((chat) => chat.id === "week"));
   assert.ok(groupMap.get("Older")?.some((chat) => chat.id === "older"));
 });

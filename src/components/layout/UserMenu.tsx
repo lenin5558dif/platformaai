@@ -51,7 +51,7 @@ export default function UserMenu({
   }, [isOpen]);
 
   const name = displayName?.trim() || email?.trim() || "Пользователь";
-  const plan = planName?.trim() || "Тариф Pro";
+  const plan = planName?.trim() || "Free";
   const initial = resolveInitial(email ?? displayName);
   const navItems = getNavItems(role);
 
@@ -81,7 +81,7 @@ export default function UserMenu({
           className="absolute bottom-full left-0 mb-2 w-64 rounded-xl border border-white/60 bg-white/95 p-2 shadow-glass-lg backdrop-blur-md"
         >
           <div className="px-2 pb-2 text-xs text-text-secondary">
-            Разделы платформы
+            Навигация
           </div>
           {navItems.map((item) => {
             const active = pathname

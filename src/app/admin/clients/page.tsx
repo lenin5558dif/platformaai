@@ -1,12 +1,20 @@
 import { revalidatePath } from "next/cache";
+import type { Prisma } from "@prisma/client";
 import { logAudit } from "@/lib/audit";
+import { formatCreditsLabel } from "@/lib/billing-display";
+import {
+  getBillingTier,
+  getBillingTierLabel,
+  getBillingTierOptions,
+  type BillingTier,
+} from "@/lib/billing-tiers";
 import { requireAdminActor } from "@/lib/admin-auth";
 import { issueAdminPasswordResetToken } from "@/lib/admin-password-reset";
 import { prisma } from "@/lib/db";
 import { HttpError } from "@/lib/http-error";
 import { revokeAllSessionsForUser } from "@/lib/session-revoke";
 import { sendPasswordResetEmail } from "@/lib/unisender";
-import { getSettingsObject, mergeSettings } from "@/lib/user-settings";
+import { mergeSettings } from "@/lib/user-settings";
 
 export const dynamic = "force-dynamic";
 
@@ -16,11 +24,6 @@ type ActivityRow = {
   tokens7d: number;
   lastActivityAt: Date | null;
 };
-
-function formatNumber(value: number | null | undefined) {
-  if (!value || Number.isNaN(value)) return "0";
-  return new Intl.NumberFormat("ru-RU").format(value);
-}
 
 function formatDate(value: Date | null | undefined) {
   if (!value) return "—";
@@ -78,8 +81,10 @@ async function setUserLimits(userId: string, formData: FormData) {
 async function setUserPlan(userId: string, formData: FormData) {
   "use server";
   const admin = await requireAdminActor();
-  const planName = String(formData.get("planName") ?? "").trim();
-  if (!planName) return;
+  const billingTierValue = String(formData.get("billingTier") ?? "").trim();
+  const billingTier = getBillingTierOptions().find((item) => item.id === billingTierValue)
+    ?.id as BillingTier | undefined;
+  if (!billingTier) return;
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -90,7 +95,10 @@ async function setUserPlan(userId: string, formData: FormData) {
   await prisma.user.update({
     where: { id: user.id },
     data: {
-      settings: mergeSettings(user.settings ?? {}, { planName }),
+      settings: mergeSettings(user.settings ?? {}, {
+        billingTier,
+        planName: getBillingTierLabel(billingTier),
+      }),
     },
     select: { id: true },
   });
@@ -103,7 +111,7 @@ async function setUserPlan(userId: string, formData: FormData) {
     targetId: user.id,
     metadata: {
       adminSection: "clients",
-      planName,
+      billingTier,
       planForced: true,
     },
   });
@@ -211,8 +219,6 @@ export default async function AdminClientsPage({
 }) {
   await requireAdminActor();
 
-  const params = searchParams ? await searchParams : undefined;
-  const selectedUserId = (params?.userId ?? "").trim();
   const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
   const [users, orgs, activityRows] = await Promise.all([
@@ -252,23 +258,14 @@ export default async function AdminClientsPage({
     activityRows.map((row) => [row.userId, row])
   );
 
-  const selectedHistory = selectedUserId
-    ? await prisma.eventLog.findMany({
-        where: { userId: selectedUserId },
-        orderBy: { createdAt: "desc" },
-        take: 30,
-      })
-    : [];
-
   return (
     <div className="space-y-6">
       <div className="rounded-2xl bg-white/80 border border-white/50 shadow-glass-sm p-6">
         <h1 className="text-2xl font-semibold text-text-main font-display">
-          Управление клиентами
+          Клиенты
         </h1>
         <p className="mt-2 text-sm text-text-secondary">
-          Профили пользователей, статус подписки, история активности и админские
-          действия по лимитам, тарифам, блокировке и сбросу пароля.
+          Пользователи, их статус, тариф и базовые admin-операции.
         </p>
       </div>
 
@@ -284,18 +281,16 @@ export default async function AdminClientsPage({
           </thead>
           <tbody className="text-text-main">
             {users.map((user) => {
-              const settings = getSettingsObject(user.settings ?? {});
-              const planName =
-                typeof settings.planName === "string" && settings.planName.trim()
-                  ? settings.planName
-                  : "Тариф Pro";
+              const settingsValue = user.settings as Prisma.JsonValue;
+              const billingTier = getBillingTier(settingsValue, user.balance);
+              const planName = getBillingTierLabel(billingTier);
               const activity = activityByUserId.get(user.id);
               return (
                 <tr key={user.id} className="border-t border-white/40 align-top">
                   <td className="py-3 pr-3">
                     <p className="font-medium break-all">{user.email ?? user.id}</p>
                     <p className="text-xs text-text-secondary mt-1">
-                      Role: {user.role} • Org: {user.orgId ? orgById.get(user.orgId) ?? user.orgId : "—"}
+                      Роль: {user.role} • Орг: {user.orgId ? orgById.get(user.orgId) ?? user.orgId : "—"}
                     </p>
                     <p className="text-xs text-text-secondary mt-1">
                       Статус:{" "}
@@ -304,24 +299,18 @@ export default async function AdminClientsPage({
                       </span>
                     </p>
                     <p className="text-xs text-text-secondary mt-1">
-                      Баланс: {user.balance.toString()}
+                      Баланс: {formatCreditsLabel(user.balance.toString())}
                     </p>
                   </td>
                   <td className="py-3 pr-3 text-xs">
                     <p>{formatDate(user.createdAt)}</p>
                   </td>
                   <td className="py-3 pr-3 text-xs">
-                    <p>Запросов 7д: {formatNumber(activity?.requests7d ?? 0)}</p>
-                    <p className="mt-1">Токенов 7д: {formatNumber(activity?.tokens7d ?? 0)}</p>
+                    <p>Запросов 7д: {activity?.requests7d ?? 0}</p>
+                    <p className="mt-1">Токенов 7д: {activity?.tokens7d ?? 0}</p>
                     <p className="mt-1">
                       Последняя активность: {formatDate(activity?.lastActivityAt ?? null)}
                     </p>
-                    <a
-                      href={`/admin/clients?userId=${encodeURIComponent(user.id)}`}
-                      className="mt-2 inline-flex text-primary hover:text-primary-hover"
-                    >
-                      История активности
-                    </a>
                   </td>
                   <td className="py-3">
                     <details className="rounded-lg border border-gray-200 bg-white/70">
@@ -329,7 +318,10 @@ export default async function AdminClientsPage({
                         <div className="min-w-0">
                           <p className="text-sm font-medium truncate">{planName}</p>
                           <p className="text-[11px] text-text-secondary truncate">
-                            Лимиты: D {user.dailyLimit?.toString() ?? "—"} / M {user.monthlyLimit?.toString() ?? "—"}
+                            Тариф: {billingTier}
+                          </p>
+                          <p className="text-[11px] text-text-secondary truncate">
+                            Лимиты: D {user.dailyLimit?.toString() ?? "—"} / M {user.monthlyLimit?.toString() ?? "—"} кредитов
                           </p>
                         </div>
                         <span className="material-symbols-outlined text-[18px] text-text-secondary">
@@ -338,11 +330,17 @@ export default async function AdminClientsPage({
                       </summary>
                       <div className="border-t border-gray-200 p-3 space-y-3">
                         <form action={setUserPlan.bind(null, user.id)} className="flex gap-2">
-                          <input
-                            name="planName"
-                            defaultValue={planName}
+                          <select
+                            name="billingTier"
+                            defaultValue={billingTier}
                             className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white/70 px-2 py-1 text-xs"
-                          />
+                          >
+                            {getBillingTierOptions().map((option) => (
+                              <option key={option.id} value={option.id}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
                           <button className="rounded-lg border border-gray-200 px-2 py-1 text-xs font-semibold hover:bg-white">
                             Тариф
                           </button>
@@ -402,34 +400,6 @@ export default async function AdminClientsPage({
           </tbody>
         </table>
       </div>
-
-      {selectedUserId && (
-        <div className="rounded-2xl bg-white/80 border border-white/50 shadow-glass-sm p-6">
-          <h2 className="text-lg font-semibold text-text-main font-display">
-            История активности пользователя
-          </h2>
-          <p className="mt-1 text-xs text-text-secondary">User ID: {selectedUserId}</p>
-          <div className="mt-4 space-y-2">
-            {selectedHistory.length === 0 ? (
-              <p className="text-sm text-text-secondary">Событий не найдено.</p>
-            ) : (
-              selectedHistory.map((event) => (
-                <div
-                  key={event.id}
-                  className="rounded-lg border border-gray-200 bg-white/70 p-3"
-                >
-                  <p className="text-xs text-text-secondary">
-                    {formatDate(event.createdAt)} • {event.type}
-                  </p>
-                  {event.message && (
-                    <p className="text-sm text-text-main mt-1">{event.message}</p>
-                  )}
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

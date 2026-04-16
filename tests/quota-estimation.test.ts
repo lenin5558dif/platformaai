@@ -7,7 +7,11 @@ vi.mock("@/lib/models", () => ({
   getModelPricing: vi.fn(),
 }));
 
-import { estimateUpperBoundCredits } from "../src/lib/quota-estimation";
+import {
+  estimateChatPromptTokens,
+  estimateTokensFromText,
+  estimateUpperBoundCredits,
+} from "../src/lib/quota-estimation";
 import { getModelPricing } from "@/lib/models";
 import { DEFAULT_MAX_TOKENS } from "@/lib/quota-manager";
 
@@ -221,4 +225,84 @@ test("estimateUpperBoundCredits passes apiKey to getModelPricing", async () => {
   assert.equal(mockedGetModelPricing.mock.calls.length, 1);
   assert.equal(mockedGetModelPricing.mock.calls[0][0], "test-model");
   assert.equal(mockedGetModelPricing.mock.calls[0][1], apiKey);
+});
+
+test("estimateUpperBoundCredits uses x2 markup by default", async () => {
+  const originalMarkup = process.env.OPENROUTER_MARKUP;
+  const originalUsdPerCredit = process.env.USD_PER_CREDIT;
+  delete process.env.OPENROUTER_MARKUP;
+  process.env.USD_PER_CREDIT = "0.01";
+
+  mockedGetModelPricing.mockResolvedValue({
+    prompt: "0.000001",
+    completion: "0.000001",
+  });
+
+  const result = await estimateUpperBoundCredits({
+    modelId: "test-model",
+    promptTokensEstimate: 1000,
+    maxTokens: 1000,
+  });
+
+  const expectedWorstCaseUsd = 2000 * 0.000001 * 2;
+  const expectedCredits = expectedWorstCaseUsd / 0.01;
+
+  assert.equal(result, expectedCredits);
+
+  if (originalMarkup === undefined) {
+    delete process.env.OPENROUTER_MARKUP;
+  } else {
+    process.env.OPENROUTER_MARKUP = originalMarkup;
+  }
+  if (originalUsdPerCredit === undefined) {
+    delete process.env.USD_PER_CREDIT;
+  } else {
+    process.env.USD_PER_CREDIT = originalUsdPerCredit;
+  }
+});
+
+test("estimateTokensFromText and estimateChatPromptTokens handle non-string content safely", () => {
+  assert.equal(estimateTokensFromText("12345678"), 2);
+
+  const circular: { self?: unknown } = {};
+  circular.self = circular;
+
+  const result = estimateChatPromptTokens([
+    { content: "hello" },
+    { content: { nested: true } },
+    { content: circular },
+  ]);
+
+  assert.equal(result, 6);
+});
+
+test("estimateUpperBoundCredits falls back on invalid env values and zero usdPerCredit", async () => {
+  const originalMarkup = process.env.OPENROUTER_MARKUP;
+  const originalUsdPerCredit = process.env.USD_PER_CREDIT;
+  process.env.OPENROUTER_MARKUP = "not-a-number";
+  process.env.USD_PER_CREDIT = "0";
+
+  mockedGetModelPricing.mockResolvedValue({
+    prompt: "0.000002",
+    completion: "0.000001",
+  });
+
+  const result = await estimateUpperBoundCredits({
+    modelId: "test-model",
+    promptTokensEstimate: 1000,
+    maxTokens: 1000,
+  });
+
+  assert.equal(result, 0.008);
+
+  if (originalMarkup === undefined) {
+    delete process.env.OPENROUTER_MARKUP;
+  } else {
+    process.env.OPENROUTER_MARKUP = originalMarkup;
+  }
+  if (originalUsdPerCredit === undefined) {
+    delete process.env.USD_PER_CREDIT;
+  } else {
+    process.env.USD_PER_CREDIT = originalUsdPerCredit;
+  }
 });

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { formatCredits } from "@/lib/billing-display";
 
 export const dynamic = "force-dynamic";
 
@@ -21,20 +22,13 @@ function formatNumber(value: number | null | undefined) {
   return new Intl.NumberFormat("ru-RU").format(value);
 }
 
-function formatCredits(value: string | number | null | undefined) {
-  if (value === null || value === undefined) return "0";
-  const num = typeof value === "string" ? Number(value) : value;
-  if (!Number.isFinite(num)) return "0";
-  return num.toFixed(2);
-}
-
 export default async function AdminDashboardPage() {
   const now = Date.now();
   const dayAgo = new Date(now - 24 * 60 * 60 * 1000);
   const weekAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
   const twoWeeksAgo = new Date(now - 14 * 24 * 60 * 60 * 1000);
 
-  const [usersTotal, usersActive, tokensTotal, last24h, last7d] = await Promise.all([
+  const [usersTotal, usersActive, tokensTotal, last24h, last7d, refillsTotal] = await Promise.all([
     prisma.user.count(),
     prisma.user.count({ where: { isActive: true } }),
     prisma.message.aggregate({
@@ -50,6 +44,11 @@ export default async function AdminDashboardPage() {
     prisma.message.aggregate({
       where: { role: "ASSISTANT", createdAt: { gte: weekAgo } },
       _sum: { tokenCount: true, cost: true },
+      _count: { _all: true },
+    }),
+    prisma.transaction.aggregate({
+      where: { type: "REFILL" },
+      _sum: { amount: true },
       _count: { _all: true },
     }),
   ]);
@@ -86,16 +85,33 @@ export default async function AdminDashboardPage() {
   return (
     <div className="space-y-6">
       <div className="rounded-2xl bg-white/80 border border-white/50 shadow-glass-sm p-6">
-        <h1 className="text-2xl font-semibold text-text-main font-display">
-          Главный экран админ-панели
-        </h1>
-        <p className="mt-2 text-sm text-text-secondary">
-          Сводка по активности пользователей, фактическому токен-потреблению и
-          использованию моделей.
-        </p>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold text-text-main font-display">
+              Сводка
+            </h1>
+            <p className="mt-2 text-sm text-text-secondary">
+              Операционная сводка по пользователям, активности и выручке.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <a
+              href="/admin/clients"
+              className="rounded-full border border-gray-200 bg-white/70 px-3 py-2 text-sm font-medium text-text-main hover:bg-white"
+            >
+              Клиенты
+            </a>
+            <a
+              href="/admin/billing"
+              className="rounded-full border border-gray-200 bg-white/70 px-3 py-2 text-sm font-medium text-text-main hover:bg-white"
+            >
+              Биллинг
+            </a>
+          </div>
+        </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <div className="rounded-2xl bg-white/80 border border-white/50 shadow-glass-sm p-5">
           <p className="text-xs text-text-secondary">Пользователи</p>
           <p className="text-2xl font-semibold text-text-main">
@@ -130,6 +146,15 @@ export default async function AdminDashboardPage() {
           </p>
           <p className="mt-1 text-xs text-text-secondary">
             Кредиты: {formatCredits(last7d._sum?.cost?.toString())}
+          </p>
+        </div>
+        <div className="rounded-2xl bg-white/80 border border-white/50 shadow-glass-sm p-5">
+          <p className="text-xs text-text-secondary">Выручка</p>
+          <p className="text-2xl font-semibold text-text-main">
+            {formatCredits(refillsTotal._sum?.amount?.toString())}
+          </p>
+          <p className="mt-1 text-xs text-text-secondary">
+            Пополнений: {formatNumber(refillsTotal._count?._all ?? 0)}
           </p>
         </div>
       </div>
@@ -175,7 +200,7 @@ export default async function AdminDashboardPage() {
 
         <div className="rounded-2xl bg-white/80 border border-white/50 shadow-glass-sm p-6">
           <h2 className="text-lg font-semibold text-text-main font-display">
-            Топ-моделей по использованию
+            Топ-модели по использованию
           </h2>
           {topModels.length === 0 ? (
             <p className="mt-4 text-sm text-text-secondary">Данных пока нет.</p>

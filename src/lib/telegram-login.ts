@@ -104,6 +104,9 @@ export async function completeTelegramLogin(args: {
   prisma: VerificationTokenClient;
   token: string;
   telegramId: string;
+  telegramUsername?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
   now?: Date;
 }) {
   const now = args.now ?? new Date();
@@ -132,25 +135,31 @@ export async function completeTelegramLogin(args: {
     };
   }
 
-  const user = await args.prisma.user.findUnique({
+  let user = await args.prisma.user.findUnique({
     where: { telegramId: args.telegramId },
     select: { id: true, isActive: true },
   });
 
   if (!user) {
-    await args.prisma.verificationToken.update({
-      where: { token: args.token },
-      data: {
-        identifier: `${TELEGRAM_LOGIN_ERROR_PREFIX}ACCOUNT_NOT_LINKED`,
-      },
-    });
+    const profileName = [args.firstName?.trim(), args.lastName?.trim()]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
 
-    return {
-      ok: false as const,
-      code: "ACCOUNT_NOT_LINKED",
-      message:
-        "Этот Telegram еще не привязан к аккаунту PlatformaAI. Сначала войдите по email и привяжите Telegram в профиле или настройках.",
-    };
+    user = await args.prisma.user.create({
+      data: {
+        telegramId: args.telegramId,
+        role: "USER",
+        settings: {
+          onboarded: true,
+          billingTier: "free",
+          planName: "Free",
+          profileFirstName:
+            profileName || args.telegramUsername?.trim() || "Telegram User",
+        },
+      },
+      select: { id: true, isActive: true },
+    });
   }
 
   if (user.isActive === false) {
@@ -179,7 +188,7 @@ export async function completeTelegramLogin(args: {
     ok: true as const,
     code: "CONFIRMED",
     userId: user.id,
-    message: "Вход подтвержден. Вернитесь в браузер PlatformaAI.",
+    message: "Вход подтвержден. Аккаунт готов, возвращайтесь в браузер PlatformaAI.",
   };
 }
 

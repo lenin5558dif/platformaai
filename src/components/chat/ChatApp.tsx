@@ -123,6 +123,7 @@ export default function ChatApp() {
     planName?: string | null;
     displayName?: string | null;
     image?: string | null;
+    emailVerifiedByProvider?: boolean | null;
   } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
@@ -251,13 +252,10 @@ export default function ChatApp() {
       lower.includes("api key") ||
       lower.includes("неверный ключ")
     ) {
-      if (currentUser?.role === "ADMIN") {
-        return { href: "/admin/api-routing", label: "Открыть API-маршрутизацию" };
-      }
       return null;
     }
     if (lower.includes("balance")) {
-      return { href: "/settings", label: "Открыть настройки" };
+      return { href: "/settings", label: "Проверить баланс" };
     }
     return null;
   }, [error, currentUser?.role]);
@@ -563,7 +561,11 @@ export default function ChatApp() {
             : "";
         const displayName = [firstName, lastName].filter(Boolean).join(" ");
         const planName =
-          typeof settings?.planName === "string" ? settings.planName : "Тариф Pro";
+          typeof data?.data?.billingTierLabel === "string"
+            ? data.data.billingTierLabel
+            : typeof settings?.planName === "string"
+              ? settings.planName
+              : "Free";
         setShowOnboarding(!onboarded);
         setCurrentUser({
           email: data?.data?.email ?? null,
@@ -571,6 +573,11 @@ export default function ChatApp() {
           planName,
           displayName: displayName || "Пользователь",
           image: data?.data?.image ?? null,
+          emailVerifiedByProvider:
+            typeof data?.data?.emailVerifiedByProvider === "boolean" ||
+            data?.data?.emailVerifiedByProvider === null
+              ? data.data.emailVerifiedByProvider
+              : null,
         });
       } catch {
         // ignore
@@ -578,6 +585,12 @@ export default function ChatApp() {
     }
     void loadProfile();
   }, []);
+
+  const needsEmailVerification = useMemo(() => {
+    if (!currentUser) return false;
+    if (!currentUser.email) return true;
+    return currentUser.emailVerifiedByProvider !== true;
+  }, [currentUser]);
 
   useEffect(() => {
     const promptParam = searchParams.get("prompt");
@@ -1213,7 +1226,7 @@ export default function ChatApp() {
                   {currentUser?.displayName || "Пользователь"}
                 </p>
                 <p className="truncate text-xs text-text-secondary">
-                  {currentUser?.planName || "Тариф Pro"}
+                  {currentUser?.planName || "Free"}
                 </p>
               </div>
               <Link
@@ -1236,21 +1249,39 @@ export default function ChatApp() {
       >
         {/* Floating Header */}
         <header className="absolute top-0 left-0 right-0 z-30 px-6 py-4 pointer-events-none">
-          <div className="glass-panel rounded-xl px-4 py-3 flex items-center justify-between shadow-lg pointer-events-auto">
-            <div className="flex items-center gap-4">
-              <button
-                className="md:hidden text-text-secondary hover:text-text-primary"
-                onClick={() => setIsSidebarOpen(true)}
-              >
-                <span className="material-symbols-outlined">menu</span>
-              </button>
-              <h2 className="text-text-primary text-base md:text-lg font-bold leading-tight">
-                {activeChat ? activeChat.title : "Новый чат"}
-              </h2>
-            </div>
+          <div className="space-y-3 pointer-events-auto">
+            {needsEmailVerification && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-lg">
+                <div className="flex items-center justify-between gap-4">
+                  <p>
+                    {!currentUser?.email
+                      ? "Добавьте email в настройках, чтобы можно было купить тариф."
+                      : "Подтвердите email в настройках, чтобы можно было купить тариф."}
+                  </p>
+                  <Link
+                    href="/settings"
+                    className="shrink-0 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100"
+                  >
+                    Открыть настройки
+                  </Link>
+                </div>
+              </div>
+            )}
+            <div className="glass-panel rounded-xl px-4 py-3 flex items-center justify-between shadow-lg">
+              <div className="flex items-center gap-4">
+                <button
+                  className="md:hidden text-text-secondary hover:text-text-primary"
+                  onClick={() => setIsSidebarOpen(true)}
+                >
+                  <span className="material-symbols-outlined">menu</span>
+                </button>
+                <h2 className="text-text-primary text-base md:text-lg font-bold leading-tight">
+                  {activeChat ? activeChat.title : "Новый чат"}
+                </h2>
+              </div>
 
-            <div className="flex items-center gap-2">
-              <div className="relative" ref={modelMenuRef}>
+              <div className="flex items-center gap-2">
+                <div className="relative" ref={modelMenuRef}>
                 {apiKeyState === "ok" ? (
                   <div
                     className="hidden md:flex h-8 items-center justify-center gap-x-2 rounded-lg bg-primary/10 border border-primary/20 pl-2 pr-3 cursor-pointer hover:bg-primary/20 transition-colors"
@@ -1324,6 +1355,7 @@ export default function ChatApp() {
                 )}
               </div>
 
+              </div>
             </div>
           </div>
         </header>
@@ -1371,9 +1403,9 @@ export default function ChatApp() {
               <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-text-primary">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="font-semibold">Завершите первичную настройку</p>
+                    <p className="font-semibold">Завершите настройку профиля</p>
                     <p className="text-xs text-text-secondary">
-                      Добавьте данные профиля и лимиты, чтобы настроить рабочее пространство.
+                      Заполните профиль в настройках, чтобы продолжить работу.
                     </p>
                   </div>
                   <button

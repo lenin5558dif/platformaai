@@ -140,6 +140,8 @@ describe("auth register route", () => {
         emailVerifiedByProvider: null,
         settings: {
           profileFirstName: "nickname",
+          billingTier: "free",
+          planName: "Free",
           onboarded: false,
         },
       },

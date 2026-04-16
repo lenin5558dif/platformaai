@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getStripe } from "@/lib/stripe";
 import { prisma } from "@/lib/db";
 import { recordStripeWebhookEvent } from "@/lib/stripe-webhook";
+import { mergeSettings } from "@/lib/user-settings";
 
 function parseCompletedCheckoutMetadata(session: {
   id?: string;
@@ -10,6 +11,8 @@ function parseCompletedCheckoutMetadata(session: {
   const userId = session.metadata?.userId?.trim();
   const creditsRaw = session.metadata?.credits?.trim();
   const credits = Number(creditsRaw ?? Number.NaN);
+  const billingTier = session.metadata?.billingTier?.trim() ?? null;
+  const billingTierLabel = session.metadata?.billingTierLabel?.trim() ?? null;
 
   if (!userId || !Number.isFinite(credits) || credits <= 0) {
     throw new Error("Invalid checkout.session.completed metadata");
@@ -18,6 +21,8 @@ function parseCompletedCheckoutMetadata(session: {
   return {
     userId,
     credits,
+    billingTier,
+    billingTierLabel,
     sessionId: session.id ?? null,
   };
 }
@@ -82,7 +87,7 @@ export async function POST(request: Request) {
 
       const user = await tx.user.findUnique({
         where: { id: checkout.userId },
-        select: { costCenterId: true },
+        select: { costCenterId: true, settings: true },
       });
 
       if (!user) {
@@ -91,7 +96,16 @@ export async function POST(request: Request) {
 
       await tx.user.update({
         where: { id: checkout.userId },
-        data: { balance: { increment: checkout.credits } },
+        data: {
+          balance: { increment: checkout.credits },
+          settings:
+            checkout.billingTier && checkout.billingTierLabel
+              ? mergeSettings(user.settings, {
+                  billingTier: checkout.billingTier,
+                  planName: checkout.billingTierLabel,
+                })
+              : undefined,
+        },
       });
 
       await tx.transaction.create({
@@ -100,7 +114,9 @@ export async function POST(request: Request) {
           costCenterId: user.costCenterId ?? undefined,
           amount: checkout.credits,
           type: "REFILL",
-          description: "Stripe пополнение",
+          description: checkout.billingTierLabel
+            ? `Stripe пополнение • ${checkout.billingTierLabel}`
+            : "Stripe пополнение",
           externalId: event.id,
         },
       });
