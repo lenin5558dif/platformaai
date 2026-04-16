@@ -7,9 +7,8 @@ import { auth, signOut as authSignOut } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { FeedbackCategory } from "@prisma/client";
 import { getBillingTier, getBillingTierLabel } from "@/lib/billing-tiers";
-import { issueEmailVerificationToken } from "@/lib/email-verification";
+import { deliverEmailVerification } from "@/lib/email-verification-delivery";
 import { createUserFeedback, feedbackFormSchema } from "@/lib/feedback";
-import { sendEmailVerificationEmail } from "@/lib/unisender";
 import {
   getMissingOnboardingFields,
   getOnboardingSummaryText,
@@ -171,21 +170,22 @@ async function updateContactSettings(formData: FormData) {
   revalidatePath("/settings");
 
   if (normalizedEmail && emailChanged) {
+    let verificationSent = false;
     try {
-      const token = await issueEmailVerificationToken({
+      await deliverEmailVerification({
         userId: user.id,
         email: normalizedEmail,
       });
-
-      await sendEmailVerificationEmail({
-        email: normalizedEmail,
-        verificationUrl: token.verificationUrl,
-      });
-
-      redirect("/settings?verification=sent");
+      verificationSent = true;
     } catch {
-      redirect("/settings?verification=send_failed");
+      verificationSent = false;
     }
+
+    redirect(
+      verificationSent
+        ? "/settings?verification=sent"
+        : "/settings?verification=send_failed"
+    );
   }
 
   redirect("/settings?contact=saved");
@@ -216,21 +216,22 @@ async function resendVerificationEmail() {
     redirect("/settings?verification=already_verified");
   }
 
+  let verificationSent = false;
   try {
-    const token = await issueEmailVerificationToken({
+    await deliverEmailVerification({
       userId: user.id,
       email: user.email,
     });
-
-    await sendEmailVerificationEmail({
-      email: user.email,
-      verificationUrl: token.verificationUrl,
-    });
-
-    redirect("/settings?verification=sent");
+    verificationSent = true;
   } catch {
-    redirect("/settings?verification=send_failed");
+    verificationSent = false;
   }
+
+  redirect(
+    verificationSent
+      ? "/settings?verification=sent"
+      : "/settings?verification=send_failed"
+  );
 }
 
 async function submitFeedback(formData: FormData) {
