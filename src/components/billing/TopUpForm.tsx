@@ -17,7 +17,9 @@ export default function TopUpForm({
   disabled = false,
   notice = null,
 }: TopUpFormProps) {
-  const [billingTier, setBillingTier] = useState<BillingTier>(PAID_TIERS[0]?.id ?? "tier_500");
+  const [billingTier, setBillingTier] = useState<BillingTier>(
+    PAID_TIERS[0]?.id ?? "tier_500"
+  );
   const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
 
@@ -29,7 +31,7 @@ export default function TopUpForm({
     setError(null);
 
     try {
-      const response = await fetch("/api/payments/stripe/checkout", {
+      const response = await fetch("/api/payments/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ billingTier }),
@@ -58,7 +60,7 @@ export default function TopUpForm({
   return (
     <form onSubmit={handleSubmit} className="space-y-3">
       <label className="block text-xs text-text-secondary">
-        Тариф и пополнение
+        Пополнение через ЮKassa
       </label>
       <div className="grid gap-3 md:grid-cols-3">
         {PAID_TIERS.map((tier) => {
@@ -89,7 +91,7 @@ export default function TopUpForm({
           disabled={status === "loading" || disabled}
           className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-hover disabled:opacity-60"
         >
-          {status === "loading" ? "Создаем..." : "Оплатить выбранный тариф"}
+          {status === "loading" ? "Создаем..." : "Перейти к оплате"}
         </button>
       </div>
       {notice && <p className="text-xs text-amber-700">{notice}</p>}

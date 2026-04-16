@@ -24,7 +24,7 @@ A full-featured web application that brings multiple AI models into a single int
 
 **Billing & Payments**
 - Credit-based balance system
-- Stripe integration (Checkout, Webhooks)
+- YooKassa integration for checkout and payment confirmation
 - Per-token cost tracking with configurable markup
 - User and organization-level quotas and limits
 - Cost Centers for expense allocation
@@ -59,11 +59,11 @@ A full-featured web application that brings multiple AI models into a single int
 | Backend | Next.js App Router (API Routes), Server Actions |
 | Auth | Auth.js (NextAuth v5), OIDC, SCIM 2.0 |
 | Database | PostgreSQL 16, Prisma ORM |
-| Payments | Stripe (Checkout, Webhooks) |
+| Payments | YooKassa (Checkout, Webhooks) |
 | AI | OpenRouter API (GPT-4, Claude, Gemini) |
 | Bot | Telegraf (Telegram Bot API) |
 | STT | OpenAI Whisper API |
-| Email | UniSender API |
+| Email | SMTP-first delivery with optional fallback |
 | Testing | Vitest (44 unit tests), Playwright (E2E) |
 | CI/CD | Docker Compose, GitHub Actions |
 | Language | TypeScript (strict mode) |
@@ -83,7 +83,7 @@ src/
       messages/           #   Message CRUD
       models/             #   AI model catalog
       org/                #   Organizations, roles, invites, policies
-      payments/           #   Stripe checkout & webhooks
+      payments/           #   Payment checkout & webhooks
       prompts/            #   Prompt templates
       scim/               #   SCIM 2.0 provisioning
       telegram/           #   Telegram linking
@@ -165,7 +165,7 @@ Required environment variables:
 | `/api/chats` | CRUD, share | Chat management |
 | `/api/files` | upload, download | File handling |
 | `/api/org` | settings, users, roles, invites, policies, cost-centers | B2B |
-| `/api/payments` | stripe checkout, webhook | Payments |
+| `/api/payments` | checkout, webhook | Payments |
 | `/api/scim` | Users, Groups, ServiceProviderConfig | SCIM 2.0 |
 | `/api/telegram` | token, webhook, unlink | Telegram |
 
@@ -203,7 +203,7 @@ Required environment variables:
 
 **Биллинг и платежи**
 - Кредитная система с балансом пользователей
-- Интеграция Stripe (Checkout, Webhooks)
+- Интеграция YooKassa для оплаты и подтверждения платежей
 - Трекинг расходов по токенам с наценкой
 - Квоты и лимиты на уровне пользователей и организаций
 - Cost Centers для распределения расходов
@@ -238,11 +238,11 @@ Required environment variables:
 | Backend | Next.js App Router (API Routes), Server Actions |
 | Auth | Auth.js (NextAuth v5), OIDC, SCIM 2.0 |
 | Database | PostgreSQL 16, Prisma ORM |
-| Payments | Stripe (Checkout, Webhooks) |
+| Payments | YooKassa (Checkout, Webhooks) |
 | AI | OpenRouter API (GPT-4, Claude, Gemini) |
 | Bot | Telegraf (Telegram Bot API) |
 | STT | OpenAI Whisper API |
-| Email | UniSender API |
+| Email | SMTP-first delivery with optional fallback |
 | Testing | Vitest (44 unit-теста), Playwright (E2E) |
 | CI/CD | Docker Compose, GitHub Actions |
 | Language | TypeScript (strict mode) |
@@ -262,7 +262,7 @@ src/
       messages/           #   CRUD сообщений
       models/             #   Каталог AI-моделей
       org/                #   Организации, роли, приглашения, политики
-      payments/           #   Stripe checkout и webhooks
+      payments/           #   платежи и webhooks
       prompts/            #   Шаблоны промптов
       scim/               #   SCIM 2.0 provisioning
       telegram/           #   Привязка Telegram
@@ -321,7 +321,7 @@ npm run prisma:migrate:deploy
 | `/api/chats` | CRUD, share | Управление чатами |
 | `/api/files` | upload, download | Файлы |
 | `/api/org` | settings, users, roles, invites, policies, cost-centers | B2B |
-| `/api/payments` | stripe checkout, webhook | Платежи |
+| `/api/payments` | checkout, webhook | Платежи |
 | `/api/scim` | Users, Groups, ServiceProviderConfig | SCIM 2.0 |
 | `/api/telegram` | token, webhook, unlink | Telegram |
 

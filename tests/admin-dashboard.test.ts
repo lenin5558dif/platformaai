@@ -8,26 +8,28 @@ describe("admin-dashboard service snapshots", () => {
   it("marks service as ready when all required env variables are present", () => {
     const snapshots = getAdminServiceSnapshots({
       OPENROUTER_API_KEY: "or-key",
-      STRIPE_SECRET_KEY: "stripe-key",
-      STRIPE_WEBHOOK_SECRET: "whsec",
+      YOOKASSA_SHOP_ID: "shop-id",
+      YOOKASSA_SECRET_KEY: "secret-key",
+      YOOKASSA_WEBHOOK_SECRET: "whsec",
     });
 
     const openrouter = snapshots.find((item) => item.id === "openrouter");
-    const stripe = snapshots.find((item) => item.id === "stripe");
+    const yookassa = snapshots.find((item) => item.id === "yookassa");
 
     expect(openrouter?.status).toBe("ready");
-    expect(stripe?.status).toBe("ready");
-    expect(stripe?.missingRequired).toEqual([]);
+    expect(yookassa?.status).toBe("ready");
+    expect(yookassa?.missingRequired).toEqual([]);
   });
 
   it("marks service as partial when only part of required env is present", () => {
     const snapshots = getAdminServiceSnapshots({
-      STRIPE_SECRET_KEY: "stripe-key",
+      YOOKASSA_SHOP_ID: "shop-id",
+      YOOKASSA_SECRET_KEY: "secret-key",
     });
 
-    const stripe = snapshots.find((item) => item.id === "stripe");
-    expect(stripe?.status).toBe("partial");
-    expect(stripe?.missingRequired).toContain("STRIPE_WEBHOOK_SECRET");
+    const yookassa = snapshots.find((item) => item.id === "yookassa");
+    expect(yookassa?.status).toBe("partial");
+    expect(yookassa?.missingRequired).toContain("YOOKASSA_WEBHOOK_SECRET");
   });
 
   it("marks service as missing when required env variables are absent", () => {

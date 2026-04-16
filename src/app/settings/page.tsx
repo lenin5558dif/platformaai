@@ -5,12 +5,7 @@ import AppShell from "@/components/layout/AppShell";
 import TopUpForm from "@/components/billing/TopUpForm";
 import { auth, signOut as authSignOut } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import {
-  getBillingTier,
-  getBillingTierIncludedCredits,
-  getBillingTierLabel,
-  isFreeBillingTier,
-} from "@/lib/billing-tiers";
+import { getBillingTier, getBillingTierLabel } from "@/lib/billing-tiers";
 import { issueEmailVerificationToken } from "@/lib/email-verification";
 import { sendEmailVerificationEmail } from "@/lib/unisender";
 import {
@@ -623,15 +618,15 @@ export default async function SettingsPage({
                   </p>
                 </div>
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                  <p className="text-xs text-slate-500">Пакет</p>
+                  <p className="text-xs text-slate-500">Email</p>
                   <p className="mt-1 text-sm font-semibold text-slate-900">
-                    {getBillingTierIncludedCredits(userTier)} кредитов
+                    {emailVerified ? "Подтвержден" : "Нужна проверка"}
                   </p>
                 </div>
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                  <p className="text-xs text-slate-500">Доступ</p>
+                  <p className="text-xs text-slate-500">Telegram</p>
                   <p className="mt-1 text-sm font-semibold text-slate-900">
-                    {isFreeBillingTier(userTier) ? "Бесплатные модели" : "Все модели"}
+                    {user?.telegramId ? "Подключен" : "Не подключен"}
                   </p>
                 </div>
               </div>
@@ -776,7 +771,7 @@ export default async function SettingsPage({
 
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="border-b border-slate-200/60 px-8 py-6">
-            <h3 className="text-base font-bold text-slate-900">Оплата</h3>
+            <h3 className="text-base font-bold text-slate-900">Пополнение</h3>
           </div>
           <div className="space-y-4 p-8">
             <div className="grid gap-4 md:grid-cols-4">

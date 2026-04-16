@@ -1,7 +1,7 @@
+import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
-import { getStripe } from "@/lib/stripe";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { prisma } from "@/lib/db";
 import {
@@ -10,6 +10,7 @@ import {
   getBillingTierLabel,
   getBillingTierPriceRub,
 } from "@/lib/billing-tiers";
+import { createYookassaPayment, getYookassaReturnUrl } from "@/lib/yookassa";
 
 const schema = z.object({
   billingTier: z.enum(BILLING_TIER_IDS).refine((value) => value !== "free", {
@@ -25,7 +26,7 @@ export async function POST(request: Request) {
   }
 
   const rate = await checkRateLimit({
-    key: `stripe:${session.user.id}`,
+    key: `yookassa:${session.user.id}`,
     limit: 5,
     windowMs: 60 * 1000,
   });
@@ -60,39 +61,12 @@ export async function POST(request: Request) {
   const priceRub = getBillingTierPriceRub(payload.billingTier);
   const credits = getBillingTierIncludedCredits(payload.billingTier);
   const planLabel = getBillingTierLabel(payload.billingTier);
-  const unitAmount = Math.max(100, Math.round(priceRub * 100));
+  const returnUrl = getYookassaReturnUrl();
 
-  const appUrl =
-    process.env.NEXT_PUBLIC_APP_URL ??
-    process.env.NEXTAUTH_URL ??
-    "http://localhost:3000";
-
-  let stripe;
-  try {
-    stripe = getStripe();
-  } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Stripe not configured" },
-      { status: 500 }
-    );
-  }
-
-  const checkout = await stripe.checkout.sessions.create({
-    mode: "payment",
-    payment_method_types: ["card"],
-    line_items: [
-      {
-        price_data: {
-          currency: "rub",
-          unit_amount: unitAmount,
-          product_data: {
-            name: `PlatformaAI • ${planLabel}`,
-            description: `${credits} кредитов и доступ к платным моделям`,
-          },
-        },
-        quantity: 1,
-      },
-    ],
+  const payment = await createYookassaPayment({
+    amountRub: priceRub,
+    description: `PlatformaAI • ${planLabel}`,
+    returnUrl,
     metadata: {
       userId: session.user.id,
       credits: credits.toString(),
@@ -100,9 +74,16 @@ export async function POST(request: Request) {
       billingTierLabel: planLabel,
       priceRub: priceRub.toString(),
     },
-    success_url: `${appUrl}/settings?success=1`,
-    cancel_url: `${appUrl}/settings?canceled=1`,
+    idempotenceKey: randomUUID(),
   });
 
-  return NextResponse.json({ url: checkout.url });
+  const confirmationUrl = payment.confirmation?.confirmation_url;
+  if (!confirmationUrl) {
+    return NextResponse.json(
+      { error: "YooKassa confirmation url is missing" },
+      { status: 500 }
+    );
+  }
+
+  return NextResponse.json({ url: confirmationUrl, paymentId: payment.id });
 }
