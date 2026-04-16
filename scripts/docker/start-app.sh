@@ -21,9 +21,9 @@ while true; do
 
   rm -f "$output_file"
   i=$((i + 1))
-  if [ "$i" -ge 30 ]; then
-    echo "Prisma migrations failed after 30 attempts"
-    exit 1
+  if [ "$i" -ge 5 ]; then
+    echo "Prisma migrations could not be applied after 5 attempts. Starting the app without blocking boot."
+    break
   fi
   echo "Database is not ready yet, retrying in 2s..."
   sleep 2
