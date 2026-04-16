@@ -10,7 +10,10 @@ import {
   getRetryAfterHeader,
 } from "@/lib/rate-limit";
 import { getClientIp } from "@/lib/request-ip";
-import { sendEmailVerificationEmail } from "@/lib/unisender";
+import {
+  getMailDeliveryErrorCode,
+  sendEmailVerificationEmail,
+} from "@/lib/unisender";
 
 const registerSchema = z
   .object({
@@ -167,6 +170,7 @@ export async function POST(request: Request) {
     });
 
     let verificationSent = false;
+    let verificationErrorCode: string | null = null;
     try {
       const token = await issueEmailVerificationToken({
         userId: user.id,
@@ -178,8 +182,9 @@ export async function POST(request: Request) {
         verificationUrl: token.verificationUrl,
       });
       verificationSent = true;
-    } catch {
+    } catch (error) {
       verificationSent = false;
+      verificationErrorCode = getMailDeliveryErrorCode(error);
     }
 
     return NextResponse.json(
@@ -188,6 +193,7 @@ export async function POST(request: Request) {
           id: user.id,
           email: user.email,
           verificationSent,
+          verificationErrorCode,
         },
       },
       { status: 201 }

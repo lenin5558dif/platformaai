@@ -39,6 +39,21 @@ const issueEmailVerificationToken = vi.hoisted(() =>
 );
 
 const sendEmailVerificationEmail = vi.hoisted(() => vi.fn(async () => undefined));
+const getMailDeliveryErrorCode = vi.hoisted(() =>
+  vi.fn((error: unknown) =>
+    error && typeof error === "object" && "code" in (error as Record<string, unknown>)
+      ? String((error as Record<string, unknown>).code)
+      : null
+  )
+);
+class MockMailDeliveryError extends Error {
+  code: string;
+
+  constructor(code: string, message: string) {
+    super(message);
+    this.code = code;
+  }
+}
 
 vi.mock("@/lib/db", () => ({ prisma }));
 vi.mock("bcryptjs", () => ({
@@ -49,6 +64,8 @@ vi.mock("@/lib/email-verification", () => ({
 }));
 vi.mock("@/lib/unisender", () => ({
   sendEmailVerificationEmail,
+  getMailDeliveryErrorCode,
+  MailDeliveryError: MockMailDeliveryError,
 }));
 
 describe("auth register route", () => {
@@ -222,6 +239,39 @@ describe("auth register route", () => {
       data: {
         email: "name@example.com",
         verificationSent: false,
+        verificationErrorCode: null,
+      },
+    });
+  });
+
+  test("returns verification error code when provider rejects recipient", async () => {
+    sendEmailVerificationEmail.mockRejectedValueOnce(
+      new MockMailDeliveryError(
+        "RECIPIENT_NOT_ALLOWED",
+        "Provider rejected the recipient"
+      )
+    );
+
+    const { POST } = await import("../src/app/api/auth/register/route");
+    const res = await POST(
+      new Request("http://localhost/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nickname: "nickname",
+          email: "Name@Example.com",
+          password: "password1",
+          confirmPassword: "password1",
+        }),
+      })
+    );
+
+    expect(res.status).toBe(201);
+    expect(await res.json()).toMatchObject({
+      data: {
+        email: "name@example.com",
+        verificationSent: false,
+        verificationErrorCode: "RECIPIENT_NOT_ALLOWED",
       },
     });
   });

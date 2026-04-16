@@ -9,6 +9,7 @@ import { FeedbackCategory } from "@prisma/client";
 import { getBillingTier, getBillingTierLabel } from "@/lib/billing-tiers";
 import { deliverEmailVerification } from "@/lib/email-verification-delivery";
 import { createUserFeedback, feedbackFormSchema } from "@/lib/feedback";
+import { getMailDeliveryErrorCode } from "@/lib/unisender";
 import {
   getMissingOnboardingFields,
   getOnboardingSummaryText,
@@ -170,22 +171,20 @@ async function updateContactSettings(formData: FormData) {
   revalidatePath("/settings");
 
   if (normalizedEmail && (emailChanged || user.emailVerifiedByProvider !== true)) {
-    let verificationSent = false;
+    let verificationRedirect = "/settings?verification=send_failed";
     try {
       await deliverEmailVerification({
         userId: user.id,
         email: normalizedEmail,
       });
-      verificationSent = true;
-    } catch {
-      verificationSent = false;
+      verificationRedirect = "/settings?verification=sent";
+    } catch (error) {
+      if (getMailDeliveryErrorCode(error) === "RECIPIENT_NOT_ALLOWED") {
+        verificationRedirect = "/settings?verification=recipient_not_allowed";
+      }
     }
 
-    redirect(
-      verificationSent
-        ? "/settings?verification=sent"
-        : "/settings?verification=send_failed"
-    );
+    redirect(verificationRedirect);
   }
 
   redirect("/settings?contact=saved");
@@ -339,6 +338,11 @@ function mapVerificationMessage(state?: string) {
       return {
         tone: "error" as const,
         text: "Не удалось отправить письмо подтверждения. Проверьте почтовые настройки.",
+      };
+    case "recipient_not_allowed":
+      return {
+        tone: "error" as const,
+        text: "Почтовый провайдер пока не разрешает отправку на этот адрес. В текущем тарифе Unisender Go письма можно отправлять только на проверенные email или подтвержденные домены.",
       };
     case "email_required":
       return {

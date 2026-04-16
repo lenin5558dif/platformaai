@@ -97,6 +97,31 @@ describe("unisender mailer", () => {
     });
   });
 
+  test("maps SMTP free-tier recipient restriction to a clear error code", async () => {
+    process.env.SMTP_HOST = "smtp.local";
+    process.env.SMTP_FROM_EMAIL = "noreply@example.com";
+    mockSendMail.mockRejectedValueOnce(
+      new Error(
+        'Message failed: 553 5.1.10 No valid recipients: On the "free_tier" tariff it is allowed to send letters only to the "checked" domains or "checked" emails.'
+      )
+    );
+
+    const {
+      MailDeliveryError,
+      getMailDeliveryErrorCode,
+      sendEmailVerificationEmail,
+    } = await import("../src/lib/unisender");
+
+    const error = await sendEmailVerificationEmail({
+      email: "user@gmail.com",
+      verificationUrl: "https://app.example.com/api/auth/email/verify?token=abc",
+    }).catch((value) => value);
+
+    expect(error).toBeInstanceOf(MailDeliveryError);
+    expect(getMailDeliveryErrorCode(error)).toBe("RECIPIENT_NOT_ALLOWED");
+    expect((error as Error).message).toContain("verified addresses or verified domains");
+  });
+
   test("uses UniSender when it is configured", async () => {
     process.env.UNISENDER_API_KEY = "unisender-key";
     process.env.UNISENDER_SENDER_EMAIL = "noreply@example.com";

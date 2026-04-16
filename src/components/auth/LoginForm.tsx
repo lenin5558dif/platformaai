@@ -92,12 +92,23 @@ function mapRegisterError(message?: string): AuthFeedback {
 function mapRegisterSuccess(params: {
   email: string;
   verificationSent?: boolean;
+  verificationErrorCode?: string | null;
 }): AuthFeedback {
   if (params.verificationSent) {
     return {
       state: "success",
       title: "Аккаунт создан",
       message: `Мы отправили письмо на ${params.email}. Подтвердите email, затем войдите в аккаунт.`,
+      action: null,
+    };
+  }
+
+  if (params.verificationErrorCode === "RECIPIENT_NOT_ALLOWED") {
+    return {
+      state: "error",
+      title: "Аккаунт создан",
+      message:
+        "Аккаунт создан, но письмо пока не отправилось: текущий тариф Unisender Go разрешает отправку только на проверенные email или подтвержденные домены.",
       action: null,
     };
   }
@@ -298,12 +309,14 @@ export default function LoginForm({
           data?: {
             email?: string;
             verificationSent?: boolean;
+            verificationErrorCode?: string | null;
           };
         };
 
         const successFeedback = mapRegisterSuccess({
           email: payload?.data?.email ?? normalizedEmail,
           verificationSent: payload?.data?.verificationSent,
+          verificationErrorCode: payload?.data?.verificationErrorCode,
         });
         setMode("signin");
         setConfirmPassword("");

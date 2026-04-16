@@ -3,6 +3,21 @@ import nodemailer from "nodemailer";
 
 const UNISENDER_TIMEOUT_MS = 10_000;
 
+export type MailDeliveryErrorCode =
+  | "SENDER_DOMAIN_NOT_CONFIGURED"
+  | "RECIPIENT_NOT_ALLOWED"
+  | "UNCONFIGURED";
+
+export class MailDeliveryError extends Error {
+  code: MailDeliveryErrorCode;
+
+  constructor(code: MailDeliveryErrorCode, message: string) {
+    super(message);
+    this.name = "MailDeliveryError";
+    this.code = code;
+  }
+}
+
 type OrgInvitePayload = {
   email: string;
   acceptUrl: string;
@@ -85,12 +100,28 @@ async function sendViaSmtp(params: {
         : undefined,
   });
 
-  await transporter.sendMail({
-    from: `"${sender.name}" <${sender.email}>`,
-    to: params.to,
-    subject: params.subject,
-    text: params.text,
-  });
+  try {
+    await transporter.sendMail({
+      from: `"${sender.name}" <${sender.email}>`,
+      to: params.to,
+      subject: params.subject,
+      text: params.text,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (
+      message.includes("No valid recipients") &&
+      (message.includes("free_tier") ||
+        message.includes("checked emails") ||
+        message.includes("checked domains"))
+    ) {
+      throw new MailDeliveryError(
+        "RECIPIENT_NOT_ALLOWED",
+        "SMTP provider rejected the recipient. On the current Unisender Go tariff, sending is allowed only to verified addresses or verified domains."
+      );
+    }
+    throw error;
+  }
 }
 
 async function sendViaUniSender(params: {
@@ -138,7 +169,8 @@ async function sendViaUniSender(params: {
       text.includes('"code":229') ||
       text.includes("Custom backend domain or tracking domain required for sending")
     ) {
-      throw new Error(
+      throw new MailDeliveryError(
+        "SENDER_DOMAIN_NOT_CONFIGURED",
         "UniSender error: sending domain is not configured. Add a custom backend or tracking domain in UniSender and verify the sender domain."
       );
     }
@@ -164,6 +196,14 @@ async function sendEmail(params: {
   throw new Error(
     "Mail delivery is not configured. Set UNISENDER_API_KEY + UNISENDER_SENDER_EMAIL or SMTP_HOST + SMTP_FROM_EMAIL."
   );
+}
+
+export function getMailDeliveryErrorCode(error: unknown): MailDeliveryErrorCode | null {
+  if (error instanceof MailDeliveryError) {
+    return error.code;
+  }
+
+  return null;
 }
 
 export async function sendOrgInviteEmail({ email, acceptUrl }: OrgInvitePayload) {
