@@ -133,6 +133,15 @@ async function sendViaUniSender(params: {
 
   if (!response.ok) {
     const text = await response.text();
+    if (
+      text.includes('"code": 229') ||
+      text.includes('"code":229') ||
+      text.includes("Custom backend domain or tracking domain required for sending")
+    ) {
+      throw new Error(
+        "UniSender error: sending domain is not configured. Add a custom backend or tracking domain in UniSender and verify the sender domain."
+      );
+    }
     throw new Error(`UniSender error: ${text}`);
   }
 }

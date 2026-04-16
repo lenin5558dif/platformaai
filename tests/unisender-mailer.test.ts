@@ -195,6 +195,28 @@ describe("unisender mailer", () => {
     ).rejects.toThrow("UniSender error: bad gateway");
   });
 
+  test("maps UniSender domain configuration error to a clear message", async () => {
+    process.env.UNISENDER_API_KEY = "unisender-key";
+    process.env.UNISENDER_SENDER_EMAIL = "noreply@example.com";
+    mockFetchWithTimeout.mockResolvedValue({
+      ok: false,
+      text: vi.fn(
+        async () =>
+          '{"status":"error","code":229,"message":"Custom backend domain or tracking domain required for sending"}'
+      ),
+    });
+
+    const { sendEmailVerificationEmail } = await import("../src/lib/unisender");
+    await expect(
+      sendEmailVerificationEmail({
+        email: "user@example.com",
+        verificationUrl: "https://app.example.com/api/auth/email/verify?token=abc",
+      })
+    ).rejects.toThrow(
+      "UniSender error: sending domain is not configured. Add a custom backend or tracking domain in UniSender and verify the sender domain."
+    );
+  });
+
   test("throws a clear error when no mail provider is configured", async () => {
     const { sendEmailVerificationEmail } = await import("../src/lib/unisender");
 
