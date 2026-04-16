@@ -30,5 +30,4 @@ while true; do
 done
 
 echo "Starting Next.js..."
-export HOSTNAME=0.0.0.0
-exec node /app/server.js
+exec env HOSTNAME=0.0.0.0 node /app/server.js
