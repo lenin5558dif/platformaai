@@ -9,7 +9,14 @@ const B2C_ITEMS: NavItem[] = [
   { href: "/settings", label: "Настройки", icon: "settings" },
 ];
 
+const ADMIN_ITEMS: NavItem[] = [
+  { href: "/admin", label: "Админка", icon: "admin_panel_settings" },
+];
+
 export function getNavItems(role?: string | null): NavItem[] {
-  void role;
+  if (role === "ADMIN") {
+    return [...B2C_ITEMS, ...ADMIN_ITEMS];
+  }
+
   return [...B2C_ITEMS];
 }

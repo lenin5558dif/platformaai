@@ -142,7 +142,7 @@ describe("auth register route", () => {
           profileFirstName: "nickname",
           billingTier: "free",
           planName: "Free",
-          onboarded: false,
+          onboarded: true,
         },
       },
       select: {

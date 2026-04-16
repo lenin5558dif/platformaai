@@ -137,7 +137,7 @@ export async function POST(request: Request) {
         profileFirstName: nickname,
         billingTier: "free",
         planName: "Free",
-        onboarded: false,
+        onboarded: true,
       },
     } as unknown as Prisma.UserCreateInput;
 
