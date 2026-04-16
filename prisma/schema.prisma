@@ -89,6 +89,17 @@ enum ProviderType {
   OPENROUTER
 }
 
+enum FeedbackCategory {
+  GENERAL
+  IMPROVEMENT
+  BUG
+}
+
+enum FeedbackStatus {
+  NEW
+  REVIEWED
+}
+
 model User {
   id          String      @id @default(cuid())
   email       String?     @unique
@@ -130,6 +141,7 @@ model User {
   modelPoliciesUpdated ModelPolicy[] @relation("ModelPolicyUpdater")
   prompts    Prompt[]
   auditLogs  AuditLog[] @relation("AuditActor")
+  feedbackItems Feedback[]
   sessionInvalidatedAt DateTime?
   globalRevokeCounter Int @default(0)
   createdAt   DateTime    @default(now())
@@ -632,4 +644,25 @@ model AdminPasswordResetToken {
   @@index([requestedById])
   @@index([tokenPrefix])
   @@index([expiresAt])
+}
+
+model Feedback {
+  id                String           @id @default(cuid())
+  userId            String?
+  rating            Int
+  category          FeedbackCategory
+  status            FeedbackStatus   @default(NEW)
+  message           String
+  emailSnapshot     String?
+  telegramIdSnapshot String?
+  displayNameSnapshot String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  user              User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([category])
+  @@index([status])
+  @@index([createdAt])
 }

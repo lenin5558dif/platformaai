@@ -28,7 +28,7 @@ export default async function AdminDashboardPage() {
   const weekAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
   const twoWeeksAgo = new Date(now - 14 * 24 * 60 * 60 * 1000);
 
-  const [usersTotal, usersActive, tokensTotal, last24h, last7d, refillsTotal] = await Promise.all([
+  const [usersTotal, usersActive, tokensTotal, last24h, last7d, refillsTotal, feedbackTotal, feedbackNew] = await Promise.all([
     prisma.user.count(),
     prisma.user.count({ where: { isActive: true } }),
     prisma.message.aggregate({
@@ -51,6 +51,8 @@ export default async function AdminDashboardPage() {
       _sum: { amount: true },
       _count: { _all: true },
     }),
+    prisma.feedback.count(),
+    prisma.feedback.count({ where: { status: "NEW" } }),
   ]);
 
   const activityRows = await prisma.$queryRaw<ActivityRow[]>`
@@ -107,11 +109,17 @@ export default async function AdminDashboardPage() {
             >
               Биллинг
             </a>
+            <a
+              href="/admin/feedback"
+              className="rounded-full border border-gray-200 bg-white/70 px-3 py-2 text-sm font-medium text-text-main hover:bg-white"
+            >
+              Обратная связь
+            </a>
           </div>
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
         <div className="rounded-2xl bg-white/80 border border-white/50 shadow-glass-sm p-5">
           <p className="text-xs text-text-secondary">Пользователи</p>
           <p className="text-2xl font-semibold text-text-main">
@@ -155,6 +163,15 @@ export default async function AdminDashboardPage() {
           </p>
           <p className="mt-1 text-xs text-text-secondary">
             Пополнений: {formatNumber(refillsTotal._count?._all ?? 0)}
+          </p>
+        </div>
+        <div className="rounded-2xl bg-white/80 border border-white/50 shadow-glass-sm p-5">
+          <p className="text-xs text-text-secondary">Обратная связь</p>
+          <p className="text-2xl font-semibold text-text-main">
+            {formatNumber(feedbackTotal)}
+          </p>
+          <p className="mt-1 text-xs text-text-secondary">
+            Новых отзывов: {formatNumber(feedbackNew)}
           </p>
         </div>
       </div>

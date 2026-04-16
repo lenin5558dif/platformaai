@@ -5,9 +5,15 @@ import AppShell from "@/components/layout/AppShell";
 import TopUpForm from "@/components/billing/TopUpForm";
 import { auth, signOut as authSignOut } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { FeedbackCategory } from "@prisma/client";
 import { getBillingTier, getBillingTierLabel } from "@/lib/billing-tiers";
 import { issueEmailVerificationToken } from "@/lib/email-verification";
+import { createUserFeedback, feedbackFormSchema } from "@/lib/feedback";
 import { sendEmailVerificationEmail } from "@/lib/unisender";
+import {
+  getMissingOnboardingFields,
+  getOnboardingSummaryText,
+} from "@/lib/onboarding";
 import {
   getSettingsObject,
   getUserAssistantInstructions,
@@ -34,6 +40,7 @@ async function updateProfileSettings(formData: FormData) {
   }
 
   const redirectTo = String(formData.get("redirectTo") ?? "").trim();
+  const isOnboardingSubmit = redirectTo === "/";
 
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
@@ -51,6 +58,19 @@ async function updateProfileSettings(formData: FormData) {
   const assistantInstructions = String(
     formData.get("assistantInstructions") ?? ""
   ).trim();
+
+  if (isOnboardingSubmit) {
+    const missingRequired = getMissingOnboardingFields({
+      firstName,
+      lastName,
+      headline,
+      userGoal,
+    });
+
+    if (missingRequired.length > 0) {
+      redirect("/settings?onboarding=1&profile=required");
+    }
+  }
 
   const nextSettings = mergeSettings(user.settings, {
     profileFirstName: firstName,
@@ -213,6 +233,39 @@ async function resendVerificationEmail() {
   }
 }
 
+async function submitFeedback(formData: FormData) {
+  "use server";
+
+  const session = await auth();
+  if (!session?.user?.id) {
+    return;
+  }
+
+  const parsed = feedbackFormSchema.safeParse({
+    rating: formData.get("rating"),
+    category: formData.get("category"),
+    message: String(formData.get("message") ?? ""),
+  });
+
+  if (!parsed.success) {
+    redirect("/settings?feedback=invalid");
+  }
+
+  try {
+    await createUserFeedback({
+      prisma,
+      userId: session.user.id,
+      ...parsed.data,
+    });
+  } catch {
+    redirect("/settings?feedback=error");
+  }
+
+  revalidatePath("/settings");
+  revalidatePath("/admin/feedback");
+  redirect("/settings?feedback=submitted");
+}
+
 async function deleteAccount(formData: FormData) {
   "use server";
 
@@ -371,6 +424,45 @@ function mapContactMessage(state?: string) {
   }
 }
 
+function mapFeedbackMessage(state?: string) {
+  switch (state) {
+    case "submitted":
+      return {
+        tone: "success" as const,
+        text: "Спасибо. Отзыв отправлен команде.",
+      };
+    case "invalid":
+      return {
+        tone: "error" as const,
+        text: "Проверьте оценку и опишите проблему или идею подробнее.",
+      };
+    case "error":
+      return {
+        tone: "error" as const,
+        text: "Не удалось отправить отзыв. Попробуйте еще раз.",
+      };
+    default:
+      return null;
+  }
+}
+
+function mapProfileMessage(state?: string) {
+  switch (state) {
+    case "saved":
+      return {
+        tone: "success" as const,
+        text: "Профиль сохранен.",
+      };
+    case "required":
+      return {
+        tone: "error" as const,
+        text: "Заполните обязательные поля: имя, фамилию, чем вы занимаетесь и цель использования.",
+      };
+    default:
+      return null;
+  }
+}
+
 function messageToneClass(tone: "info" | "success" | "error") {
   if (tone === "success") {
     return "border-emerald-200 bg-emerald-50 text-emerald-700";
@@ -391,6 +483,7 @@ export default async function SettingsPage({
     verification?: string;
     contact?: string;
     profile?: string;
+    feedback?: string;
   }>;
 }) {
   const params = searchParams ? await searchParams : undefined;
@@ -445,11 +538,13 @@ export default async function SettingsPage({
   const planName = userTierLabel;
   const verificationMessage = mapVerificationMessage(params?.verification);
   const contactMessage = mapContactMessage(params?.contact);
-  const profileSaved = params?.profile === "saved";
+  const feedbackMessage = mapFeedbackMessage(params?.feedback);
+  const profileMessage = mapProfileMessage(params?.profile);
   const emailVerified = user?.emailVerifiedByProvider === true;
   const needsEmail = !user?.email;
   const needsVerification = Boolean(user?.email) && !emailVerified;
   const purchaseBlocked = needsEmail || needsVerification;
+  const onboardingSummaryText = getOnboardingSummaryText();
   const topUpNotice = needsEmail
     ? "Добавьте email, чтобы купить тариф."
     : needsVerification
@@ -472,20 +567,24 @@ export default async function SettingsPage({
         <div className="mb-2 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
           <div>
             <h2 className="text-2xl font-bold tracking-tight text-slate-900">
-              Настройки аккаунта
+              {isOnboardingFlow ? "Быстрый старт" : "Настройки аккаунта"}
             </h2>
             <p className="mt-1 text-sm text-slate-500">
-              Здесь собраны профиль, контакты и оплата.
+              {isOnboardingFlow
+                ? "Заполните короткий профиль, и мы сразу откроем чат."
+                : "Здесь собраны профиль, контакты и оплата."}
             </p>
           </div>
-          <form action={logout}>
-            <button
-              type="submit"
-              className="rounded-full border border-slate-200 bg-white/80 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-white"
-            >
-              Выйти из аккаунта
-            </button>
-          </form>
+          {!isOnboardingFlow && (
+            <form action={logout}>
+              <button
+                type="submit"
+                className="rounded-full border border-slate-200 bg-white/80 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-white"
+              >
+                Выйти из аккаунта
+              </button>
+            </form>
+          )}
         </div>
 
         {params?.success && (
@@ -516,9 +615,22 @@ export default async function SettingsPage({
             {contactMessage.text}
           </div>
         )}
-        {profileSaved && (
-          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-700">
-            Изменения сохранены.
+        {feedbackMessage && (
+          <div
+            className={`rounded-lg border px-4 py-2 text-sm ${messageToneClass(
+              feedbackMessage.tone
+            )}`}
+          >
+            {feedbackMessage.text}
+          </div>
+        )}
+        {profileMessage && (
+          <div
+            className={`rounded-lg border px-4 py-2 text-sm ${messageToneClass(
+              profileMessage.tone
+            )}`}
+          >
+            {profileMessage.text}
           </div>
         )}
         {(needsEmail || needsVerification) && (
@@ -529,8 +641,35 @@ export default async function SettingsPage({
           </div>
         )}
         {isOnboardingFlow && (
-          <div className="rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-text-main">
-            Заполните данные и сохраните изменения, чтобы перейти в чат.
+          <div className="rounded-2xl border border-primary/20 bg-primary/5 px-5 py-5 text-sm text-text-main">
+            <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
+              <div>
+                <p className="text-base font-semibold text-slate-900">
+                  Завершим быстрый старт
+                </p>
+                <p className="mt-1 text-sm text-slate-600">
+                  Заполни обязательные поля со звездочкой, чтобы мы сразу открыли тебе чат.
+                </p>
+                <ol className="mt-3 space-y-1 text-xs text-slate-500">
+                  <li>1. Заполните обязательные поля в профиле.</li>
+                  <li>2. Нажмите «Сохранить и перейти в чат».</li>
+                  <li>3. После этого откроется основной экран сервиса.</li>
+                </ol>
+              </div>
+              <div className="min-w-[240px] rounded-2xl border border-white/60 bg-white/70 p-4 shadow-sm">
+                <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  Обязательные поля
+                </p>
+                <p className="mt-2 text-sm text-slate-700">{onboardingSummaryText}</p>
+                <button
+                  type="submit"
+                  form="profile-form"
+                  className="mt-4 w-full rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary/90"
+                >
+                  Сохранить и перейти в чат
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
@@ -559,12 +698,14 @@ export default async function SettingsPage({
                       className="text-xs font-semibold uppercase tracking-wider text-slate-500"
                       htmlFor="firstName"
                     >
-                      Имя
+                      Имя <span className="text-rose-500">*</span>
                     </label>
                     <input
                       id="firstName"
                       name="firstName"
                       defaultValue={firstName}
+                      required={isOnboardingFlow}
+                      aria-required={isOnboardingFlow}
                       className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition-all placeholder:text-gray-400 focus:border-primary focus:ring-2 focus:ring-primary/10"
                       type="text"
                       placeholder="Ваше имя"
@@ -575,12 +716,14 @@ export default async function SettingsPage({
                       className="text-xs font-semibold uppercase tracking-wider text-slate-500"
                       htmlFor="lastName"
                     >
-                      Фамилия
+                      Фамилия <span className="text-rose-500">*</span>
                     </label>
                     <input
                       id="lastName"
                       name="lastName"
                       defaultValue={lastName}
+                      required={isOnboardingFlow}
+                      aria-required={isOnboardingFlow}
                       className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition-all placeholder:text-gray-400 focus:border-primary focus:ring-2 focus:ring-primary/10"
                       type="text"
                       placeholder="Ваша фамилия"
@@ -591,15 +734,17 @@ export default async function SettingsPage({
                       className="text-xs font-semibold uppercase tracking-wider text-slate-500"
                       htmlFor="headline"
                     >
-                      О себе
+                      Чем вы занимаетесь <span className="text-rose-500">*</span>
                     </label>
                     <input
                       id="headline"
                       name="headline"
                       defaultValue={headline}
+                      required={isOnboardingFlow}
+                      aria-required={isOnboardingFlow}
                       className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition-all placeholder:text-gray-400 focus:border-primary focus:ring-2 focus:ring-primary/10"
                       type="text"
-                      placeholder="Чем вы занимаетесь"
+                      placeholder="Например: маркетолог, разработчик, предприниматель"
                     />
                   </div>
                 </div>
@@ -641,14 +786,16 @@ export default async function SettingsPage({
               <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                    Цель
+                    Цель <span className="text-rose-500">*</span>
                   </label>
                   <select
                     name="userGoal"
                     defaultValue={userGoal}
+                    required={isOnboardingFlow}
+                    aria-required={isOnboardingFlow}
                     className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/10"
                   >
-                    <option value="">Не выбрано</option>
+                    <option value="">Выберите цель</option>
                     <option value="Учёба и обучение">Учёба и обучение</option>
                     <option value="Рабочие задачи">Рабочие задачи</option>
                     <option value="Бизнес/стартап">Бизнес/стартап</option>
@@ -700,140 +847,225 @@ export default async function SettingsPage({
                 type="submit"
                 className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary/90"
               >
-                Сохранить изменения
+                {isOnboardingFlow ? "Сохранить и перейти в чат" : "Сохранить изменения"}
               </button>
             </div>
           </section>
         </form>
 
-        <form
-          action={updateContactSettings}
-          className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
-        >
-          <div className="border-b border-slate-200/60 px-8 py-6">
-            <h3 className="text-base font-bold text-slate-900">Контакты</h3>
-          </div>
-          <div className="grid grid-cols-1 gap-6 p-8 md:grid-cols-2">
-            <div className="space-y-1.5">
-              <label
-                className="text-xs font-semibold uppercase tracking-wider text-slate-500"
-                htmlFor="email"
-              >
-                Email
-              </label>
-              <input
-                id="email"
-                name="email"
-                defaultValue={user?.email ?? ""}
-                className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition-all placeholder:text-gray-400 focus:border-primary focus:ring-2 focus:ring-primary/10"
-                type="email"
-                placeholder="name@example.com"
-              />
-              <div className="text-xs text-slate-500">
-                {emailVerified ? "Email подтвержден" : "Email не подтвержден"}
+        {!isOnboardingFlow && (
+          <>
+            <form
+              action={updateContactSettings}
+              className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
+            >
+              <div className="border-b border-slate-200/60 px-8 py-6">
+                <h3 className="text-base font-bold text-slate-900">Контакты</h3>
               </div>
-            </div>
-            <div className="space-y-1.5">
-              <label
-                className="text-xs font-semibold uppercase tracking-wider text-slate-500"
-                htmlFor="phone"
-              >
-                Телефон
-              </label>
-              <input
-                id="phone"
-                name="phone"
-                defaultValue={phone}
-                className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition-all placeholder:text-gray-400 focus:border-primary focus:ring-2 focus:ring-primary/10"
-                type="tel"
-                placeholder="+7 900 000 00 00"
-              />
-            </div>
-            <div className="md:col-span-2 flex flex-wrap gap-3">
-              <button
-                type="submit"
-                className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary/90"
-              >
-                Сохранить контакты
-              </button>
-              {!emailVerified && user?.email && (
-                <button
-                  type="submit"
-                  formAction={resendVerificationEmail}
-                  className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                >
-                  Отправить письмо еще раз
-                </button>
-              )}
-            </div>
-          </div>
-        </form>
+              <div className="grid grid-cols-1 gap-6 p-8 md:grid-cols-2">
+                <div className="space-y-1.5">
+                  <label
+                    className="text-xs font-semibold uppercase tracking-wider text-slate-500"
+                    htmlFor="email"
+                  >
+                    Email
+                  </label>
+                  <input
+                    id="email"
+                    name="email"
+                    defaultValue={user?.email ?? ""}
+                    className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition-all placeholder:text-gray-400 focus:border-primary focus:ring-2 focus:ring-primary/10"
+                    type="email"
+                    placeholder="name@example.com"
+                  />
+                  <div className="text-xs text-slate-500">
+                    {emailVerified ? "Email подтвержден" : "Email не подтвержден"}
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <label
+                    className="text-xs font-semibold uppercase tracking-wider text-slate-500"
+                    htmlFor="phone"
+                  >
+                    Телефон
+                  </label>
+                  <input
+                    id="phone"
+                    name="phone"
+                    defaultValue={phone}
+                    className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition-all placeholder:text-gray-400 focus:border-primary focus:ring-2 focus:ring-primary/10"
+                    type="tel"
+                    placeholder="+7 900 000 00 00"
+                  />
+                </div>
+                <div className="md:col-span-2 flex flex-wrap gap-3">
+                  <button
+                    type="submit"
+                    className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary/90"
+                  >
+                    Сохранить контакты
+                  </button>
+                  {!emailVerified && user?.email && (
+                    <button
+                      type="submit"
+                      formAction={resendVerificationEmail}
+                      className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                    >
+                      Отправить письмо еще раз
+                    </button>
+                  )}
+                </div>
+              </div>
+            </form>
 
-        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-200/60 px-8 py-6">
-            <h3 className="text-base font-bold text-slate-900">Пополнение</h3>
-          </div>
-          <div className="space-y-4 p-8">
-            <div className="grid gap-4 md:grid-cols-4">
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <p className="text-xs text-slate-500">Текущий тариф</p>
-                <p className="mt-1 text-sm font-semibold text-slate-900">{planName}</p>
+            <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <div className="border-b border-slate-200/60 px-8 py-6">
+                <h3 className="text-base font-bold text-slate-900">Пополнение</h3>
               </div>
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <p className="text-xs text-slate-500">Баланс</p>
-                <p className="mt-1 text-sm font-semibold text-slate-900">
-                  {user?.balance?.toString() ?? "0"}
-                </p>
+              <div className="space-y-4 p-8">
+                <div className="grid gap-4 md:grid-cols-4">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <p className="text-xs text-slate-500">Текущий тариф</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">{planName}</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <p className="text-xs text-slate-500">Баланс</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">
+                      {user?.balance?.toString() ?? "0"}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <p className="text-xs text-slate-500">Telegram</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">
+                      {user?.telegramId ?? "Не подключен"}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <p className="text-xs text-slate-500">Статус email</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">
+                      {emailVerified ? "Подтвержден" : "Требуется подтверждение"}
+                    </p>
+                  </div>
+                </div>
+                <TopUpForm disabled={purchaseBlocked} notice={topUpNotice} />
               </div>
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <p className="text-xs text-slate-500">Telegram</p>
-                <p className="mt-1 text-sm font-semibold text-slate-900">
-                  {user?.telegramId ?? "Не подключен"}
-                </p>
-              </div>
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <p className="text-xs text-slate-500">Статус email</p>
-                <p className="mt-1 text-sm font-semibold text-slate-900">
-                  {emailVerified ? "Подтвержден" : "Требуется подтверждение"}
-                </p>
-              </div>
-            </div>
-            <TopUpForm disabled={purchaseBlocked} notice={topUpNotice} />
-          </div>
-        </section>
+            </section>
 
-        <form
-          id="danger-zone"
-          action={deleteAccount}
-          className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
-        >
-          <div className="border-b border-slate-200/60 px-8 py-6">
-            <h3 className="text-base font-bold text-slate-900">Опасная зона</h3>
-          </div>
-          <div className="flex flex-col gap-4 p-8">
-            <div>
-              <p className="text-sm font-medium text-slate-900">Удалить аккаунт</p>
-              <p className="text-xs text-slate-500">
-                Введите DELETE или УДАЛИТЬ для подтверждения.
-              </p>
-            </div>
-            <div className="flex flex-col gap-3 md:flex-row md:items-center">
-              <input
-                name="deleteConfirmation"
-                type="text"
-                required
-                className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 md:max-w-xs"
-                placeholder="DELETE"
-              />
-              <button
-                type="submit"
-                className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 transition-colors hover:bg-rose-100"
-              >
-                Удалить аккаунт
-              </button>
-            </div>
-          </div>
-        </form>
+            <form
+              action={submitFeedback}
+              className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
+            >
+              <div className="border-b border-slate-200/60 px-8 py-6">
+                <h3 className="text-base font-bold text-slate-900">Обратная связь</h3>
+                <p className="mt-1 text-sm text-slate-500">
+                  Оцените сервис и напишите, что улучшить или где вы нашли ошибку.
+                </p>
+              </div>
+              <div className="grid grid-cols-1 gap-6 p-8 md:grid-cols-2">
+                <div className="space-y-1.5">
+                  <label
+                    className="text-xs font-semibold uppercase tracking-wider text-slate-500"
+                    htmlFor="feedbackRating"
+                  >
+                    Оценка
+                  </label>
+                  <select
+                    id="feedbackRating"
+                    name="rating"
+                    defaultValue="5"
+                    className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/10"
+                  >
+                    <option value="5">5 — отлично</option>
+                    <option value="4">4 — хорошо</option>
+                    <option value="3">3 — нормально</option>
+                    <option value="2">2 — есть проблемы</option>
+                    <option value="1">1 — плохо</option>
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label
+                    className="text-xs font-semibold uppercase tracking-wider text-slate-500"
+                    htmlFor="feedbackCategory"
+                  >
+                    Тип сообщения
+                  </label>
+                  <select
+                    id="feedbackCategory"
+                    name="category"
+                    defaultValue={FeedbackCategory.GENERAL}
+                    className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/10"
+                  >
+                    <option value={FeedbackCategory.GENERAL}>Общее впечатление</option>
+                    <option value={FeedbackCategory.IMPROVEMENT}>Идея или улучшение</option>
+                    <option value={FeedbackCategory.BUG}>Ошибка или баг</option>
+                  </select>
+                </div>
+                <div className="space-y-1.5 md:col-span-2">
+                  <label
+                    className="text-xs font-semibold uppercase tracking-wider text-slate-500"
+                    htmlFor="feedbackMessage"
+                  >
+                    Сообщение
+                  </label>
+                  <textarea
+                    id="feedbackMessage"
+                    name="message"
+                    rows={5}
+                    minLength={10}
+                    maxLength={2000}
+                    required
+                    className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition-all placeholder:text-gray-400 focus:border-primary focus:ring-2 focus:ring-primary/10"
+                    placeholder="Напишите, что работает не так, что стоит улучшить или какой баг вы нашли"
+                  />
+                  <p className="text-xs text-slate-500">
+                    Отзыв появится в админке и будет отправлен в Telegram ответственным пользователям.
+                  </p>
+                </div>
+                <div className="md:col-span-2">
+                  <button
+                    type="submit"
+                    className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary/90"
+                  >
+                    Отправить отзыв
+                  </button>
+                </div>
+              </div>
+            </form>
+
+            <form
+              id="danger-zone"
+              action={deleteAccount}
+              className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
+            >
+              <div className="border-b border-slate-200/60 px-8 py-6">
+                <h3 className="text-base font-bold text-slate-900">Опасная зона</h3>
+              </div>
+              <div className="flex flex-col gap-4 p-8">
+                <div>
+                  <p className="text-sm font-medium text-slate-900">Удалить аккаунт</p>
+                  <p className="text-xs text-slate-500">
+                    Введите DELETE или УДАЛИТЬ для подтверждения.
+                  </p>
+                </div>
+                <div className="flex flex-col gap-3 md:flex-row md:items-center">
+                  <input
+                    name="deleteConfirmation"
+                    type="text"
+                    required
+                    className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 md:max-w-xs"
+                    placeholder="DELETE"
+                  />
+                  <button
+                    type="submit"
+                    className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 transition-colors hover:bg-rose-100"
+                  >
+                    Удалить аккаунт
+                  </button>
+                </div>
+              </div>
+            </form>
+          </>
+        )}
       </div>
     </AppShell>
   );

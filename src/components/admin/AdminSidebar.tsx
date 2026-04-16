@@ -7,6 +7,7 @@ const NAV_ITEMS = [
   { href: "/admin", label: "Сводка", icon: "dashboard" },
   { href: "/admin/clients", label: "Клиенты", icon: "group" },
   { href: "/admin/billing", label: "Биллинг", icon: "payments" },
+  { href: "/admin/feedback", label: "Обратная связь", icon: "chat" },
 ];
 
 export default function AdminSidebar(props: { userEmail?: string | null }) {
