@@ -44,6 +44,23 @@ body {
   overflow-x: hidden;
 }
 
+:where(
+  button:not(:disabled),
+  a[href],
+  summary,
+  [role="button"],
+  input[type="checkbox"],
+  input[type="radio"],
+  label[for],
+  select
+) {
+  cursor: pointer;
+}
+
+:where(button:disabled, [aria-disabled="true"]) {
+  cursor: not-allowed;
+}
+
 /* Background Blobs */
 body::before {
   content: "";
@@ -182,6 +199,23 @@ body::after {
   background-color: rgba(255, 255, 255, 0.8);
   border-color: var(--color-primary);
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  body::before,
+  body::after,
+  .blob-bottom {
+    animation: none !important;
+  }
 }
 
 .chat-markdown {

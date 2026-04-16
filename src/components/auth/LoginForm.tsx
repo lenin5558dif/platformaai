@@ -26,6 +26,13 @@ type AuthFeedback = {
   action: "retry" | "use_sso" | "contact_admin" | null;
 };
 
+const inputClassName =
+  "w-full rounded-lg border border-gray-200 bg-white/75 px-3 py-2.5 text-sm text-slate-900 outline-none transition-all duration-200 ease-out placeholder:text-gray-400 focus:border-primary focus:ring-2 focus:ring-primary/10 focus-visible:outline-none";
+const tabButtonClassName =
+  "rounded-md px-3.5 py-2.5 text-sm font-medium transition-all duration-200 ease-out cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20";
+const primaryButtonClassName =
+  "w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-primary-hover hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 active:translate-y-0 active:scale-[0.99] cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:shadow-none";
+
 function emitAuthEvent(outcome: string, method: string) {
   if (typeof window === "undefined") {
     return;
@@ -222,7 +229,7 @@ export default function LoginForm({
       setStatus("error");
       setFeedback({
         state: "error",
-          title: "Заполните форму",
+        title: "Заполните форму",
         message: "Email и пароль обязательны.",
         action: "retry",
       });
@@ -345,10 +352,10 @@ export default function LoginForm({
           aria-controls="auth-panel"
           id="auth-tab-signin"
           onClick={() => onModeChange("signin")}
-          className={`rounded-md px-3 py-2 text-sm font-medium transition ${
+          className={`${tabButtonClassName} ${
             mode === "signin"
               ? "bg-white text-text-main shadow"
-              : "text-text-secondary hover:text-text-main"
+              : "text-text-secondary hover:bg-white/70 hover:text-text-main"
           }`}
         >
           Вход
@@ -360,10 +367,10 @@ export default function LoginForm({
           aria-controls="auth-panel"
           id="auth-tab-register"
           onClick={() => onModeChange("register")}
-          className={`rounded-md px-3 py-2 text-sm font-medium transition ${
+          className={`${tabButtonClassName} ${
             mode === "register"
               ? "bg-white text-text-main shadow"
-              : "text-text-secondary hover:text-text-main"
+              : "text-text-secondary hover:bg-white/70 hover:text-text-main"
           }`}
         >
           Регистрация
@@ -392,7 +399,7 @@ export default function LoginForm({
                   value={nickname}
                   onChange={(event) => setNickname(event.target.value)}
                   placeholder="ваш_никнейм"
-                  className="w-full rounded-lg border border-gray-200 bg-white/70 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  className={inputClassName}
                   autoComplete="nickname"
                   required
                 />
@@ -410,7 +417,7 @@ export default function LoginForm({
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
                 placeholder="name@company.ru"
-                className="w-full rounded-lg border border-gray-200 bg-white/70 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                className={inputClassName}
                 autoComplete="email"
                 aria-invalid={status === "error" || status === "expired"}
                 aria-describedby={feedback ? "auth-feedback" : undefined}
@@ -425,17 +432,17 @@ export default function LoginForm({
               >
                 Пароль
               </label>
-              <input
-                id="auth-password"
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                placeholder="Минимум 8 символов"
-                className="w-full rounded-lg border border-gray-200 bg-white/70 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-                autoComplete={mode === "register" ? "new-password" : "current-password"}
-                required
-              />
-            </div>
+                <input
+                  id="auth-password"
+                  type="password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  placeholder="Минимум 8 символов"
+                  className={inputClassName}
+                  autoComplete={mode === "register" ? "new-password" : "current-password"}
+                  required
+                />
+              </div>
 
             {mode === "register" && (
               <div>
@@ -451,7 +458,7 @@ export default function LoginForm({
                   value={confirmPassword}
                   onChange={(event) => setConfirmPassword(event.target.value)}
                   placeholder="Повторите пароль"
-                  className="w-full rounded-lg border border-gray-200 bg-white/70 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  className={inputClassName}
                   autoComplete="new-password"
                   required
                 />
@@ -460,7 +467,7 @@ export default function LoginForm({
 
             <button
               type="submit"
-              className="w-full rounded-lg bg-primary px-3 py-2.5 text-sm font-semibold text-white hover:bg-primary-hover disabled:opacity-60"
+              className={primaryButtonClassName}
               disabled={status === "submitting"}
             >
               {status === "submitting" ? "Обработка..." : modeText.emailAction}
@@ -472,7 +479,7 @@ export default function LoginForm({
           <div
             id="auth-feedback"
             aria-live="polite"
-            className={`rounded-lg border px-3 py-2 text-xs ${
+            className={`rounded-xl border px-4 py-3 text-sm leading-relaxed transition-all duration-200 ease-out ${
               feedback.state === "error" || feedback.state === "expired"
                 ? "border-amber-200 bg-amber-50 text-amber-800"
                 : "border-emerald-200 bg-emerald-50 text-emerald-700"
@@ -483,7 +490,7 @@ export default function LoginForm({
             {feedback.action === "retry" && capabilities.email && (
               <button
                 type="button"
-                className="mt-2 text-xs font-semibold underline underline-offset-2"
+                className="mt-2 cursor-pointer text-xs font-semibold underline underline-offset-2 transition-colors duration-200 hover:text-text-main"
                 onClick={resetToRetry}
               >
                 Попробовать снова
@@ -501,7 +508,7 @@ export default function LoginForm({
         )}
 
         {!capabilities.email && !hasAnyMethod && (
-          <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-relaxed text-amber-800">
             Сейчас недоступны способы входа. Обратитесь к администратору.
           </p>
         )}
@@ -524,7 +531,7 @@ export default function LoginForm({
             onStarted={() => emitAuthEvent("submit", "telegram")}
           />
         ) : (
-          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-relaxed text-amber-800">
             <p className="font-semibold">Вход через Telegram недоступен</p>
             <p className="mt-1">
               Сервис временно недоступен в этом окружении. Сейчас используйте email + пароль.

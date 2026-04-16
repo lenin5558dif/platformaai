@@ -29,12 +29,14 @@ export default function AppShell({
   children,
 }: AppShellProps) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const shellActionClass =
+    "inline-flex min-h-10 items-center justify-center rounded-full border border-gray-200 bg-white/80 px-3 text-xs font-semibold text-gray-700 transition-colors motion-safe:duration-150 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 cursor-pointer";
 
   const asideContent = (
     <>
       <div className="p-3 pb-2">
         <Link
-          className="group flex w-full items-center gap-3 rounded-lg border border-gray-200 bg-white/70 px-3 py-2.5 text-sm font-semibold text-gray-700 shadow-sm transition-all hover:bg-white hover:text-gray-900 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+          className="group flex min-h-10 w-full cursor-pointer items-center gap-3 rounded-lg border border-gray-200 bg-white/70 px-3 py-2.5 text-sm font-semibold text-gray-700 shadow-sm transition-colors motion-safe:duration-150 hover:bg-white hover:text-gray-900 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
           href="/"
           onClick={() => setIsMobileMenuOpen(false)}
         >
@@ -51,7 +53,7 @@ export default function AppShell({
             Возвращайтесь в чат и проверяйте ответы без лишних шагов.
           </p>
           <Link
-            className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:text-primary-hover"
+            className="mt-2 inline-flex min-h-9 cursor-pointer items-center gap-1 text-[11px] font-semibold text-primary transition-colors motion-safe:duration-150 hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
             href="/"
             onClick={() => setIsMobileMenuOpen(false)}
           >
@@ -79,7 +81,7 @@ export default function AppShell({
       {showSidebar && isMobileMenuOpen && (
         <button
           type="button"
-          className="fixed inset-0 z-30 bg-black/30 md:hidden"
+          className="fixed inset-0 z-30 cursor-pointer bg-black/30 md:hidden"
           aria-label="Закрыть меню"
           onClick={() => setIsMobileMenuOpen(false)}
         />
@@ -87,12 +89,12 @@ export default function AppShell({
 
       {showSidebar && (
         <>
-          <aside className="hidden md:flex w-[280px] flex-col flex-shrink-0 z-20 transition-all duration-300 m-4 rounded-xl glass-panel shadow-glass-lg">
+          <aside className="hidden md:flex w-[280px] flex-shrink-0 flex-col z-20 m-4 rounded-xl glass-panel shadow-glass-lg transition-shadow motion-safe:duration-200">
             {asideContent}
           </aside>
 
           <aside
-            className={`fixed inset-y-0 left-0 z-40 flex w-[280px] flex-col rounded-xl glass-panel shadow-glass-lg m-4 transition-transform duration-300 md:hidden ${
+            className={`fixed inset-y-0 left-0 z-40 flex w-[280px] flex-col rounded-xl glass-panel shadow-glass-lg m-4 transition-transform motion-safe:duration-200 md:hidden ${
               isMobileMenuOpen ? "translate-x-0" : "-translate-x-[120%]"
             }`}
           >
@@ -107,7 +109,7 @@ export default function AppShell({
             {showSidebar && (
               <button
                 type="button"
-                className="md:hidden inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-white/80 text-gray-700"
+                className="md:hidden inline-flex h-10 w-10 cursor-pointer items-center justify-center rounded-lg border border-gray-200 bg-white/80 text-gray-700 transition-colors motion-safe:duration-150 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
                 onClick={() => setIsMobileMenuOpen(true)}
                 aria-label="Открыть меню"
               >
@@ -125,7 +127,7 @@ export default function AppShell({
           </div>
           <div className="flex items-center gap-2">
             <Link
-              className="rounded-full border border-gray-200 bg-white/80 px-3 py-1 text-xs font-semibold text-gray-700 transition-colors hover:bg-white"
+              className={shellActionClass}
               href="/"
             >
               В чат

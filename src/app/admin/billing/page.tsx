@@ -92,7 +92,7 @@ export default async function AdminBillingPage() {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <div className="rounded-2xl bg-white/80 border border-white/50 shadow-glass-sm p-5">
+        <div className="rounded-2xl border border-white/50 bg-white/80 p-5 shadow-glass-sm transition-shadow motion-safe:duration-150 hover:shadow-md">
           <p className="text-xs text-text-secondary">Клиенты</p>
           <p className="text-2xl font-semibold text-text-main">
             {formatNumber(usersTotal)}
@@ -101,7 +101,7 @@ export default async function AdminBillingPage() {
             Активных: {formatNumber(usersActive)}
           </p>
         </div>
-        <div className="rounded-2xl bg-white/80 border border-white/50 shadow-glass-sm p-5">
+        <div className="rounded-2xl border border-white/50 bg-white/80 p-5 shadow-glass-sm transition-shadow motion-safe:duration-150 hover:shadow-md">
           <p className="text-xs text-text-secondary">Общий баланс</p>
           <p className="text-2xl font-semibold text-text-main">
             {formatCredits(totalBalanceValue)}
@@ -110,7 +110,7 @@ export default async function AdminBillingPage() {
             {formatCreditsLabel(totalBalanceValue)}
           </p>
         </div>
-        <div className="rounded-2xl bg-white/80 border border-white/50 shadow-glass-sm p-5">
+        <div className="rounded-2xl border border-white/50 bg-white/80 p-5 shadow-glass-sm transition-shadow motion-safe:duration-150 hover:shadow-md">
           <p className="text-xs text-text-secondary">Пополнения</p>
           <p className="text-2xl font-semibold text-text-main">
             {formatCredits(refillsValue)}
@@ -119,7 +119,7 @@ export default async function AdminBillingPage() {
             Транзакций: {formatNumber(refillsTotal._count._all)}
           </p>
         </div>
-        <div className="rounded-2xl bg-white/80 border border-white/50 shadow-glass-sm p-5">
+        <div className="rounded-2xl border border-white/50 bg-white/80 p-5 shadow-glass-sm transition-shadow motion-safe:duration-150 hover:shadow-md">
           <p className="text-xs text-text-secondary">Списания</p>
           <p className="text-2xl font-semibold text-text-main">
             {formatCredits(spendsValue)}
@@ -130,7 +130,7 @@ export default async function AdminBillingPage() {
         </div>
       </div>
 
-      <div className="rounded-2xl bg-white/80 border border-white/50 shadow-glass-sm p-6">
+      <div className="rounded-2xl border border-white/50 bg-white/80 p-6 shadow-glass-sm transition-shadow motion-safe:duration-150 hover:shadow-md">
         <h2 className="text-lg font-semibold text-text-main font-display">
           Последние транзакции
         </h2>

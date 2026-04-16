@@ -12,6 +12,8 @@ const NAV_ITEMS = [
 
 export default function AdminSidebar(props: { userEmail?: string | null }) {
   const pathname = usePathname();
+  const navLinkClass =
+    "flex min-h-10 items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors motion-safe:duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 cursor-pointer";
 
   return (
     <aside className="w-full md:w-72 md:min-h-screen border-r border-white/50 bg-white/70 backdrop-blur-sm">
@@ -33,7 +35,7 @@ export default function AdminSidebar(props: { userEmail?: string | null }) {
             <Link
               key={item.href}
               href={item.href}
-              className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
+              className={`${navLinkClass} ${
                 active
                   ? "bg-primary/10 text-primary font-semibold"
                   : "text-text-main hover:bg-white"
@@ -49,7 +51,7 @@ export default function AdminSidebar(props: { userEmail?: string | null }) {
       <div className="px-3 pb-4">
         <Link
           href="/"
-          className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-text-main hover:bg-white"
+          className="flex min-h-10 items-center gap-3 rounded-lg px-3 py-2 text-sm text-text-main transition-colors motion-safe:duration-150 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 cursor-pointer"
         >
           <span className="material-symbols-outlined text-[18px]">arrow_back</span>
           <span>Вернуться в чаты</span>

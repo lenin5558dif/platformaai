@@ -232,18 +232,19 @@ export default function TelegramLoginButton({
         type="button"
         onClick={handleClick}
         disabled={status === "starting" || status === "signing-in"}
-        className="flex w-full items-center justify-center gap-3 rounded-xl bg-[#4da3ff] px-4 py-3 text-base font-semibold text-white shadow-[0_14px_30px_rgba(77,163,255,0.28)] transition hover:bg-[#2f94ff] disabled:cursor-not-allowed disabled:opacity-70"
+        aria-busy={status === "starting" || status === "signing-in"}
+        className="flex min-h-11 w-full items-center justify-center gap-3 rounded-xl bg-[#4da3ff] px-4 py-3 text-base font-semibold text-white shadow-[0_14px_30px_rgba(77,163,255,0.28)] transition-all duration-200 ease-out cursor-pointer hover:-translate-y-0.5 hover:bg-[#2f94ff] hover:shadow-[0_18px_36px_rgba(77,163,255,0.34)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4da3ff]/30 active:translate-y-0 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:translate-y-0 disabled:hover:shadow-[0_14px_30px_rgba(77,163,255,0.28)]"
       >
         <TelegramIcon />
         <span>{buttonLabel}</span>
       </button>
 
-      <p className="text-center text-xs text-text-secondary">
+      <p className="text-center text-sm leading-relaxed text-text-secondary">
         Откроется отдельное окно со страницей входа Telegram. Текущая страница сервиса останется открытой.
       </p>
 
       {errorMessage ? (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-relaxed text-amber-800">
           <p className="font-semibold">Вход через Telegram не завершен</p>
           <p className="mt-1">{errorMessage}</p>
         </div>

@@ -1029,7 +1029,7 @@ export default function ChatApp() {
               )}
             </div>
             <button
-              className="flex size-8 shrink-0 items-center justify-center rounded-lg text-text-secondary hover:text-text-primary hover:bg-black/5"
+              className="flex size-9 shrink-0 items-center justify-center rounded-lg text-text-secondary transition-colors hover:text-text-primary hover:bg-black/5"
               onClick={toggleDesktopSidebar}
               type="button"
               aria-label={isSidebarCollapsed ? "Развернуть боковую панель" : "Свернуть боковую панель"}
@@ -1060,7 +1060,7 @@ export default function ChatApp() {
           {isSidebarCollapsed ? (
             <div className="mb-4 flex justify-center">
               <button
-                className="hidden md:flex size-10 items-center justify-center rounded-lg border border-black/10 bg-white/70 text-text-secondary hover:text-text-primary hover:bg-white"
+                className="hidden md:flex size-10 items-center justify-center rounded-lg border border-black/10 bg-white/70 text-text-secondary transition-colors hover:text-text-primary hover:bg-white"
                 type="button"
                 title="Развернуть и искать"
                 aria-label="Развернуть и искать"
@@ -1084,7 +1084,7 @@ export default function ChatApp() {
                   />
                   {searchQuery.trim() && (
                     <button
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text-primary"
+                      className="absolute right-1 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-black/5 hover:text-text-primary"
                       type="button"
                       onClick={() => setSearchQuery("")}
                     >
@@ -1139,7 +1139,7 @@ export default function ChatApp() {
                       </div>
                       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button
-                          className={`size-7 flex items-center justify-center rounded-md ${chat.pinned ? "bg-primary/10 text-primary" : "text-text-secondary hover:text-text-primary hover:bg-black/5"}`}
+                          className={`size-8 flex items-center justify-center rounded-md transition-colors ${chat.pinned ? "bg-primary/10 text-primary" : "text-text-secondary hover:text-text-primary hover:bg-black/5"}`}
                           onClick={(event) => {
                             event.stopPropagation();
                             void handleTogglePin(chat);
@@ -1150,7 +1150,7 @@ export default function ChatApp() {
                           <span className="material-symbols-outlined text-[16px]">push_pin</span>
                         </button>
                         <button
-                          className={`size-7 flex items-center justify-center rounded-md ${chat.isFavorite ? "bg-amber-100 text-amber-600" : "text-text-secondary hover:text-text-primary hover:bg-black/5"}`}
+                          className={`size-8 flex items-center justify-center rounded-md transition-colors ${chat.isFavorite ? "bg-amber-100 text-amber-600" : "text-text-secondary hover:text-text-primary hover:bg-black/5"}`}
                           onClick={(event) => {
                             event.stopPropagation();
                             void handleToggleFavorite(chat);
@@ -1161,7 +1161,7 @@ export default function ChatApp() {
                           <span className="material-symbols-outlined text-[16px]">star</span>
                         </button>
                         <button
-                          className="size-7 flex items-center justify-center rounded-md text-text-secondary hover:text-red-600 hover:bg-red-50"
+                          className="size-8 flex items-center justify-center rounded-md text-text-secondary transition-colors hover:text-red-600 hover:bg-red-50"
                           onClick={(event) => {
                             event.stopPropagation();
                             void handleDeleteChat(chat.id);
@@ -1201,7 +1201,7 @@ export default function ChatApp() {
               </div>
               <Link
                 href="/settings"
-                className="flex size-8 items-center justify-center rounded-lg text-text-secondary hover:bg-black/5 hover:text-text-primary"
+                className="flex size-9 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-black/5 hover:text-text-primary"
                 onClick={closeSidebar}
                 aria-label="Настройки"
                 title="Настройки"
@@ -1231,7 +1231,7 @@ export default function ChatApp() {
               </div>
               <Link
                 href="/settings"
-                className="flex size-8 items-center justify-center rounded-lg text-text-secondary hover:bg-black/5 hover:text-text-primary"
+                className="flex size-9 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-black/5 hover:text-text-primary"
                 onClick={closeSidebar}
                 aria-label="Настройки"
                 title="Настройки"
@@ -1260,7 +1260,7 @@ export default function ChatApp() {
                   </p>
                   <Link
                     href="/settings"
-                    className="shrink-0 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100"
+                    className="inline-flex h-9 shrink-0 items-center rounded-lg border border-amber-300 bg-white px-3.5 py-2 text-xs font-semibold text-amber-900 transition-colors hover:bg-amber-100"
                   >
                     Открыть настройки
                   </Link>
@@ -1270,7 +1270,7 @@ export default function ChatApp() {
             <div className="glass-panel rounded-xl px-4 py-3 flex items-center justify-between shadow-lg">
               <div className="flex items-center gap-4">
                 <button
-                  className="md:hidden text-text-secondary hover:text-text-primary"
+                  className="md:hidden inline-flex size-10 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-black/5 hover:text-text-primary"
                   onClick={() => setIsSidebarOpen(true)}
                 >
                   <span className="material-symbols-outlined">menu</span>
@@ -1327,7 +1327,7 @@ export default function ChatApp() {
                           <button
                             key={filter.id}
                             type="button"
-                            className={`rounded-full px-2 py-0.5 text-[10px] ${modelFilter === filter.id ? "bg-primary/15 text-primary" : "text-text-secondary hover:text-text-primary hover:bg-black/5"}`}
+                            className={`rounded-full px-2.5 py-1 text-[10px] font-medium transition-colors ${modelFilter === filter.id ? "bg-primary/15 text-primary" : "text-text-secondary hover:text-text-primary hover:bg-black/5"}`}
                             onClick={() => setModelFilter(filter.id)}
                           >
                             {filter.label}
@@ -1339,7 +1339,7 @@ export default function ChatApp() {
                       {filteredModels.map((model) => (
                         <button
                           key={model.id}
-                          className={`w-full text-left px-3 py-2 rounded-lg text-sm mb-1 ${selectedModel === model.id ? "bg-primary/10 text-primary font-medium" : "hover:bg-black/5 text-text-main"}`}
+                          className={`mb-1 w-full rounded-lg px-3 py-2.5 text-left text-sm transition-colors ${selectedModel === model.id ? "bg-primary/10 text-primary font-medium" : "text-text-main hover:bg-black/5"}`}
                           onClick={() => void handleSelectModel(model.id)}
                         >
                           <div className="flex flex-col gap-0.5">
@@ -1377,7 +1377,7 @@ export default function ChatApp() {
                     )}
                   </div>
                   <button
-                    className="text-amber-700 hover:text-amber-900"
+                    className="inline-flex size-8 items-center justify-center rounded-lg text-amber-700 transition-colors hover:bg-amber-100 hover:text-amber-900"
                     type="button"
                     onClick={() => setError(null)}
                     aria-label="Закрыть"
@@ -1387,9 +1387,9 @@ export default function ChatApp() {
                 </div>
                 {errorCta && (
                   <div className="mt-2">
-                    <Link
-                      href={errorCta.href}
-                      className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700 hover:text-amber-900"
+                  <Link
+                    href={errorCta.href}
+                    className="inline-flex items-center gap-1 rounded-md px-1 py-1 text-xs font-semibold text-amber-700 transition-colors hover:bg-amber-100 hover:text-amber-900"
                     >
                       {errorCta.label}
                       <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
@@ -1409,7 +1409,7 @@ export default function ChatApp() {
                     </p>
                   </div>
                   <button
-                    className="text-text-secondary hover:text-text-primary"
+                    className="inline-flex size-8 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-black/5 hover:text-text-primary"
                     type="button"
                     onClick={() => setShowOnboarding(false)}
                     aria-label="Закрыть"
@@ -1420,7 +1420,7 @@ export default function ChatApp() {
                 <div className="mt-2">
                   <Link
                     href="/settings"
-                    className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:text-primary-hover"
+                    className="inline-flex items-center gap-1 rounded-md px-1 py-1 text-xs font-semibold text-primary transition-colors hover:bg-primary/10 hover:text-primary-hover"
                   >
                     Завершить настройку
                     <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
@@ -1545,14 +1545,14 @@ export default function ChatApp() {
                                   />
                                   <div className="flex justify-end gap-2 text-xs">
                                     <button
-                                      className="rounded-full border border-black/10 px-3 py-1 text-text-secondary hover:text-text-primary"
+                                      className="rounded-full border border-black/10 px-3 py-1.5 text-text-secondary transition-colors hover:bg-black/5 hover:text-text-primary"
                                       type="button"
                                       onClick={cancelEditMessage}
                                     >
                                       Отмена
                                     </button>
                                     <button
-                                      className="rounded-full bg-primary px-3 py-1 text-white disabled:opacity-50"
+                                      className="rounded-full bg-primary px-3 py-1.5 text-white transition-colors hover:bg-primary/90 disabled:opacity-50"
                                       type="button"
                                       onClick={saveEditMessage}
                                       disabled={!editingText.trim()}
@@ -1576,7 +1576,7 @@ export default function ChatApp() {
                                 Токены: <strong>{tokenCount.toLocaleString()}</strong>
                               </span>
                             </div>
-                            <button className="ml-auto flex items-center gap-1 text-xs text-primary hover:text-text-primary transition-colors" onClick={() => handleCopy(message.content)}>
+                            <button className="ml-auto flex items-center gap-1 rounded-md px-2 py-1 text-xs text-primary transition-colors hover:bg-primary/10 hover:text-text-primary" onClick={() => handleCopy(message.content)}>
                               <span className="material-symbols-outlined text-[16px]">content_copy</span>
                               Копировать
                             </button>
@@ -1585,7 +1585,7 @@ export default function ChatApp() {
                         {!isAI && !isEditing && (
                           <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-text-secondary">
                             <button
-                              className="flex items-center gap-1 hover:text-text-primary"
+                              className="flex items-center gap-1 rounded-md px-2 py-1 transition-colors hover:bg-black/5 hover:text-text-primary"
                               type="button"
                               onClick={() => startEditMessage(message)}
                             >
@@ -1593,7 +1593,7 @@ export default function ChatApp() {
                               Редактировать
                             </button>
                             <button
-                              className="flex items-center gap-1 hover:text-text-primary"
+                              className="flex items-center gap-1 rounded-md px-2 py-1 transition-colors hover:bg-black/5 hover:text-text-primary"
                               type="button"
                               onClick={() => handleCopy(message.content)}
                             >
@@ -1630,7 +1630,7 @@ export default function ChatApp() {
                     <span className="truncate max-w-[100px]">{att.filename}</span>
                     {att.mimeType.startsWith("image/") && (
                       <button
-                        className="ml-1 rounded-full p-0.5 text-text-secondary hover:text-text-primary"
+                        className="ml-1 inline-flex size-6 items-center justify-center rounded-full text-text-secondary transition-colors hover:bg-black/5 hover:text-text-primary"
                         type="button"
                         title="Описать изображение"
                         onClick={() => handleDescribeAttachment(att)}
@@ -1699,7 +1699,7 @@ export default function ChatApp() {
 
               {isSending ? (
                 <button
-                  className="p-2 bg-rose-500 text-white hover:bg-rose-600 transition-colors rounded-full shrink-0 shadow-[0_0_15px_rgba(244,63,94,0.35)]"
+                  className="inline-flex size-11 items-center justify-center rounded-full bg-rose-500 text-white transition-colors hover:bg-rose-600 shrink-0 shadow-[0_0_15px_rgba(244,63,94,0.35)]"
                   onClick={handleStopGeneration}
                   type="button"
                   aria-label="Остановить генерацию"
@@ -1709,7 +1709,7 @@ export default function ChatApp() {
                 </button>
               ) : (
                 <button
-                  className="p-2 bg-primary text-white hover:bg-primary/90 transition-colors rounded-full shrink-0 shadow-[0_0_15px_rgba(212,122,106,0.4)] disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="inline-flex size-11 items-center justify-center rounded-full bg-primary text-white transition-colors hover:bg-primary/90 shrink-0 shadow-[0_0_15px_rgba(212,122,106,0.4)] disabled:opacity-50 disabled:cursor-not-allowed"
                   onClick={() => handleSend()}
                   disabled={!input.trim()}
                   type="button"

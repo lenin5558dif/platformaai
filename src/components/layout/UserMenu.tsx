@@ -28,6 +28,8 @@ export default function UserMenu({
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
+  const menuItemClass =
+    "mb-1 flex min-h-10 items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors motion-safe:duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 cursor-pointer";
 
   useEffect(() => {
     if (!isOpen) return;
@@ -60,7 +62,7 @@ export default function UserMenu({
       <button
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
-        className="group flex w-full items-center gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-white/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+        className="group flex min-h-10 w-full cursor-pointer items-center gap-3 rounded-lg px-2 py-2 transition-colors motion-safe:duration-150 hover:bg-white/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
         aria-expanded={isOpen}
         aria-controls="user-menu"
       >
@@ -92,7 +94,7 @@ export default function UserMenu({
             return (
               <Link
                 key={item.href}
-                className={`mb-1 flex items-center gap-3 rounded-lg px-2 py-2 text-sm transition-colors ${
+                className={`${menuItemClass} ${
                   active
                     ? "bg-primary/10 text-primary font-medium"
                     : "text-gray-700 hover:bg-white"

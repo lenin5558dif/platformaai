@@ -99,19 +99,19 @@ export default async function AdminDashboardPage() {
           <div className="flex flex-wrap gap-2">
             <a
               href="/admin/clients"
-              className="rounded-full border border-gray-200 bg-white/70 px-3 py-2 text-sm font-medium text-text-main hover:bg-white"
+              className="inline-flex min-h-10 cursor-pointer items-center rounded-full border border-gray-200 bg-white/70 px-3 py-2 text-sm font-medium text-text-main transition-colors motion-safe:duration-150 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
             >
               Клиенты
             </a>
             <a
               href="/admin/billing"
-              className="rounded-full border border-gray-200 bg-white/70 px-3 py-2 text-sm font-medium text-text-main hover:bg-white"
+              className="inline-flex min-h-10 cursor-pointer items-center rounded-full border border-gray-200 bg-white/70 px-3 py-2 text-sm font-medium text-text-main transition-colors motion-safe:duration-150 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
             >
               Биллинг
             </a>
             <a
               href="/admin/feedback"
-              className="rounded-full border border-gray-200 bg-white/70 px-3 py-2 text-sm font-medium text-text-main hover:bg-white"
+              className="inline-flex min-h-10 cursor-pointer items-center rounded-full border border-gray-200 bg-white/70 px-3 py-2 text-sm font-medium text-text-main transition-colors motion-safe:duration-150 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
             >
               Обратная связь
             </a>

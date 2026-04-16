@@ -40,7 +40,7 @@ export default async function AdminFeedbackPage() {
 
   return (
     <div className="space-y-6">
-      <div className="rounded-2xl bg-white/80 border border-white/50 shadow-glass-sm p-6">
+      <div className="rounded-2xl border border-white/50 bg-white/80 p-6 shadow-glass-sm transition-shadow motion-safe:duration-150 hover:shadow-md">
         <h1 className="text-2xl font-semibold text-text-main font-display">
           Обратная связь
         </h1>
@@ -49,7 +49,7 @@ export default async function AdminFeedbackPage() {
         </p>
       </div>
 
-      <div className="rounded-2xl bg-white/80 border border-white/50 shadow-glass-sm p-6">
+      <div className="rounded-2xl border border-white/50 bg-white/80 p-6 shadow-glass-sm transition-shadow motion-safe:duration-150 hover:shadow-md">
         {feedbackItems.length === 0 ? (
           <p className="text-sm text-text-secondary">Отзывов пока нет.</p>
         ) : (
@@ -63,7 +63,7 @@ export default async function AdminFeedbackPage() {
               return (
                 <article
                   key={item.id}
-                  className="rounded-2xl border border-slate-200 bg-slate-50/70 p-5"
+                  className="rounded-2xl border border-slate-200 bg-slate-50/70 p-5 shadow-sm transition-shadow motion-safe:duration-150 hover:shadow-md"
                 >
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                     <div className="space-y-2">
@@ -89,9 +89,9 @@ export default async function AdminFeedbackPage() {
                     <p className="text-xs text-slate-500">{formatDate(item.createdAt)}</p>
                   </div>
 
-                  <div className="mt-4 rounded-xl bg-white px-4 py-3 text-sm text-slate-800 whitespace-pre-wrap">
-                    {item.message}
-                  </div>
+                    <div className="mt-4 rounded-xl bg-white px-4 py-3 text-sm leading-6 text-slate-800 whitespace-pre-wrap">
+                      {item.message}
+                    </div>
                 </article>
               );
             })}

@@ -431,6 +431,17 @@ function messageToneClass(tone: "info" | "success" | "error") {
   return "border-sky-200 bg-sky-50 text-sky-700";
 }
 
+const settingsInputClassName =
+  "w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition-all duration-200 ease-out placeholder:text-gray-400 focus:border-primary focus:ring-2 focus:ring-primary/10 focus-visible:outline-none";
+const settingsPrimaryButtonClassName =
+  "rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white transition-all duration-200 ease-out cursor-pointer hover:-translate-y-0.5 hover:bg-primary/90 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 active:translate-y-0 active:scale-[0.99]";
+const settingsSecondaryButtonClassName =
+  "rounded-full border border-slate-200 bg-white/80 px-3 py-1 text-xs font-semibold text-slate-700 transition-all duration-200 ease-out cursor-pointer hover:-translate-y-0.5 hover:bg-white hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 active:translate-y-0 active:scale-[0.99]";
+const settingsNoticeClassName =
+  "rounded-xl border px-4 py-3 text-sm leading-relaxed transition-all duration-200 ease-out";
+const settingsCardStatClassName = "rounded-xl border border-slate-200 bg-slate-50 p-4";
+const settingsTextareaClassName = `${settingsInputClassName} min-h-[96px]`;
+
 export default async function SettingsPage({
   searchParams,
 }: {
@@ -529,7 +540,7 @@ export default async function SettingsPage({
             </h2>
             <p className="mt-1 text-sm text-slate-500">
               {isOnboardingFlow
-                ? "Заполните короткий профиль, и мы сразу откроем чат."
+                ? "Заполните обязательные поля со звездочкой и нажмите кнопку ниже, чтобы мы сразу открыли чат."
                 : "Здесь собраны профиль, контакты и оплата."}
             </p>
           </div>
@@ -537,7 +548,7 @@ export default async function SettingsPage({
             <form action={logout}>
               <button
                 type="submit"
-                className="rounded-full border border-slate-200 bg-white/80 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-white"
+                className={settingsSecondaryButtonClassName}
               >
                 Выйти из аккаунта
               </button>
@@ -546,18 +557,18 @@ export default async function SettingsPage({
         </div>
 
         {params?.success && (
-          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-700">
+          <div className={`${settingsNoticeClassName} border-emerald-200 bg-emerald-50 text-emerald-700`}>
             Оплата прошла успешно. Баланс обновится после подтверждения платежа.
           </div>
         )}
         {params?.canceled && (
-          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-700">
+          <div className={`${settingsNoticeClassName} border-amber-200 bg-amber-50 text-amber-700`}>
             Платеж отменен.
           </div>
         )}
         {verificationMessage && (
           <div
-            className={`rounded-lg border px-4 py-2 text-sm ${messageToneClass(
+            className={`${settingsNoticeClassName} ${messageToneClass(
               verificationMessage.tone
             )}`}
           >
@@ -566,7 +577,7 @@ export default async function SettingsPage({
         )}
         {contactMessage && (
           <div
-            className={`rounded-lg border px-4 py-2 text-sm ${messageToneClass(
+            className={`${settingsNoticeClassName} ${messageToneClass(
               contactMessage.tone
             )}`}
           >
@@ -575,7 +586,7 @@ export default async function SettingsPage({
         )}
         {feedbackMessage && (
           <div
-            className={`rounded-lg border px-4 py-2 text-sm ${messageToneClass(
+            className={`${settingsNoticeClassName} ${messageToneClass(
               feedbackMessage.tone
             )}`}
           >
@@ -584,7 +595,7 @@ export default async function SettingsPage({
         )}
         {profileMessage && (
           <div
-            className={`rounded-lg border px-4 py-2 text-sm ${messageToneClass(
+            className={`${settingsNoticeClassName} ${messageToneClass(
               profileMessage.tone
             )}`}
           >
@@ -592,7 +603,7 @@ export default async function SettingsPage({
           </div>
         )}
         {(needsEmail || needsVerification) && (
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900">
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm leading-relaxed text-amber-900">
             {needsEmail
               ? "Добавьте email. Он понадобится для покупки тарифа."
               : "Подтвердите email. Без этого покупка тарифа недоступна."}
@@ -606,11 +617,11 @@ export default async function SettingsPage({
                   Завершим быстрый старт
                 </p>
                 <p className="mt-1 text-sm text-slate-600">
-                  Заполни обязательные поля со звездочкой, чтобы мы сразу открыли тебе чат.
+                  Заполни обязательные поля со звездочкой, затем нажми кнопку ниже.
                 </p>
                 <ol className="mt-3 space-y-1 text-xs text-slate-500">
                   <li>1. Заполните обязательные поля в профиле.</li>
-                  <li>2. Нажмите «Сохранить и перейти в чат».</li>
+                  <li>2. Нажмите «Сохранить и открыть чат».</li>
                   <li>3. После этого откроется основной экран сервиса.</li>
                 </ol>
               </div>
@@ -622,9 +633,9 @@ export default async function SettingsPage({
                 <button
                   type="submit"
                   form="profile-form"
-                  className="mt-4 w-full rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary/90"
+                  className={`mt-4 w-full ${settingsPrimaryButtonClassName}`}
                 >
-                  Сохранить и перейти в чат
+                  Сохранить и открыть чат
                 </button>
               </div>
             </div>
@@ -664,7 +675,7 @@ export default async function SettingsPage({
                       defaultValue={firstName}
                       required={isOnboardingFlow}
                       aria-required={isOnboardingFlow}
-                      className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition-all placeholder:text-gray-400 focus:border-primary focus:ring-2 focus:ring-primary/10"
+                      className={settingsInputClassName}
                       type="text"
                       placeholder="Ваше имя"
                     />
@@ -682,7 +693,7 @@ export default async function SettingsPage({
                       defaultValue={lastName}
                       required={isOnboardingFlow}
                       aria-required={isOnboardingFlow}
-                      className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition-all placeholder:text-gray-400 focus:border-primary focus:ring-2 focus:ring-primary/10"
+                      className={settingsInputClassName}
                       type="text"
                       placeholder="Ваша фамилия"
                     />
@@ -700,7 +711,7 @@ export default async function SettingsPage({
                       defaultValue={headline}
                       required={isOnboardingFlow}
                       aria-required={isOnboardingFlow}
-                      className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition-all placeholder:text-gray-400 focus:border-primary focus:ring-2 focus:ring-primary/10"
+                      className={settingsInputClassName}
                       type="text"
                       placeholder="Например: маркетолог, разработчик, предприниматель"
                     />
@@ -708,25 +719,25 @@ export default async function SettingsPage({
                 </div>
               </div>
               <div className="mt-6 grid gap-4 md:grid-cols-4">
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div className={settingsCardStatClassName}>
                   <p className="text-xs text-slate-500">Тариф</p>
                   <p className="mt-1 text-sm font-semibold text-slate-900">
                     {planName}
                   </p>
                 </div>
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div className={settingsCardStatClassName}>
                   <p className="text-xs text-slate-500">Баланс</p>
                   <p className="mt-1 text-sm font-semibold text-slate-900">
                     {user?.balance?.toString() ?? "0"}
                   </p>
                 </div>
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div className={settingsCardStatClassName}>
                   <p className="text-xs text-slate-500">Email</p>
                   <p className="mt-1 text-sm font-semibold text-slate-900">
                     {emailVerified ? "Подтвержден" : "Нужна проверка"}
                   </p>
                 </div>
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div className={settingsCardStatClassName}>
                   <p className="text-xs text-slate-500">Telegram</p>
                   <p className="mt-1 text-sm font-semibold text-slate-900">
                     {user?.telegramId ? "Подключен" : "Не подключен"}
@@ -751,7 +762,7 @@ export default async function SettingsPage({
                     defaultValue={userGoal}
                     required={isOnboardingFlow}
                     aria-required={isOnboardingFlow}
-                    className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/10"
+                    className={settingsInputClassName}
                   >
                     <option value="">Выберите цель</option>
                     <option value="Учёба и обучение">Учёба и обучение</option>
@@ -768,7 +779,7 @@ export default async function SettingsPage({
                   <select
                     name="userTone"
                     defaultValue={userTone}
-                    className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/10"
+                    className={settingsInputClassName}
                   >
                     <option value="">По умолчанию</option>
                     <option value="Коротко и по делу">Коротко и по делу</option>
@@ -785,7 +796,7 @@ export default async function SettingsPage({
                   name="userProfile"
                   defaultValue={userProfile}
                   rows={3}
-                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition-all placeholder:text-gray-400 focus:border-primary focus:ring-2 focus:ring-primary/10"
+                  className={settingsTextareaClassName}
                   placeholder="Кто вы и для чего используете сервис"
                 />
               </div>
@@ -797,15 +808,15 @@ export default async function SettingsPage({
                   name="assistantInstructions"
                   defaultValue={assistantInstructions}
                   rows={3}
-                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition-all placeholder:text-gray-400 focus:border-primary focus:ring-2 focus:ring-primary/10"
+                  className={settingsTextareaClassName}
                   placeholder="Например: отвечай коротко и структурно"
                 />
               </div>
               <button
                 type="submit"
-                className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary/90"
+                className={settingsPrimaryButtonClassName}
               >
-                {isOnboardingFlow ? "Сохранить и перейти в чат" : "Сохранить изменения"}
+                {isOnboardingFlow ? "Сохранить и открыть чат" : "Сохранить изменения"}
               </button>
             </div>
           </section>
@@ -832,7 +843,7 @@ export default async function SettingsPage({
                     id="email"
                     name="email"
                     defaultValue={user?.email ?? ""}
-                    className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition-all placeholder:text-gray-400 focus:border-primary focus:ring-2 focus:ring-primary/10"
+                    className={settingsInputClassName}
                     type="email"
                     placeholder="name@example.com"
                   />
@@ -851,7 +862,7 @@ export default async function SettingsPage({
                     id="phone"
                     name="phone"
                     defaultValue={phone}
-                    className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition-all placeholder:text-gray-400 focus:border-primary focus:ring-2 focus:ring-primary/10"
+                    className={settingsInputClassName}
                     type="tel"
                     placeholder="+7 900 000 00 00"
                   />
@@ -859,7 +870,7 @@ export default async function SettingsPage({
                 <div className="md:col-span-2 flex flex-wrap gap-3">
                   <button
                     type="submit"
-                    className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary/90"
+                    className={settingsPrimaryButtonClassName}
                   >
                     {emailVerified ? "Обновить контакты" : "Подтвердить email"}
                   </button>
@@ -873,23 +884,23 @@ export default async function SettingsPage({
               </div>
               <div className="space-y-4 p-8">
                 <div className="grid gap-4 md:grid-cols-4">
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <div className={settingsCardStatClassName}>
                     <p className="text-xs text-slate-500">Текущий тариф</p>
                     <p className="mt-1 text-sm font-semibold text-slate-900">{planName}</p>
                   </div>
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <div className={settingsCardStatClassName}>
                     <p className="text-xs text-slate-500">Баланс</p>
                     <p className="mt-1 text-sm font-semibold text-slate-900">
                       {user?.balance?.toString() ?? "0"}
                     </p>
                   </div>
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <div className={settingsCardStatClassName}>
                     <p className="text-xs text-slate-500">Telegram</p>
                     <p className="mt-1 text-sm font-semibold text-slate-900">
                       {user?.telegramId ?? "Не подключен"}
                     </p>
                   </div>
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <div className={settingsCardStatClassName}>
                     <p className="text-xs text-slate-500">Статус email</p>
                     <p className="mt-1 text-sm font-semibold text-slate-900">
                       {emailVerified ? "Подтвержден" : "Требуется подтверждение"}
@@ -922,7 +933,7 @@ export default async function SettingsPage({
                     id="feedbackRating"
                     name="rating"
                     defaultValue="5"
-                    className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/10"
+                    className={settingsInputClassName}
                   >
                     <option value="5">5 — отлично</option>
                     <option value="4">4 — хорошо</option>
@@ -942,7 +953,7 @@ export default async function SettingsPage({
                     id="feedbackCategory"
                     name="category"
                     defaultValue={FeedbackCategory.GENERAL}
-                    className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/10"
+                    className={settingsInputClassName}
                   >
                     <option value={FeedbackCategory.GENERAL}>Общее впечатление</option>
                     <option value={FeedbackCategory.IMPROVEMENT}>Идея или улучшение</option>
@@ -963,7 +974,7 @@ export default async function SettingsPage({
                     minLength={10}
                     maxLength={2000}
                     required
-                    className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition-all placeholder:text-gray-400 focus:border-primary focus:ring-2 focus:ring-primary/10"
+                    className={settingsTextareaClassName}
                     placeholder="Напишите, что работает не так, что стоит улучшить или какой баг вы нашли"
                   />
                   <p className="text-xs text-slate-500">
@@ -973,7 +984,7 @@ export default async function SettingsPage({
                 <div className="md:col-span-2">
                   <button
                     type="submit"
-                    className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary/90"
+                    className={settingsPrimaryButtonClassName}
                   >
                     Отправить отзыв
                   </button>
@@ -1001,12 +1012,12 @@ export default async function SettingsPage({
                     name="deleteConfirmation"
                     type="text"
                     required
-                    className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 md:max-w-xs"
+                    className={`${settingsInputClassName} md:max-w-xs`}
                     placeholder="DELETE"
                   />
                   <button
                     type="submit"
-                    className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 transition-colors hover:bg-rose-100"
+                    className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-700 transition-all duration-200 ease-out cursor-pointer hover:-translate-y-0.5 hover:bg-rose-100 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-300 active:translate-y-0 active:scale-[0.99]"
                   >
                     Удалить аккаунт
                   </button>
