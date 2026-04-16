@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { auth } from "@/lib/auth";
 import { consumeEmailVerificationToken } from "@/lib/email-verification";
 
 export async function GET(request: Request) {
@@ -8,10 +9,15 @@ export async function GET(request: Request) {
     process.env.NEXT_PUBLIC_APP_URL ??
     process.env.NEXTAUTH_URL ??
     "http://localhost:3000";
+  const session = await auth();
+  const settingsUrl = `${appUrl}/settings`;
   const loginUrl = `${appUrl}/login?mode=signin`;
+  const targetBase = session?.user?.id ? settingsUrl : loginUrl;
+  const joinQuery = (value: string) =>
+    `${targetBase}${targetBase.includes("?") ? "&" : "?"}${value}`;
 
   if (!token) {
-    return NextResponse.redirect(`${loginUrl}&verification=invalid`);
+    return NextResponse.redirect(joinQuery("verification=invalid"));
   }
 
   const result = await consumeEmailVerificationToken(token);
@@ -19,10 +25,10 @@ export async function GET(request: Request) {
   if (!result.ok) {
     const target =
       result.reason === "TOKEN_EXPIRED"
-        ? `${loginUrl}&verification=expired`
-        : `${loginUrl}&verification=invalid`;
+        ? joinQuery("verification=expired")
+        : joinQuery("verification=invalid");
     return NextResponse.redirect(target);
   }
 
-  return NextResponse.redirect(`${loginUrl}&verification=verified`);
+  return NextResponse.redirect(joinQuery("verification=verified"));
 }
