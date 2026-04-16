@@ -151,13 +151,13 @@ async function sendEmail(params: {
   subject: string;
   text: string;
 }) {
-  if (hasUniSenderConfig() || hasUniSenderHint()) {
-    await sendViaUniSender(params);
+  if (hasSmtpConfig() || hasSmtpHint()) {
+    await sendViaSmtp(params);
     return;
   }
 
-  if (hasSmtpConfig() || hasSmtpHint()) {
-    await sendViaSmtp(params);
+  if (hasUniSenderConfig() || hasUniSenderHint()) {
+    await sendViaUniSender(params);
     return;
   }
 

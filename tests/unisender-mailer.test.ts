@@ -130,16 +130,12 @@ describe("unisender mailer", () => {
     expect(String((init as any).body)).toContain("subject=%D0%A1%D0%B1%D1%80%D0%BE%D1%81+%D0%BF%D0%B0%D1%80%D0%BE%D0%BB%D1%8F+PlatformaAI");
   });
 
-  test("prefers UniSender when both UniSender and SMTP are configured", async () => {
+  test("prefers SMTP when both SMTP and UniSender are configured", async () => {
     process.env.UNISENDER_API_KEY = "unisender-key";
     process.env.UNISENDER_SENDER_EMAIL = "noreply@example.com";
     process.env.UNISENDER_SENDER_NAME = "PlatformaAI";
     process.env.SMTP_HOST = "smtp.local";
     process.env.SMTP_FROM_EMAIL = "smtp@example.com";
-    mockFetchWithTimeout.mockResolvedValue({
-      ok: true,
-      text: vi.fn(async () => ""),
-    });
 
     const { sendEmailVerificationEmail } = await import("../src/lib/unisender");
     await sendEmailVerificationEmail({
@@ -147,11 +143,13 @@ describe("unisender mailer", () => {
       verificationUrl: "https://app.example.com/api/auth/email/verify?token=abc",
     });
 
-    expect(mockFetchWithTimeout).toHaveBeenCalledTimes(1);
-    expect(mockCreateTransport).not.toHaveBeenCalled();
-    const [url, init] = mockFetchWithTimeout.mock.calls[0];
-    expect(url).toBe("https://api.unisender.com/ru/api/sendEmail");
-    expect(String((init as any).body)).toContain("sender_email=noreply%40example.com");
+    expect(mockCreateTransport).toHaveBeenCalledWith({
+      host: "smtp.local",
+      port: 587,
+      secure: false,
+      auth: undefined,
+    });
+    expect(mockFetchWithTimeout).not.toHaveBeenCalled();
   });
 
   test("throws when UniSender api key is missing", async () => {
