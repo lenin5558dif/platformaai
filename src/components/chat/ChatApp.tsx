@@ -97,7 +97,6 @@ export default function ChatApp() {
   const [sourceFilter] = useState<"ALL" | "WEB" | "TELEGRAM">("ALL");
   const [searchQuery, setSearchQuery] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
-  const [isUploading, setIsUploading] = useState(false);
   const [useWebSearch] = useState(false);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState("");
@@ -130,7 +129,6 @@ export default function ChatApp() {
   const shouldAutoScrollRef = useRef(true);
   const skipNextLoadRef = useRef<string | null>(null);
   const activeChatIdRef = useRef<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const modelMenuRef = useRef<HTMLDivElement>(null);
   const appliedPromptRef = useRef<string | null>(null);
@@ -261,13 +259,11 @@ export default function ChatApp() {
   }, [error, currentUser?.role]);
 
   const composerState = useMemo(() => {
-    if (isUploading) return "uploading";
     if (isSending) return "sending";
     return "idle";
-  }, [isUploading, isSending]);
+  }, [isSending]);
 
   const composerStatusLabel = useMemo(() => {
-    if (composerState === "uploading") return "Загрузка...";
     if (composerState === "sending") return "Отправка...";
     return isOnline ? "Готово" : "Нет сети";
   }, [composerState, isOnline]);
@@ -715,30 +711,6 @@ export default function ChatApp() {
     if (!response.ok) {
       const data = await response.json().catch(() => ({}));
       throw new Error(data?.error ?? "Не удалось сохранить сообщение.");
-    }
-  }
-
-  async function handleUpload(file: File, targetChatId?: string) {
-    const chatId = targetChatId ?? (await ensureChatId(
-      file.name ? file.name.slice(0, 40) : "Новый чат"
-    ));
-    if (!chatId) return;
-
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("chatId", chatId);
-    const response = await fetch("/api/files", {
-      method: "POST",
-      body: formData,
-    });
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
-      setError(data?.error ?? "Не удалось загрузить файл.");
-      return;
-    }
-    const data = await response.json();
-    if (data?.data) {
-      setAttachments((prev) => [...prev, data.data as Attachment]);
     }
   }
 
@@ -1621,7 +1593,7 @@ export default function ChatApp() {
 
         {/* Input Area */}
         <div className="sticky bottom-6 left-0 right-0 z-20 flex justify-center px-4">
-          <div className="w-full max-w-[720px] glass-input rounded-3xl p-2 flex flex-col gap-2 transition-all focus-within:ring-0 focus-within:shadow-[0_0_0_6px_rgba(212,122,106,0.14)]">
+          <div className="flex w-full max-w-[720px] flex-col gap-1.5 rounded-3xl p-2 glass-input transition-all focus-within:ring-0 focus-within:shadow-[0_0_0_6px_rgba(212,122,106,0.14)]">
             {attachments.length > 0 && (
               <div className="flex px-3 gap-2 overflow-x-auto py-1">
                 {attachments.map(att => (
@@ -1642,46 +1614,10 @@ export default function ChatApp() {
                 ))}
               </div>
             )}
-            <div className="flex items-end gap-2 p-2">
-              <button
-                className="p-2 text-text-secondary/50 transition-colors rounded-full bg-black/5 shrink-0 cursor-not-allowed"
-                type="button"
-                disabled
-                aria-disabled="true"
-                title="Прикрепление файлов скоро появится"
-              >
-                <span className="material-symbols-outlined text-[24px]">add_circle</span>
-              </button>
-              <input
-                type="file"
-                multiple
-                className="hidden"
-                ref={fileInputRef}
-                disabled
-                onChange={async (e) => {
-                  const files = e.target.files;
-                  if (!files || files.length === 0) return;
-                  let chatId = activeChatId;
-                  if (!chatId) {
-                    const fileTitle = files[0]?.name?.slice(0, 40) || "Новый чат";
-                    chatId = await createChat(fileTitle);
-                  }
-                  if (!chatId) return;
-                  setIsUploading(true);
-                  try {
-                    for (const file of Array.from(files)) {
-                      await handleUpload(file, chatId);
-                    }
-                  } finally {
-                    setIsUploading(false);
-                    e.target.value = "";
-                  }
-                }}
-              />
-
+            <div className="flex items-center gap-2 px-2 pt-2">
               <textarea
                 ref={composerRef}
-                className="w-full bg-transparent border-none text-text-primary placeholder-text-secondary focus:ring-0 focus:outline-none focus-visible:outline-none resize-none max-h-32 py-2.5 text-sm md:text-base leading-normal scrollbar-hide"
+                className="scrollbar-hide min-h-11 max-h-32 w-full resize-none border-none bg-transparent py-3 text-sm leading-6 text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-0 focus-visible:outline-none md:text-base"
                 placeholder="Спросите что угодно или вставьте текст..."
                 rows={1}
                 value={input}
@@ -1699,35 +1635,36 @@ export default function ChatApp() {
 
               {isSending ? (
                 <button
-                  className="inline-flex size-11 items-center justify-center rounded-full bg-rose-500 text-white transition-colors hover:bg-rose-600 shrink-0 shadow-[0_0_15px_rgba(244,63,94,0.35)]"
+                  className="inline-flex h-11 w-11 min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full bg-rose-500 text-white transition-colors hover:bg-rose-600 shadow-[0_0_15px_rgba(244,63,94,0.35)] aspect-square"
                   onClick={handleStopGeneration}
                   type="button"
                   aria-label="Остановить генерацию"
                   title="Остановить генерацию"
                 >
-                  <span className="material-symbols-outlined text-[20px]">stop</span>
+                  <span className="material-symbols-outlined flex size-5 items-center justify-center leading-none text-[20px]">
+                    stop
+                  </span>
                 </button>
               ) : (
                 <button
-                  className="inline-flex size-11 items-center justify-center rounded-full bg-primary text-white transition-colors hover:bg-primary/90 shrink-0 shadow-[0_0_15px_rgba(212,122,106,0.4)] disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="inline-flex h-11 w-11 min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full bg-primary text-white transition-colors hover:bg-primary/90 shadow-[0_0_15px_rgba(212,122,106,0.4)] disabled:cursor-not-allowed disabled:opacity-50 aspect-square"
                   onClick={() => handleSend()}
                   disabled={!input.trim()}
                   type="button"
                 >
-                  <span className="material-symbols-outlined text-[20px] translate-x-0.5">arrow_upward</span>
+                  <span className="material-symbols-outlined flex size-5 items-center justify-center leading-none text-[20px]">
+                    arrow_upward
+                  </span>
                 </button>
               )}
             </div>
-            <div className="flex items-center justify-between px-3 pb-1">
+            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-3 pb-2 pt-1">
               <span
                 className={`text-[10px] font-mono font-semibold ${composerState === "idle" ? "text-text-secondary/70" : "text-primary"}`}
               >
                 {composerStatusLabel}
               </span>
-              <div className="flex items-center gap-3 text-[10px] text-text-secondary/70 font-mono">
-                <span className="rounded-full border border-dashed border-primary/30 bg-primary/5 px-2 py-0.5 text-[10px] font-semibold text-primary/80">
-                  Файлы скоро
-                </span>
+              <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-[10px] font-mono text-text-secondary/70">
                 <span className="hidden sm:inline">Оценка: {estimatedCostLabel}</span>
                 <span className="hidden md:inline">
                   {estimatedPromptTokens.toLocaleString()} ток.
