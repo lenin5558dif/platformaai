@@ -9,6 +9,7 @@ import {
   type BillingTier,
 } from "@/lib/billing-tiers";
 import { requireAdminActor } from "@/lib/admin-auth";
+import { deleteUserByAdmin } from "@/lib/admin-user-delete";
 import { issueAdminPasswordResetToken } from "@/lib/admin-password-reset";
 import { prisma } from "@/lib/db";
 import { HttpError } from "@/lib/http-error";
@@ -212,6 +213,17 @@ async function requestPasswordReset(userId: string) {
   revalidatePath("/admin/clients");
 }
 
+async function deleteUser(userId: string) {
+  "use server";
+  const admin = await requireAdminActor();
+  await deleteUserByAdmin({
+    prisma,
+    actorId: admin.id,
+    userId,
+  });
+  revalidatePath("/admin/clients");
+}
+
 export default async function AdminClientsPage({
   searchParams,
 }: {
@@ -390,6 +402,11 @@ export default async function AdminClientsPage({
                           ) : (
                             <p className="text-[11px] text-text-secondary">Нет email для reset</p>
                           )}
+                          <form action={deleteUser.bind(null, user.id)}>
+                            <button className="w-full rounded-lg border border-rose-200 px-2 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-50">
+                              Удалить пользователя
+                            </button>
+                          </form>
                         </div>
                       </div>
                     </details>
