@@ -169,7 +169,7 @@ async function updateContactSettings(formData: FormData) {
 
   revalidatePath("/settings");
 
-  if (normalizedEmail && emailChanged) {
+  if (normalizedEmail && (emailChanged || user.emailVerifiedByProvider !== true)) {
     let verificationSent = false;
     try {
       await deliverEmailVerification({
@@ -189,49 +189,6 @@ async function updateContactSettings(formData: FormData) {
   }
 
   redirect("/settings?contact=saved");
-}
-
-async function resendVerificationEmail() {
-  "use server";
-  const session = await auth();
-
-  if (!session?.user?.id) {
-    return;
-  }
-
-  const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: {
-      id: true,
-      email: true,
-      emailVerifiedByProvider: true,
-    },
-  });
-
-  if (!user?.email) {
-    redirect("/settings?verification=email_required");
-  }
-
-  if (user.emailVerifiedByProvider === true) {
-    redirect("/settings?verification=already_verified");
-  }
-
-  let verificationSent = false;
-  try {
-    await deliverEmailVerification({
-      userId: user.id,
-      email: user.email,
-    });
-    verificationSent = true;
-  } catch {
-    verificationSent = false;
-  }
-
-  redirect(
-    verificationSent
-      ? "/settings?verification=sent"
-      : "/settings?verification=send_failed"
-  );
 }
 
 async function submitFeedback(formData: FormData) {
@@ -904,17 +861,8 @@ export default async function SettingsPage({
                     type="submit"
                     className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary/90"
                   >
-                    Сохранить контакты
+                    {emailVerified ? "Обновить контакты" : "Подтвердить email"}
                   </button>
-                  {!emailVerified && user?.email && (
-                    <button
-                      type="submit"
-                      formAction={resendVerificationEmail}
-                      className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                    >
-                      Отправить письмо еще раз
-                    </button>
-                  )}
                 </div>
               </div>
             </form>
