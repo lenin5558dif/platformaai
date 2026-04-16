@@ -21,20 +21,43 @@ type EmailVerificationPayload = {
 function getSenderIdentity() {
   return {
     email:
-      process.env.SMTP_FROM_EMAIL ??
       process.env.UNISENDER_SENDER_EMAIL ??
+      process.env.SMTP_FROM_EMAIL ??
       "",
     name:
-      process.env.SMTP_FROM_NAME ??
       process.env.UNISENDER_SENDER_NAME ??
+      process.env.SMTP_FROM_NAME ??
       "PlatformaAI",
   };
+}
+
+function hasUniSenderConfig() {
+  return Boolean(
+    process.env.UNISENDER_API_KEY &&
+      process.env.UNISENDER_SENDER_EMAIL
+  );
+}
+
+function hasUniSenderHint() {
+  return Boolean(
+    process.env.UNISENDER_API_KEY ||
+      process.env.UNISENDER_SENDER_EMAIL ||
+      process.env.UNISENDER_SENDER_NAME
+  );
 }
 
 function hasSmtpConfig() {
   return Boolean(
     process.env.SMTP_HOST &&
       process.env.SMTP_FROM_EMAIL
+  );
+}
+
+function hasSmtpHint() {
+  return Boolean(
+    process.env.SMTP_HOST ||
+      process.env.SMTP_FROM_EMAIL ||
+      process.env.SMTP_FROM_NAME
   );
 }
 
@@ -119,12 +142,19 @@ async function sendEmail(params: {
   subject: string;
   text: string;
 }) {
-  if (hasSmtpConfig()) {
+  if (hasUniSenderConfig() || hasUniSenderHint()) {
+    await sendViaUniSender(params);
+    return;
+  }
+
+  if (hasSmtpConfig() || hasSmtpHint()) {
     await sendViaSmtp(params);
     return;
   }
 
-  await sendViaUniSender(params);
+  throw new Error(
+    "Mail delivery is not configured. Set UNISENDER_API_KEY + UNISENDER_SENDER_EMAIL or SMTP_HOST + SMTP_FROM_EMAIL."
+  );
 }
 
 export async function sendOrgInviteEmail({ email, acceptUrl }: OrgInvitePayload) {

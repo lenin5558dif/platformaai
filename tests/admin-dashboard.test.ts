@@ -47,6 +47,18 @@ describe("admin-dashboard service snapshots", () => {
     expect(scim?.status).toBe("ready");
     expect(scim?.requiredEnv).toEqual([]);
   });
+
+  it("treats UniSender as the primary mail service", () => {
+    const snapshots = getAdminServiceSnapshots({
+      UNISENDER_API_KEY: "unisender-key",
+      UNISENDER_SENDER_EMAIL: "noreply@example.com",
+    });
+    const mail = snapshots.find((item) => item.id === "mail");
+
+    expect(mail?.name).toBe("UniSender");
+    expect(mail?.status).toBe("ready");
+    expect(mail?.missingRequired).toEqual([]);
+  });
 });
 
 describe("admin-dashboard api groups", () => {

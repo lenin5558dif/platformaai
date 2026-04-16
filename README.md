@@ -63,7 +63,7 @@ A full-featured web application that brings multiple AI models into a single int
 | AI | OpenRouter API (GPT-4, Claude, Gemini) |
 | Bot | Telegraf (Telegram Bot API) |
 | STT | OpenAI Whisper API |
-| Email | SMTP-first delivery with optional fallback |
+| Email | UniSender-first delivery with optional SMTP fallback |
 | Testing | Vitest (44 unit tests), Playwright (E2E) |
 | CI/CD | Docker Compose, GitHub Actions |
 | Language | TypeScript (strict mode) |
@@ -149,12 +149,14 @@ Notes:
 - inside Docker, `DATABASE_URL` is pointed to the `postgres` service automatically
 - if `DATABASE_URL` is already set in `.env`, `app` and `bot` will reuse that external database instead
 - for public deployment set `NEXT_PUBLIC_APP_URL` and `NEXTAUTH_URL` to your real domain
+- for email delivery, prefer `UNISENDER_API_KEY` and `UNISENDER_SENDER_EMAIL`; SMTP is optional fallback
 
 Required environment variables:
 - `DATABASE_URL` — PostgreSQL connection string
 - `AUTH_SECRET` — NextAuth secret
 - `OPENROUTER_API_KEY` — OpenRouter API key
 - `POSTGRES_PASSWORD` / `PGADMIN_PASSWORD` — Docker passwords
+- `UNISENDER_API_KEY` / `UNISENDER_SENDER_EMAIL` — primary transactional email delivery
 
 ### API Endpoints
 
@@ -243,7 +245,7 @@ Required environment variables:
 | AI | OpenRouter API (GPT-4, Claude, Gemini) |
 | Bot | Telegraf (Telegram Bot API) |
 | STT | OpenAI Whisper API |
-| Email | SMTP-first delivery with optional fallback |
+| Email | UniSender-first delivery with optional SMTP fallback |
 | Testing | Vitest (44 unit-теста), Playwright (E2E) |
 | CI/CD | Docker Compose, GitHub Actions |
 | Language | TypeScript (strict mode) |

@@ -41,7 +41,7 @@ describe("unisender mailer", () => {
     vi.clearAllMocks();
   });
 
-  test("sends verification email through SMTP when SMTP is configured", async () => {
+  test("sends verification email through SMTP when only SMTP is configured", async () => {
     process.env.SMTP_HOST = "smtp.local";
     process.env.SMTP_PORT = "465";
     process.env.SMTP_FROM_EMAIL = "noreply@example.com";
@@ -97,7 +97,7 @@ describe("unisender mailer", () => {
     });
   });
 
-  test("falls back to UniSender when SMTP is not configured", async () => {
+  test("uses UniSender when it is configured", async () => {
     process.env.UNISENDER_API_KEY = "unisender-key";
     process.env.UNISENDER_SENDER_EMAIL = "noreply@example.com";
     process.env.UNISENDER_SENDER_NAME = "PlatformaAI";
@@ -128,6 +128,30 @@ describe("unisender mailer", () => {
     expect(String((init as any).body)).toContain("email=user%40example.com");
     expect(String((init as any).body)).toContain("sender_email=noreply%40example.com");
     expect(String((init as any).body)).toContain("subject=%D0%A1%D0%B1%D1%80%D0%BE%D1%81+%D0%BF%D0%B0%D1%80%D0%BE%D0%BB%D1%8F+PlatformaAI");
+  });
+
+  test("prefers UniSender when both UniSender and SMTP are configured", async () => {
+    process.env.UNISENDER_API_KEY = "unisender-key";
+    process.env.UNISENDER_SENDER_EMAIL = "noreply@example.com";
+    process.env.UNISENDER_SENDER_NAME = "PlatformaAI";
+    process.env.SMTP_HOST = "smtp.local";
+    process.env.SMTP_FROM_EMAIL = "smtp@example.com";
+    mockFetchWithTimeout.mockResolvedValue({
+      ok: true,
+      text: vi.fn(async () => ""),
+    });
+
+    const { sendEmailVerificationEmail } = await import("../src/lib/unisender");
+    await sendEmailVerificationEmail({
+      email: "user@example.com",
+      verificationUrl: "https://app.example.com/api/auth/email/verify?token=abc",
+    });
+
+    expect(mockFetchWithTimeout).toHaveBeenCalledTimes(1);
+    expect(mockCreateTransport).not.toHaveBeenCalled();
+    const [url, init] = mockFetchWithTimeout.mock.calls[0];
+    expect(url).toBe("https://api.unisender.com/ru/api/sendEmail");
+    expect(String((init as any).body)).toContain("sender_email=noreply%40example.com");
   });
 
   test("throws when UniSender api key is missing", async () => {
@@ -169,5 +193,18 @@ describe("unisender mailer", () => {
         verificationUrl: "https://app.example.com/api/auth/email/verify?token=abc",
       })
     ).rejects.toThrow("UniSender error: bad gateway");
+  });
+
+  test("throws a clear error when no mail provider is configured", async () => {
+    const { sendEmailVerificationEmail } = await import("../src/lib/unisender");
+
+    await expect(
+      sendEmailVerificationEmail({
+        email: "user@example.com",
+        verificationUrl: "https://app.example.com/api/auth/email/verify?token=abc",
+      })
+    ).rejects.toThrow(
+      "Mail delivery is not configured. Set UNISENDER_API_KEY + UNISENDER_SENDER_EMAIL or SMTP_HOST + SMTP_FROM_EMAIL."
+    );
   });
 });
