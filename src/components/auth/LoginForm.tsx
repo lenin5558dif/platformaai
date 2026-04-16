@@ -15,6 +15,7 @@ import {
 type LoginFormProps = {
   initialMode: AuthMode;
   initialError?: string;
+  initialVerification?: string;
   capabilities: AuthCapabilities;
 };
 
@@ -103,12 +104,44 @@ function mapRegisterSuccess(params: {
   };
 }
 
+function mapVerificationNotice(state?: string): AuthFeedback | null {
+  switch (state) {
+    case "verified":
+      return {
+        state: "success",
+        title: "Email подтверждён",
+        message: "Адрес подтверждён. Теперь войдите в аккаунт.",
+        action: null,
+      };
+    case "expired":
+      return {
+        state: "expired",
+        title: "Ссылка устарела",
+        message: "Срок действия ссылки истёк. Войдите в аккаунт и запросите письмо ещё раз.",
+        action: "retry",
+      };
+    case "invalid":
+      return {
+        state: "error",
+        title: "Ссылка недействительна",
+        message: "Эта ссылка недействительна или уже использована. Войдите в аккаунт и запросите новую.",
+        action: "retry",
+      };
+    default:
+      return null;
+  }
+}
+
 export default function LoginForm({
   initialMode,
   initialError,
+  initialVerification,
   capabilities,
 }: LoginFormProps) {
-  const initialFeedback = useMemo(() => mapLoginError(initialError), [initialError]);
+  const initialFeedback = useMemo(
+    () => mapVerificationNotice(initialVerification) ?? mapLoginError(initialError),
+    [initialError, initialVerification]
+  );
   const [mode, setMode] = useState<AuthMode>(initialMode);
   const [nickname, setNickname] = useState("");
   const [email, setEmail] = useState("");

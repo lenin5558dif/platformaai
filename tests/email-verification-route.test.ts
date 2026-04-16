@@ -20,7 +20,7 @@ describe("email verification route", () => {
 
     expect(res.status).toBe(307);
     expect(res.headers.get("location")).toBe(
-      "http://localhost:3000/settings?verification=invalid"
+      "http://localhost:3000/login?mode=signin&verification=invalid"
     );
     expect(mockConsumeEmailVerificationToken).not.toHaveBeenCalled();
   });
@@ -37,7 +37,7 @@ describe("email verification route", () => {
     );
 
     expect(res.headers.get("location")).toBe(
-      "http://localhost:3000/settings?verification=expired"
+      "http://localhost:3000/login?mode=signin&verification=expired"
     );
     expect(mockConsumeEmailVerificationToken).toHaveBeenCalledWith("expired");
   });
@@ -54,7 +54,7 @@ describe("email verification route", () => {
     );
 
     expect(res.headers.get("location")).toBe(
-      "http://localhost:3000/settings?verification=invalid"
+      "http://localhost:3000/login?mode=signin&verification=invalid"
     );
   });
 
@@ -72,7 +72,7 @@ describe("email verification route", () => {
     );
 
     expect(res.headers.get("location")).toBe(
-      "https://app.example.com/settings?verification=verified"
+      "https://app.example.com/login?mode=signin&verification=verified"
     );
   });
 });

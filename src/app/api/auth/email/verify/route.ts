@@ -8,9 +8,10 @@ export async function GET(request: Request) {
     process.env.NEXT_PUBLIC_APP_URL ??
     process.env.NEXTAUTH_URL ??
     "http://localhost:3000";
+  const loginUrl = `${appUrl}/login?mode=signin`;
 
   if (!token) {
-    return NextResponse.redirect(`${appUrl}/settings?verification=invalid`);
+    return NextResponse.redirect(`${loginUrl}&verification=invalid`);
   }
 
   const result = await consumeEmailVerificationToken(token);
@@ -18,10 +19,10 @@ export async function GET(request: Request) {
   if (!result.ok) {
     const target =
       result.reason === "TOKEN_EXPIRED"
-        ? `${appUrl}/settings?verification=expired`
-        : `${appUrl}/settings?verification=invalid`;
+        ? `${loginUrl}&verification=expired`
+        : `${loginUrl}&verification=invalid`;
     return NextResponse.redirect(target);
   }
 
-  return NextResponse.redirect(`${appUrl}/settings?verification=verified`);
+  return NextResponse.redirect(`${loginUrl}&verification=verified`);
 }

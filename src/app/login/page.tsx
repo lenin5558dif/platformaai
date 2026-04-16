@@ -4,7 +4,7 @@ import { getAuthCapabilities, resolveAuthMode } from "@/lib/auth-ui";
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ error?: string; mode?: string }>;
+  searchParams?: Promise<{ error?: string; mode?: string; verification?: string }>;
 }) {
   const params = searchParams ? await searchParams : undefined;
   const capabilities = getAuthCapabilities();
@@ -16,6 +16,7 @@ export default async function LoginPage({
         <LoginForm
           initialMode={mode}
           initialError={params?.error}
+          initialVerification={params?.verification}
           capabilities={capabilities}
         />
       </div>
