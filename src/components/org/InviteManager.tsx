@@ -253,19 +253,19 @@ export default function InviteManager({
           sortedInvites.map((invite) => (
             <div
               key={invite.id}
-              className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white/70 px-4 py-3"
+              className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-white/70 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
             >
-              <div>
+              <div className="min-w-0">
                 <p className="text-sm font-medium text-text-main">{invite.email}</p>
                 <p className="text-xs text-text-secondary">
                   Роль: {invite.role?.name ?? "-"} • Префикс: {invite.tokenPrefix} • Истекает: {" "}
                   {new Date(invite.expiresAt).toLocaleString("ru-RU")}
                 </p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
                 <button
                   type="button"
-                  className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-white disabled:opacity-60"
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm font-semibold text-gray-600 hover:bg-white disabled:opacity-60 sm:w-auto sm:py-1.5 sm:text-xs"
                   onClick={() => void runInviteAction(invite.id, "resend")}
                   disabled={activeActionId === invite.id}
                 >
@@ -273,7 +273,7 @@ export default function InviteManager({
                 </button>
                 <button
                   type="button"
-                  className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:opacity-60"
+                  className="w-full rounded-lg border border-red-200 px-3 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-60 sm:w-auto sm:py-1.5 sm:text-xs"
                   onClick={() => void runInviteAction(invite.id, "revoke")}
                   disabled={activeActionId === invite.id}
                 >

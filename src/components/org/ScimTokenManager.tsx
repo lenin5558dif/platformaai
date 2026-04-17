@@ -84,20 +84,20 @@ export default function ScimTokenManager() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="flex-1 min-w-[220px]">
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+        <div className="flex-1 min-w-0 sm:min-w-[220px]">
           <label className="block text-xs text-text-secondary">Название токена</label>
           <input
             value={name}
             onChange={(event) => setName(event.target.value)}
-            className="mt-2 w-full rounded-lg border border-gray-200 bg-white/70 px-3 py-2 text-sm"
+            className="mt-2 w-full rounded-lg border border-gray-200 bg-white/70 px-3 py-2.5 text-sm"
             placeholder="Например: Okta / Azure"
           />
         </div>
         <button
           type="button"
           onClick={createToken}
-          className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-hover disabled:opacity-60"
+          className="w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary-hover disabled:opacity-60 sm:w-auto"
           disabled={status === "loading"}
         >
           Создать токен
@@ -127,18 +127,18 @@ export default function ScimTokenManager() {
         {tokens.map((token) => (
           <div
             key={token.id}
-            className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white/70 px-4 py-3"
+            className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-white/70 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
           >
-            <div>
+            <div className="min-w-0">
               <p className="text-sm font-medium text-text-main">{token.name}</p>
-              <p className="text-xs text-text-secondary">
+              <p className="break-all text-xs text-text-secondary">
                 Префикс: {token.tokenPrefix} • Последнее использование: {token.lastUsedAt ?? "—"}
               </p>
             </div>
             <button
               type="button"
               onClick={() => revokeToken(token.id)}
-              className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-white disabled:opacity-60"
+              className="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm font-semibold text-gray-600 hover:bg-white disabled:opacity-60 sm:w-auto sm:py-1.5 sm:text-xs"
               disabled={revokingId === token.id}
             >
               {revokingId === token.id ? "Отзываем..." : "Отозвать"}

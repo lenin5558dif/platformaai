@@ -894,18 +894,18 @@ export default async function OrgPage() {
             <p className="text-xs text-text-secondary mb-4">
               Группируйте расходы по отделам или проектам.
             </p>
-            <form action={createCostCenter} className="flex flex-wrap items-end gap-3">
+            <form action={createCostCenter} className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
               <input
                 name="name"
-                className="w-56 rounded-lg border border-gray-200 bg-white/70 px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-gray-200 bg-white/70 px-3 py-2.5 text-sm sm:w-56"
                 placeholder="Маркетинг"
               />
               <input
                 name="code"
-                className="w-40 rounded-lg border border-gray-200 bg-white/70 px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-gray-200 bg-white/70 px-3 py-2.5 text-sm sm:w-40"
                 placeholder="MKT"
               />
-              <button className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-hover">
+              <button className="w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary-hover sm:w-auto">
                 Создать
               </button>
             </form>
@@ -918,17 +918,17 @@ export default async function OrgPage() {
               {costCenters.map((center) => (
                 <div
                   key={center.id}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white/70 px-4 py-3"
+                  className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-white/70 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
                 >
-                  <div>
+                  <div className="min-w-0">
                     <p className="text-sm font-medium text-text-main">{center.name}</p>
                     <p className="text-xs text-text-secondary">
                       Код: {center.code ?? "—"} • Участников:{" "}
                       {costCenterCounts.get(center.id) ?? 0}
                     </p>
                   </div>
-                  <form action={deleteCostCenter.bind(null, center.id)}>
-                    <button className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-white">
+                  <form action={deleteCostCenter.bind(null, center.id)} className="w-full sm:w-auto">
+                    <button className="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm font-semibold text-gray-600 hover:bg-white sm:w-auto sm:text-xs">
                       Удалить
                     </button>
                   </form>
@@ -976,21 +976,21 @@ export default async function OrgPage() {
             <div className="grid gap-6 md:grid-cols-2">
               <div className="space-y-3">
                 <h3 className="text-sm font-semibold text-text-main">SSO домены</h3>
-                <form action={addSsoDomain} className="flex flex-wrap items-end gap-3">
+                <form action={addSsoDomain} className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
                   <input
                     name="domain"
-                    className="w-52 rounded-lg border border-gray-200 bg-white/70 px-3 py-2 text-sm"
+                    className="w-full rounded-lg border border-gray-200 bg-white/70 px-3 py-2.5 text-sm sm:w-52"
                     placeholder="company.ru"
                   />
                   <select
                     name="ssoOnly"
-                    className="rounded-lg border border-gray-200 bg-white/70 px-3 py-2 text-sm"
+                    className="w-full rounded-lg border border-gray-200 bg-white/70 px-3 py-2.5 text-sm sm:w-auto"
                     defaultValue="true"
                   >
                     <option value="true">Только SSO</option>
                     <option value="false">SSO опционально</option>
                   </select>
-                  <button className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-hover">
+                  <button className="w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary-hover sm:w-auto">
                     Добавить
                   </button>
                 </form>
@@ -1003,27 +1003,27 @@ export default async function OrgPage() {
                   {domains.map((domain) => (
                     <div
                       key={domain.id}
-                      className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white/70 px-4 py-3"
+                      className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-white/70 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
                     >
-                      <div>
-                        <p className="text-sm font-medium text-text-main">{domain.domain}</p>
+                      <div className="min-w-0">
+                        <p className="break-all text-sm font-medium text-text-main">{domain.domain}</p>
                         <p className="text-xs text-text-secondary">
                           {domain.ssoOnly ? "Только SSO" : "SSO опционально"}
                         </p>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <form action={updateSsoDomain.bind(null, domain.id)}>
+                      <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+                        <form action={updateSsoDomain.bind(null, domain.id)} className="w-full sm:w-auto">
                           <input
                             type="hidden"
                             name="ssoOnly"
                             value={domain.ssoOnly ? "false" : "true"}
                           />
-                          <button className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-white">
+                          <button className="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm font-semibold text-gray-600 hover:bg-white sm:w-auto sm:text-xs">
                             {domain.ssoOnly ? "Сделать опциональным" : "Только SSO"}
                           </button>
                         </form>
-                        <form action={removeSsoDomain.bind(null, domain.id)}>
-                          <button className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-white">
+                        <form action={removeSsoDomain.bind(null, domain.id)} className="w-full sm:w-auto">
+                          <button className="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm font-semibold text-gray-600 hover:bg-white sm:w-auto sm:text-xs">
                             Удалить
                           </button>
                         </form>
@@ -1034,7 +1034,7 @@ export default async function OrgPage() {
               </div>
               <div className="space-y-3">
                 <h3 className="text-sm font-semibold text-text-main">SCIM токены</h3>
-                <p className="text-xs text-text-secondary">
+                <p className="break-all text-xs text-text-secondary">
                   SCIM endpoint: {appUrl}/api/scim
                 </p>
                 <ScimTokenManager />
@@ -1081,9 +1081,9 @@ export default async function OrgPage() {
             {members.map((member) => (
               <div
                 key={member.id}
-                className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-gray-200 bg-white/70 px-4 py-3"
+                className="flex flex-col gap-4 rounded-xl border border-gray-200 bg-white/70 px-4 py-4"
               >
-                <div>
+                <div className="min-w-0">
                   <p className="text-sm font-medium text-text-main">
                     {member.email ?? member.telegramId ?? member.id}
                   </p>
@@ -1093,14 +1093,17 @@ export default async function OrgPage() {
                   </p>
                 </div>
                 {user.role === "ADMIN" && (
-                  <div className="flex flex-wrap items-center gap-2">
+                  <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-4">
                     <form
                       action={assignCostCenter.bind(null, member.id)}
-                      className="flex items-end gap-2"
+                      className="flex flex-col gap-2 rounded-lg border border-gray-200/80 bg-white/70 p-3"
                     >
+                      <span className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
+                        Центр затрат
+                      </span>
                       <select
                         name="costCenterId"
-                        className="rounded-lg border border-gray-200 bg-white/70 px-2 py-1 text-xs"
+                        className="w-full rounded-lg border border-gray-200 bg-white/70 px-3 py-2.5 text-sm"
                         defaultValue={member.costCenterId ?? ""}
                       >
                         <option value="">Без центра</option>
@@ -1110,54 +1113,63 @@ export default async function OrgPage() {
                           </option>
                         ))}
                       </select>
-                      <button className="rounded-lg border border-gray-200 px-2 py-1 text-xs font-semibold text-gray-600 hover:bg-white">
+                      <button className="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm font-semibold text-gray-600 hover:bg-white">
                         Центр
                       </button>
                     </form>
                     <form
                       action={updateLimits.bind(null, member.id)}
-                      className="flex flex-wrap items-end gap-2"
+                      className="flex flex-col gap-2 rounded-lg border border-gray-200/80 bg-white/70 p-3"
                     >
+                      <span className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
+                        Лимиты
+                      </span>
                       <input
                         name="dailyLimit"
                         type="number"
                         step="0.01"
-                        className="w-28 rounded-lg border border-gray-200 bg-white/70 px-2 py-1 text-xs"
+                        className="w-full rounded-lg border border-gray-200 bg-white/70 px-3 py-2.5 text-sm"
                         placeholder="Дневной"
                       />
                       <input
                         name="monthlyLimit"
                         type="number"
                         step="0.01"
-                        className="w-28 rounded-lg border border-gray-200 bg-white/70 px-2 py-1 text-xs"
+                        className="w-full rounded-lg border border-gray-200 bg-white/70 px-3 py-2.5 text-sm"
                         placeholder="Месячный"
                       />
-                      <button className="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-white hover:bg-primary-hover">
+                      <button className="w-full rounded-lg bg-primary px-3 py-2.5 text-sm font-semibold text-white hover:bg-primary-hover">
                         Лимиты
                       </button>
                     </form>
                     <form
                       action={transferCredits.bind(null, member.id)}
-                      className="flex items-end gap-2"
+                      className="flex flex-col gap-2 rounded-lg border border-gray-200/80 bg-white/70 p-3"
                     >
+                      <span className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
+                        Перевод
+                      </span>
                       <input
                         name="amount"
                         type="number"
                         step="0.01"
-                        className="w-24 rounded-lg border border-gray-200 bg-white/70 px-2 py-1 text-xs"
+                        className="w-full rounded-lg border border-gray-200 bg-white/70 px-3 py-2.5 text-sm"
                         placeholder="Сумма"
                       />
-                      <button className="rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-gray-800">
+                      <button className="w-full rounded-lg bg-gray-900 px-3 py-2.5 text-sm font-semibold text-white hover:bg-gray-800">
                         Перевести
                       </button>
                     </form>
-                    <form action={toggleUserActive.bind(null, member.id)}>
+                    <form action={toggleUserActive.bind(null, member.id)} className="flex flex-col gap-2 rounded-lg border border-gray-200/80 bg-white/70 p-3">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
+                        Доступ
+                      </span>
                       <input
                         type="hidden"
                         name="isActive"
                         value={member.isActive ? "false" : "true"}
                       />
-                      <button className="rounded-lg border border-gray-200 px-2 py-1 text-xs font-semibold text-gray-600 hover:bg-white">
+                      <button className="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm font-semibold text-gray-600 hover:bg-white">
                         {member.isActive ? "Отключить" : "Включить"}
                       </button>
                     </form>

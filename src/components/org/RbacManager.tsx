@@ -233,13 +233,13 @@ export default function RbacManager({
                   </p>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex w-full flex-col items-start gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
                   <label className="text-xs text-text-secondary" htmlFor={`role-${member.id}`}>
                     Назначить роль
                   </label>
                   <select
                     id={`role-${member.id}`}
-                    className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs"
+                    className="min-h-11 w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm sm:min-h-0 sm:w-auto sm:px-2 sm:py-1 sm:text-xs"
                     value={member.role?.id ?? ""}
                     disabled={!canChangeRoles || activeUserId === member.id}
                     onChange={(event) => void updateMemberRole(member.id, event.target.value)}

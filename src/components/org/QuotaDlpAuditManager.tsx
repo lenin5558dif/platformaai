@@ -370,14 +370,14 @@ export default function QuotaDlpAuditManager({
                 >
                   {statusLabel(memberStatus)}
                 </span>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <input
                     name="dailyLimit"
                     type="number"
                     step="0.01"
                     defaultValue={member.dailyLimit ?? ""}
                     placeholder="день"
-                    className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs"
+                    className="min-h-11 rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm sm:min-h-0 sm:px-2 sm:py-1 sm:text-xs"
                     aria-label="Дневной лимит"
                     disabled={!canManageLimits || activeLimitUserId === member.id}
                   />
@@ -387,14 +387,14 @@ export default function QuotaDlpAuditManager({
                     step="0.01"
                     defaultValue={member.monthlyLimit ?? ""}
                     placeholder="месяц"
-                    className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs"
+                    className="min-h-11 rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm sm:min-h-0 sm:px-2 sm:py-1 sm:text-xs"
                     aria-label="Месячный лимит"
                     disabled={!canManageLimits || activeLimitUserId === member.id}
                   />
                 </div>
                 <button
                   type="submit"
-                  className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-white disabled:opacity-60"
+                  className="min-h-11 rounded-lg border border-gray-200 px-3 py-2.5 text-sm font-semibold text-gray-700 hover:bg-white disabled:opacity-60 sm:min-h-0 sm:py-1.5 sm:text-xs"
                   disabled={!canManageLimits || activeLimitUserId === member.id}
                 >
                   {activeLimitUserId === member.id ? "Сохраняем..." : "Обновить лимиты"}
