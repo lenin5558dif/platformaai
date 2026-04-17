@@ -30,7 +30,7 @@
 - [x] Этап 3. Починить `chat` под mobile/tablet: sidebar, header, message width, composer, onboarding/alert blocks
 - [x] Этап 4. Починить `settings` и onboarding: карточки, summary-блоки, формы, обязательные поля
 - [x] Этап 5. Починить `org/admin`: мобильная навигация, формы, таблицы, плотность action-элементов
-- [ ] Этап 6. Прогнать локальную проверку и обновить итоговый статус
+- [x] Этап 6. Прогнать локальную проверку и обновить итоговый статус
 
 ## Выполнение
 
@@ -42,7 +42,8 @@
 - [x] Завершён mobile-pass для `chat`: drawer, header, model trigger, message width, safe-area отступы и touch-friendly controls
 - [x] Завершён mobile-pass для `org/admin`: action-кластеры сотрудников, RBAC, лимиты, invites, SSO/SCIM и admin navigation/table readability
 - [x] Завершён mobile-pass для `settings/onboarding`: CTA, плотность секций, ширина форм и поведение карточек на узком экране
-- [ ] Следующий проход: live browser smoke-check и полировка оставшихся overlay-узких мест в `chat`
+- [x] Выполнен live smoke-check: `login-mobile`, `login-tablet`, `settings-mobile`, `org-mobile`
+- [ ] Следующий проход: полировка оставшихся overlay-узких мест в `chat` и расширенный visual pass для `admin/org`
 
 ## Критерии готовности
 
@@ -50,4 +51,4 @@
 - [ ] Нет очевидных горизонтальных переполнений в ключевых пользовательских сценариях
 - [ ] CTA и secondary actions не конфликтуют между собой по размерам и порядку
 - [ ] Навигация в `chat` и `admin` работает без desktop-only предположений
-- [ ] После локальной проверки документ обновлён финальным статусом
+- [x] После локальной проверки документ обновлён финальным статусом
