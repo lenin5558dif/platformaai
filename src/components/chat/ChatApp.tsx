@@ -969,7 +969,7 @@ export default function ChatApp() {
   }, []);
 
   return (
-    <div className="relative z-10 flex h-screen w-full text-text-main overflow-hidden font-display">
+    <div className="relative z-10 flex h-[100dvh] w-full overflow-hidden text-text-main font-display">
       {isSidebarOpen && (
         <button
           className="fixed inset-0 z-30 bg-black/30 md:hidden"
@@ -979,10 +979,10 @@ export default function ChatApp() {
         />
       )}
       <aside
-        className={`fixed inset-y-0 left-0 z-40 flex h-full w-72 flex-col glass-panel border-r-0 border-r-black/5 transition-all duration-300 transform md:static md:z-20 md:translate-x-0 ${isSidebarCollapsed ? "md:w-20" : "md:w-72"} ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"
+        className={`fixed inset-y-2 left-2 z-40 flex h-[calc(100dvh-1rem)] w-[min(18rem,calc(100vw-1rem))] flex-col glass-panel border-r-0 border-r-black/5 transition-all duration-300 transform md:static md:inset-auto md:h-full md:w-72 md:translate-x-0 ${isSidebarCollapsed ? "md:w-20" : "md:w-72"} ${isSidebarOpen ? "translate-x-0" : "-translate-x-[120%]"
           }`}
       >
-        <div className={`${isSidebarCollapsed ? "p-4 pb-2" : "p-6 pb-2"}`}>
+        <div className={`${isSidebarCollapsed ? "p-4 pb-2" : "p-4 pb-2 md:p-6 md:pb-2"}`}>
           <div className={`mb-6 flex items-start ${isSidebarCollapsed ? "justify-center gap-2" : "justify-between gap-3"}`}>
             <div className={`flex min-w-0 flex-col gap-1 ${isSidebarCollapsed ? "items-center" : ""}`}>
               <h1 className={`text-text-primary font-bold tracking-tight ${isSidebarCollapsed ? "text-base" : "text-xl"}`}>
@@ -1001,7 +1001,7 @@ export default function ChatApp() {
               )}
             </div>
             <button
-              className="flex size-9 shrink-0 items-center justify-center rounded-lg text-text-secondary transition-colors hover:text-text-primary hover:bg-black/5"
+              className="hidden size-9 shrink-0 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-black/5 hover:text-text-primary md:flex"
               onClick={toggleDesktopSidebar}
               type="button"
               aria-label={isSidebarCollapsed ? "Развернуть боковую панель" : "Свернуть боковую панель"}
@@ -1049,14 +1049,14 @@ export default function ChatApp() {
                     search
                   </span>
                   <input
-                    className="w-full rounded-lg border border-black/10 bg-white/70 pl-9 pr-9 py-2 text-xs text-text-primary placeholder:text-text-secondary focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                    className="w-full rounded-lg border border-black/10 bg-white/70 py-2 pl-9 pr-10 text-sm text-text-primary placeholder:text-text-secondary focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                     placeholder="Поиск по чатам..."
                     value={searchQuery}
                     onChange={(event) => setSearchQuery(event.target.value)}
                   />
                   {searchQuery.trim() && (
                     <button
-                      className="absolute right-1 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-black/5 hover:text-text-primary"
+                      className="absolute right-1 top-1/2 flex size-10 -translate-y-1/2 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-black/5 hover:text-text-primary md:size-8"
                       type="button"
                       onClick={() => setSearchQuery("")}
                     >
@@ -1109,9 +1109,9 @@ export default function ChatApp() {
                           {new Date(chat.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                         </p>
                       </div>
-                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="flex items-center gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100">
                         <button
-                          className={`size-8 flex items-center justify-center rounded-md transition-colors ${chat.pinned ? "bg-primary/10 text-primary" : "text-text-secondary hover:text-text-primary hover:bg-black/5"}`}
+                          className={`flex min-h-10 min-w-10 items-center justify-center rounded-md transition-colors md:min-h-8 md:min-w-8 ${chat.pinned ? "bg-primary/10 text-primary" : "text-text-secondary hover:text-text-primary hover:bg-black/5"}`}
                           onClick={(event) => {
                             event.stopPropagation();
                             void handleTogglePin(chat);
@@ -1122,7 +1122,7 @@ export default function ChatApp() {
                           <span className="material-symbols-outlined text-[16px]">push_pin</span>
                         </button>
                         <button
-                          className={`size-8 flex items-center justify-center rounded-md transition-colors ${chat.isFavorite ? "bg-amber-100 text-amber-600" : "text-text-secondary hover:text-text-primary hover:bg-black/5"}`}
+                          className={`flex min-h-10 min-w-10 items-center justify-center rounded-md transition-colors md:min-h-8 md:min-w-8 ${chat.isFavorite ? "bg-amber-100 text-amber-600" : "text-text-secondary hover:text-text-primary hover:bg-black/5"}`}
                           onClick={(event) => {
                             event.stopPropagation();
                             void handleToggleFavorite(chat);
@@ -1133,7 +1133,7 @@ export default function ChatApp() {
                           <span className="material-symbols-outlined text-[16px]">star</span>
                         </button>
                         <button
-                          className="size-8 flex items-center justify-center rounded-md text-text-secondary transition-colors hover:text-red-600 hover:bg-red-50"
+                          className="flex min-h-10 min-w-10 items-center justify-center rounded-md text-text-secondary transition-colors hover:bg-red-50 hover:text-red-600 md:min-h-8 md:min-w-8"
                           onClick={(event) => {
                             event.stopPropagation();
                             void handleDeleteChat(chat.id);
@@ -1216,16 +1216,14 @@ export default function ChatApp() {
 
       </aside>
 
-      <main
-        className="flex-1 flex flex-col relative h-full"
-      >
+      <main className="relative flex h-full min-w-0 flex-1 flex-col">
         {/* Floating Header */}
-        <header className="absolute top-0 left-0 right-0 z-30 px-6 py-4 pointer-events-none">
+        <header className="pointer-events-none absolute top-0 left-0 right-0 z-30 px-3 pt-[calc(env(safe-area-inset-top)+0.75rem)] pb-3 md:px-6 md:py-4">
           <div className="space-y-3 pointer-events-auto">
             {needsEmailVerification && (
               <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-lg">
-                <div className="flex items-center justify-between gap-4">
-                  <p>
+                <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                  <p className="max-w-2xl">
                     {!currentUser?.email
                       ? "Добавьте email в настройках, чтобы можно было купить тариф."
                       : "Подтвердите email в настройках, чтобы можно было купить тариф."}
@@ -1239,51 +1237,52 @@ export default function ChatApp() {
                 </div>
               </div>
             )}
-            <div className="glass-panel rounded-xl px-4 py-3 flex items-center justify-between shadow-lg">
-              <div className="flex items-center gap-4">
+            <div className="glass-panel flex items-center justify-between gap-3 rounded-xl px-3 py-3 shadow-lg sm:px-4">
+              <div className="flex min-w-0 items-center gap-3 sm:gap-4">
                 <button
                   className="md:hidden inline-flex size-10 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-black/5 hover:text-text-primary"
                   onClick={() => setIsSidebarOpen(true)}
                 >
                   <span className="material-symbols-outlined">menu</span>
                 </button>
-                <h2 className="text-text-primary text-base md:text-lg font-bold leading-tight">
+                <h2 className="min-w-0 truncate text-base font-bold leading-tight text-text-primary md:text-lg">
                   {activeChat ? activeChat.title : "Новый чат"}
                 </h2>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex shrink-0 items-center gap-2">
                 <div className="relative" ref={modelMenuRef}>
                 {apiKeyState === "ok" ? (
-                  <div
-                    className="hidden md:flex h-8 items-center justify-center gap-x-2 rounded-lg bg-primary/10 border border-primary/20 pl-2 pr-3 cursor-pointer hover:bg-primary/20 transition-colors"
+                  <button
+                    type="button"
+                    className="inline-flex h-9 max-w-[11rem] items-center justify-center gap-x-2 rounded-lg border border-primary/20 bg-primary/10 pl-2 pr-3 text-left transition-colors hover:bg-primary/20"
                     onClick={() => setModelMenuOpen(!modelMenuOpen)}
                   >
                     <span className="material-symbols-outlined text-primary text-[18px]">smart_toy</span>
-                    <p className="text-primary text-xs font-bold">
+                    <p className="hidden truncate text-xs font-bold text-primary sm:block">
                       {selectedModelInfo?.name ?? "GPT-4"}
                     </p>
-                  </div>
+                  </button>
                 ) : (
-                  <div className="hidden md:flex h-8 items-center justify-center gap-x-2 rounded-lg bg-amber-50 border border-amber-300 pl-2 pr-3">
+                  <div className="inline-flex h-9 items-center justify-center gap-x-2 rounded-lg border border-amber-300 bg-amber-50 pl-2 pr-3">
                     <span className="material-symbols-outlined text-amber-700 text-[18px]">
                       key
                     </span>
-                    <p className="text-amber-700 text-xs font-bold">
+                    <p className="hidden text-xs font-bold text-amber-700 sm:block">
                       {apiKeyState === "invalid" ? "Проверь OpenRouter" : "Модели недоступны"}
                     </p>
                   </div>
                 )}
 
                 {apiKeyState === "ok" && modelMenuOpen && (
-                  <div className="absolute right-0 top-full z-20 mt-2 w-72 rounded-xl border border-white/60 bg-white/90 p-2 shadow-glass-lg backdrop-blur-md">
+                  <div className="absolute right-0 top-full z-20 mt-2 w-[min(18rem,calc(100vw-1.5rem))] rounded-xl border border-white/60 bg-white/90 p-2 shadow-glass-lg backdrop-blur-md sm:w-72">
                     <div className="px-1 pb-2">
                       <div className="relative">
                         <span className="material-symbols-outlined text-[16px] text-text-secondary absolute left-3 top-1/2 -translate-y-1/2">
                           search
                         </span>
                         <input
-                          className="w-full rounded-lg border border-black/10 bg-white/80 pl-9 pr-3 py-1.5 text-xs text-text-primary placeholder:text-text-secondary focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                          className="w-full rounded-lg border border-black/10 bg-white/80 py-2 pl-9 pr-3 text-sm text-text-primary placeholder:text-text-secondary focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                           placeholder="Поиск моделей"
                           value={modelQuery}
                           onChange={(event) => setModelQuery(event.target.value)}
@@ -1335,7 +1334,7 @@ export default function ChatApp() {
         <div
           ref={chatScrollRef}
           onScroll={handleChatScroll}
-          className="chat-scroll-fade-top flex-1 overflow-y-auto pt-24 pb-10 md:pb-12 px-6 md:px-0"
+          className="chat-scroll-fade-top flex-1 overflow-y-auto px-3 pt-32 pb-[calc(env(safe-area-inset-bottom)+8rem)] sm:px-4 md:px-6 md:pt-28 md:pb-32"
         >
           <div className="max-w-4xl mx-auto flex flex-col gap-6">
             {error && (
@@ -1444,14 +1443,14 @@ export default function ChatApp() {
                   const showThinkingPanel =
                     isStreamingAssistant && !message.content.trim();
                 return (
-                  <div key={message.id || index} className={`flex items-start gap-4 ${isAI ? 'pr-4' : 'pl-4 justify-end'} group`}>
+                  <div key={message.id || index} className={`group flex items-start gap-2 sm:gap-4 ${isAI ? 'pr-0 sm:pr-4' : 'justify-end pl-0 sm:pl-4'}`}>
                     {isAI && (
-                      <div className="size-10 shrink-0 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg ring-1 ring-black/10">
+                      <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 shadow-lg ring-1 ring-black/10 sm:size-10">
                         <span className="material-symbols-outlined text-white text-[20px]">smart_toy</span>
                       </div>
                     )}
 
-                    <div className={`flex flex-col gap-2 max-w-[85%] md:max-w-[75%] ${!isAI && 'items-end'}`}>
+                    <div className={`flex w-full max-w-[92%] flex-col gap-2 sm:max-w-[85%] md:max-w-[75%] ${!isAI && 'items-end'}`}>
                       <div className="flex items-baseline gap-2">
                         <span className="text-sm font-bold text-text-primary">{isAI ? "PlatformaAI" : "Вы"}</span>
                         <span className="text-xs text-text-secondary" suppressHydrationWarning>
@@ -1459,7 +1458,7 @@ export default function ChatApp() {
                         </span>
                       </div>
 
-                      <div className={`p-5 text-sm md:text-base leading-relaxed text-text-primary shadow-sm
+                      <div className={`p-4 text-sm leading-relaxed text-text-primary shadow-sm md:p-5 md:text-base
                                     ${isAI
                           ? 'glass-message-ai rounded-3xl rounded-tl-sm'
                           : 'glass-panel bg-white/95 text-text-primary border border-primary/30 rounded-3xl rounded-tr-sm shadow-[0_4px_20px_rgba(212,122,106,0.15)] overflow-hidden relative'
@@ -1493,7 +1492,7 @@ export default function ChatApp() {
                                 <ReactMarkdown
                                   remarkPlugins={[remarkGfm]}
                                   rehypePlugins={[rehypeHighlight]}
-                                  className="chat-markdown"
+                                  className="chat-markdown overflow-x-auto"
                                 >
                                   {message.content || ""}
                                 </ReactMarkdown>
@@ -1534,7 +1533,7 @@ export default function ChatApp() {
                                   </div>
                                 </div>
                               ) : (
-                                <p className="whitespace-pre-wrap">{message.content}</p>
+                                <p className="whitespace-pre-wrap break-words">{message.content}</p>
                               )}
                             </>
                           )}
@@ -1578,7 +1577,7 @@ export default function ChatApp() {
                     </div>
 
                     {!isAI && (
-                      <div className="size-10 shrink-0 rounded-full bg-gray-200 flex items-center justify-center shadow-lg text-gray-500" style={{ backgroundImage: `url(${currentUser?.image})`, backgroundSize: 'cover' }}>
+                      <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-gray-200 text-gray-500 shadow-lg sm:size-10" style={{ backgroundImage: `url(${currentUser?.image})`, backgroundSize: 'cover' }}>
                         {!currentUser?.image && <span className="material-symbols-outlined text-[20px]">person</span>}
                       </div>
                     )}
@@ -1592,7 +1591,7 @@ export default function ChatApp() {
         </div>
 
         {/* Input Area */}
-        <div className="sticky bottom-6 left-0 right-0 z-20 flex justify-center px-4">
+        <div className="sticky bottom-0 left-0 right-0 z-20 flex justify-center px-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] md:bottom-6 md:px-4 md:pb-0">
           <div className="flex w-full max-w-[720px] flex-col gap-1.5 rounded-3xl p-2 glass-input transition-all focus-within:ring-0 focus-within:shadow-[0_0_0_6px_rgba(212,122,106,0.14)]">
             {attachments.length > 0 && (
               <div className="flex px-3 gap-2 overflow-x-auto py-1">

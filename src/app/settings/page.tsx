@@ -440,7 +440,7 @@ const settingsInputClassName =
 const settingsPrimaryButtonClassName =
   "rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white transition-all duration-200 ease-out cursor-pointer hover:-translate-y-0.5 hover:bg-primary/90 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 active:translate-y-0 active:scale-[0.99]";
 const settingsSecondaryButtonClassName =
-  "rounded-full border border-slate-200 bg-white/80 px-3 py-1 text-xs font-semibold text-slate-700 transition-all duration-200 ease-out cursor-pointer hover:-translate-y-0.5 hover:bg-white hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 active:translate-y-0 active:scale-[0.99]";
+  "inline-flex min-h-11 items-center justify-center rounded-full border border-slate-200 bg-white/80 px-4 py-2 text-sm font-semibold text-slate-700 transition-all duration-200 ease-out cursor-pointer hover:-translate-y-0.5 hover:bg-white hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 active:translate-y-0 active:scale-[0.99]";
 const settingsNoticeClassName =
   "rounded-xl border px-4 py-3 text-sm leading-relaxed transition-all duration-200 ease-out";
 const settingsCardStatClassName = "rounded-xl border border-slate-200 bg-slate-50 p-4";
@@ -614,7 +614,7 @@ export default async function SettingsPage({
           </div>
         )}
         {isOnboardingFlow && (
-          <div className="rounded-2xl border border-primary/20 bg-primary/5 px-5 py-5 text-sm text-text-main">
+          <div className="rounded-2xl border border-primary/20 bg-primary/5 px-4 py-4 text-sm text-text-main sm:px-5 sm:py-5">
             <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
               <div>
                 <p className="text-base font-semibold text-slate-900">
@@ -629,7 +629,7 @@ export default async function SettingsPage({
                   <li>3. После этого откроется основной экран сервиса.</li>
                 </ol>
               </div>
-              <div className="min-w-[240px] rounded-2xl border border-white/60 bg-white/70 p-4 shadow-sm">
+              <div className="w-full rounded-2xl border border-white/60 bg-white/70 p-4 shadow-sm md:min-w-[240px] md:max-w-sm">
                 <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                   Обязательные поля
                 </p>
@@ -654,13 +654,13 @@ export default async function SettingsPage({
           />
 
           <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="flex items-center justify-between border-b border-slate-200/60 px-8 py-6">
+            <div className="flex items-center justify-between gap-3 border-b border-slate-200/60 px-4 py-5 sm:px-6 md:px-8 md:py-6">
               <h3 className="text-base font-bold text-slate-900">Профиль</h3>
               <span className="rounded border border-gray-200 bg-gray-50 px-2 py-1 text-xs font-mono text-slate-500">
                 ID: {session.user.id.slice(0, 8)}
               </span>
             </div>
-            <div className="p-8">
+            <div className="p-4 sm:p-6 md:p-8">
               <div className="flex flex-col items-start gap-8 sm:flex-row">
                 <div className="flex size-24 items-center justify-center rounded-full bg-primary/10 text-lg font-semibold text-primary ring-4 ring-gray-50">
                   {user?.email?.[0]?.toUpperCase() ?? "U"}
@@ -752,10 +752,10 @@ export default async function SettingsPage({
           </section>
 
           <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="border-b border-slate-200/60 px-8 py-6">
+            <div className="border-b border-slate-200/60 px-4 py-5 sm:px-6 md:px-8 md:py-6">
               <h3 className="text-base font-bold text-slate-900">Предпочтения</h3>
             </div>
-            <div className="p-8 space-y-6">
+            <div className="space-y-6 p-4 sm:p-6 md:p-8">
               <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">
@@ -832,10 +832,10 @@ export default async function SettingsPage({
               action={updateContactSettings}
               className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
             >
-              <div className="border-b border-slate-200/60 px-8 py-6">
+              <div className="border-b border-slate-200/60 px-4 py-5 sm:px-6 md:px-8 md:py-6">
                 <h3 className="text-base font-bold text-slate-900">Контакты</h3>
               </div>
-              <div className="grid grid-cols-1 gap-6 p-8 md:grid-cols-2">
+              <div className="grid grid-cols-1 gap-6 p-4 sm:p-6 md:grid-cols-2 md:p-8">
                 <div className="space-y-1.5">
                   <label
                     className="text-xs font-semibold uppercase tracking-wider text-slate-500"
@@ -883,10 +883,10 @@ export default async function SettingsPage({
             </form>
 
             <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-              <div className="border-b border-slate-200/60 px-8 py-6">
+              <div className="border-b border-slate-200/60 px-4 py-5 sm:px-6 md:px-8 md:py-6">
                 <h3 className="text-base font-bold text-slate-900">Пополнение</h3>
               </div>
-              <div className="space-y-4 p-8">
+              <div className="space-y-4 p-4 sm:p-6 md:p-8">
                 <div className="grid gap-4 md:grid-cols-4">
                   <div className={settingsCardStatClassName}>
                     <p className="text-xs text-slate-500">Текущий тариф</p>
@@ -919,13 +919,13 @@ export default async function SettingsPage({
               action={submitFeedback}
               className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
             >
-              <div className="border-b border-slate-200/60 px-8 py-6">
+              <div className="border-b border-slate-200/60 px-4 py-5 sm:px-6 md:px-8 md:py-6">
                 <h3 className="text-base font-bold text-slate-900">Обратная связь</h3>
                 <p className="mt-1 text-sm text-slate-500">
                   Оцените сервис и напишите, что улучшить или где вы нашли ошибку.
                 </p>
               </div>
-              <div className="grid grid-cols-1 gap-6 p-8 md:grid-cols-2">
+              <div className="grid grid-cols-1 gap-6 p-4 sm:p-6 md:grid-cols-2 md:p-8">
                 <div className="space-y-1.5">
                   <label
                     className="text-xs font-semibold uppercase tracking-wider text-slate-500"
@@ -1001,10 +1001,10 @@ export default async function SettingsPage({
               action={deleteAccount}
               className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
             >
-              <div className="border-b border-slate-200/60 px-8 py-6">
+              <div className="border-b border-slate-200/60 px-4 py-5 sm:px-6 md:px-8 md:py-6">
                 <h3 className="text-base font-bold text-slate-900">Опасная зона</h3>
               </div>
-              <div className="flex flex-col gap-4 p-8">
+              <div className="flex flex-col gap-4 p-4 sm:p-6 md:p-8">
                 <div>
                   <p className="text-sm font-medium text-slate-900">Удалить аккаунт</p>
                   <p className="text-xs text-slate-500">

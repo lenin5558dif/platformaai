@@ -77,7 +77,7 @@ export default function AppShell({
   );
 
   return (
-    <div className="text-text-main h-screen flex overflow-hidden bg-[#f0f0f5]">
+    <div className="flex h-[100dvh] overflow-hidden bg-[#f0f0f5] text-text-main">
       {showSidebar && isMobileMenuOpen && (
         <button
           type="button"
@@ -89,12 +89,12 @@ export default function AppShell({
 
       {showSidebar && (
         <>
-          <aside className="hidden md:flex w-[280px] flex-shrink-0 flex-col z-20 m-4 rounded-xl glass-panel shadow-glass-lg transition-shadow motion-safe:duration-200">
+          <aside className="z-20 hidden w-[280px] flex-shrink-0 flex-col rounded-xl glass-panel shadow-glass-lg transition-shadow motion-safe:duration-200 md:m-4 md:flex">
             {asideContent}
           </aside>
 
           <aside
-            className={`fixed inset-y-0 left-0 z-40 flex w-[280px] flex-col rounded-xl glass-panel shadow-glass-lg m-4 transition-transform motion-safe:duration-200 md:hidden ${
+            className={`fixed inset-y-2 left-2 z-40 flex w-[min(18rem,calc(100vw-1rem))] flex-col rounded-xl glass-panel shadow-glass-lg transition-transform motion-safe:duration-200 md:hidden ${
               isMobileMenuOpen ? "translate-x-0" : "-translate-x-[120%]"
             }`}
           >
@@ -103,8 +103,8 @@ export default function AppShell({
         </>
       )}
 
-      <main className="flex-1 flex flex-col h-full relative m-4 rounded-xl glass-panel shadow-glass-lg overflow-hidden">
-        <header className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 bg-white/50 px-4 py-3 backdrop-blur-sm rounded-t-xl">
+      <main className="relative m-2 flex h-full flex-1 flex-col overflow-hidden rounded-xl glass-panel shadow-glass-lg md:m-4">
+        <header className="sticky top-0 z-10 flex flex-wrap items-start justify-between gap-3 rounded-t-xl bg-white/50 px-3 py-3 backdrop-blur-sm sm:items-center sm:px-4">
           <div className="flex min-w-0 flex-1 items-start gap-2">
             {showSidebar && (
               <button
@@ -125,7 +125,7 @@ export default function AppShell({
               )}
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto">
             <Link
               className={shellActionClass}
               href="/"
@@ -135,7 +135,7 @@ export default function AppShell({
             {actions}
           </div>
         </header>
-        <div className="flex-1 overflow-y-auto p-4 md:p-6">{children}</div>
+        <div className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6">{children}</div>
       </main>
     </div>
   );

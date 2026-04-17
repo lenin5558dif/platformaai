@@ -196,7 +196,7 @@ export default async function AdminDashboardPage() {
               }).format(new Date(row.day));
               return (
                 <div key={`${row.day.toString()}-${row.activeUsers}`}>
-                  <div className="mb-1 flex items-center justify-between text-xs text-text-secondary">
+                  <div className="mb-1 flex flex-col gap-1 text-xs text-text-secondary sm:flex-row sm:items-center sm:justify-between">
                     <span>{dayLabel}</span>
                     <span>
                       {formatNumber(row.activeUsers)} активных •{" "}
@@ -223,7 +223,7 @@ export default async function AdminDashboardPage() {
             <p className="mt-4 text-sm text-text-secondary">Данных пока нет.</p>
           ) : (
             <div className="mt-4 overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="min-w-[640px] w-full text-sm">
                 <thead>
                   <tr className="text-left text-xs text-text-secondary">
                     <th className="pb-3">Модель</th>
@@ -235,7 +235,7 @@ export default async function AdminDashboardPage() {
                 <tbody className="text-text-main">
                   {topModels.map((row) => (
                     <tr key={row.modelId} className="border-t border-white/40">
-                      <td className="py-3 pr-4">{row.modelId}</td>
+                      <td className="py-3 pr-4 break-all">{row.modelId}</td>
                       <td className="py-3 pr-4">{formatNumber(row.requests)}</td>
                       <td className="py-3 pr-4">{formatNumber(row.tokens)}</td>
                       <td className="py-3">{formatCredits(row.credits)}</td>
