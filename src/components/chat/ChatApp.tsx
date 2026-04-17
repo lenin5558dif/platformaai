@@ -124,12 +124,16 @@ export default function ChatApp() {
     image?: string | null;
     emailVerifiedByProvider?: boolean | null;
   } | null>(null);
+  const [headerOffset, setHeaderOffset] = useState(0);
+  const [composerOffset, setComposerOffset] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const shouldAutoScrollRef = useRef(true);
   const skipNextLoadRef = useRef<string | null>(null);
   const activeChatIdRef = useRef<string | null>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
+  const composerContainerRef = useRef<HTMLDivElement>(null);
+  const headerRef = useRef<HTMLElement>(null);
   const modelMenuRef = useRef<HTMLDivElement>(null);
   const appliedPromptRef = useRef<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -256,7 +260,7 @@ export default function ChatApp() {
       return { href: "/settings", label: "Проверить баланс" };
     }
     return null;
-  }, [error, currentUser?.role]);
+  }, [error]);
 
   const composerState = useMemo(() => {
     if (isSending) return "sending";
@@ -587,6 +591,45 @@ export default function ChatApp() {
     if (!currentUser.email) return true;
     return currentUser.emailVerifiedByProvider !== true;
   }, [currentUser]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const headerElement = headerRef.current;
+    const composerElement = composerContainerRef.current;
+
+    const updateOffsets = () => {
+      setHeaderOffset(headerElement?.offsetHeight ?? 0);
+      setComposerOffset(composerElement?.offsetHeight ?? 0);
+    };
+
+    updateOffsets();
+
+    const resizeObserver = new ResizeObserver(() => {
+      updateOffsets();
+    });
+
+    if (headerElement) {
+      resizeObserver.observe(headerElement);
+    }
+
+    if (composerElement) {
+      resizeObserver.observe(composerElement);
+    }
+
+    window.addEventListener("resize", updateOffsets);
+
+    return () => {
+      resizeObserver.disconnect();
+      window.removeEventListener("resize", updateOffsets);
+    };
+  }, [
+    attachments.length,
+    isSending,
+    modelMenuOpen,
+    needsEmailVerification,
+    showOnboarding,
+  ]);
 
   useEffect(() => {
     const promptParam = searchParams.get("prompt");
@@ -1218,7 +1261,10 @@ export default function ChatApp() {
 
       <main className="relative flex h-full min-w-0 flex-1 flex-col">
         {/* Floating Header */}
-        <header className="pointer-events-none absolute top-0 left-0 right-0 z-30 px-3 pt-[calc(env(safe-area-inset-top)+0.75rem)] pb-3 md:px-6 md:py-4">
+        <header
+          ref={headerRef}
+          className="pointer-events-none absolute top-0 left-0 right-0 z-30 px-3 pt-[calc(env(safe-area-inset-top)+0.75rem)] pb-3 md:px-6 md:py-4"
+        >
           <div className="space-y-3 pointer-events-auto">
             {needsEmailVerification && (
               <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-lg">
@@ -1334,7 +1380,14 @@ export default function ChatApp() {
         <div
           ref={chatScrollRef}
           onScroll={handleChatScroll}
-          className="chat-scroll-fade-top flex-1 overflow-y-auto px-3 pt-32 pb-[calc(env(safe-area-inset-bottom)+8rem)] sm:px-4 md:px-6 md:pt-28 md:pb-32"
+          className="chat-scroll-fade-top flex-1 overflow-y-auto px-3 sm:px-4 md:px-6"
+          style={{
+            paddingTop: `${Math.max(headerOffset + 12, 112)}px`,
+            paddingBottom: `${Math.max(
+              composerOffset + 16,
+              96
+            )}px`,
+          }}
         >
           <div className="max-w-4xl mx-auto flex flex-col gap-6">
             {error && (
@@ -1591,7 +1644,10 @@ export default function ChatApp() {
         </div>
 
         {/* Input Area */}
-        <div className="sticky bottom-0 left-0 right-0 z-20 flex justify-center px-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] md:bottom-6 md:px-4 md:pb-0">
+        <div
+          ref={composerContainerRef}
+          className="sticky bottom-0 left-0 right-0 z-20 flex justify-center px-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] md:bottom-6 md:px-4 md:pb-0"
+        >
           <div className="flex w-full max-w-[720px] flex-col gap-1.5 rounded-3xl p-2 glass-input transition-all focus-within:ring-0 focus-within:shadow-[0_0_0_6px_rgba(212,122,106,0.14)]">
             {attachments.length > 0 && (
               <div className="flex px-3 gap-2 overflow-x-auto py-1">
