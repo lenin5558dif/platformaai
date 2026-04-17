@@ -28,7 +28,7 @@
 - [x] Этап 1. Зафиксировать аудит, проблемные зоны и рабочий план в документации
 - [x] Этап 2. Починить базовый responsive-shell: общие отступы, мобильные панели, header/action wrapping
 - [x] Этап 3. Починить `chat` под mobile/tablet: sidebar, header, message width, composer, onboarding/alert blocks
-- [ ] Этап 4. Починить `settings` и onboarding: карточки, summary-блоки, формы, обязательные поля
+- [x] Этап 4. Починить `settings` и onboarding: карточки, summary-блоки, формы, обязательные поля
 - [x] Этап 5. Починить `org/admin`: мобильная навигация, формы, таблицы, плотность action-элементов
 - [ ] Этап 6. Прогнать локальную проверку и обновить итоговый статус
 
@@ -41,7 +41,8 @@
 - [x] Завершён базовый responsive-shell pass для `AppShell`, `AdminSidebar`, `AdminLayout` и верхнего/нижнего shell в `ChatApp`
 - [x] Завершён mobile-pass для `chat`: drawer, header, model trigger, message width, safe-area отступы и touch-friendly controls
 - [x] Завершён mobile-pass для `org/admin`: action-кластеры сотрудников, RBAC, лимиты, invites, SSO/SCIM и admin navigation/table readability
-- [ ] Следующий проход: добить оставшуюся плотность `settings/onboarding` и при желании перейти к live browser smoke-check
+- [x] Завершён mobile-pass для `settings/onboarding`: CTA, плотность секций, ширина форм и поведение карточек на узком экране
+- [ ] Следующий проход: live browser smoke-check и полировка оставшихся overlay-узких мест в `chat`
 
 ## Критерии готовности
 

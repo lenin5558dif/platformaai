@@ -89,7 +89,7 @@ export default function TopUpForm({
         <button
           type="submit"
           disabled={status === "loading" || disabled}
-          className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-hover disabled:opacity-60"
+          className="w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary-hover disabled:opacity-60 sm:w-auto"
         >
           {status === "loading" ? "Создаем..." : "Перейти к оплате"}
         </button>

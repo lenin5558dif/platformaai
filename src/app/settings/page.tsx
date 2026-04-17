@@ -549,10 +549,10 @@ export default async function SettingsPage({
             </p>
           </div>
           {!isOnboardingFlow && (
-            <form action={logout}>
+            <form action={logout} className="w-full sm:w-auto">
               <button
                 type="submit"
-                className={settingsSecondaryButtonClassName}
+                className={`w-full sm:w-auto ${settingsSecondaryButtonClassName}`}
               >
                 Выйти из аккаунта
               </button>
@@ -607,7 +607,7 @@ export default async function SettingsPage({
           </div>
         )}
         {(needsEmail || needsVerification) && (
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm leading-relaxed text-amber-900">
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm leading-relaxed text-amber-900 sm:px-5">
             {needsEmail
               ? "Добавьте email. Он понадобится для покупки тарифа."
               : "Подтвердите email. Без этого покупка тарифа недоступна."}
@@ -654,9 +654,9 @@ export default async function SettingsPage({
           />
 
           <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="flex items-center justify-between gap-3 border-b border-slate-200/60 px-4 py-5 sm:px-6 md:px-8 md:py-6">
+            <div className="flex flex-col items-start justify-between gap-3 border-b border-slate-200/60 px-4 py-5 sm:flex-row sm:items-center sm:px-6 md:px-8 md:py-6">
               <h3 className="text-base font-bold text-slate-900">Профиль</h3>
-              <span className="rounded border border-gray-200 bg-gray-50 px-2 py-1 text-xs font-mono text-slate-500">
+              <span className="max-w-full overflow-hidden rounded border border-gray-200 bg-gray-50 px-2 py-1 text-xs font-mono text-slate-500 text-ellipsis whitespace-nowrap">
                 ID: {session.user.id.slice(0, 8)}
               </span>
             </div>
@@ -871,10 +871,10 @@ export default async function SettingsPage({
                     placeholder="+7 900 000 00 00"
                   />
                 </div>
-                <div className="md:col-span-2 flex flex-wrap gap-3">
+                <div className="flex flex-col gap-3 md:col-span-2 sm:flex-row sm:flex-wrap">
                   <button
                     type="submit"
-                    className={settingsPrimaryButtonClassName}
+                    className={`w-full sm:w-auto ${settingsPrimaryButtonClassName}`}
                   >
                     {emailVerified ? "Обновить контакты" : "Подтвердить email"}
                   </button>
@@ -988,7 +988,7 @@ export default async function SettingsPage({
                 <div className="md:col-span-2">
                   <button
                     type="submit"
-                    className={settingsPrimaryButtonClassName}
+                    className={`w-full sm:w-auto ${settingsPrimaryButtonClassName}`}
                   >
                     Отправить отзыв
                   </button>
@@ -1021,7 +1021,7 @@ export default async function SettingsPage({
                   />
                   <button
                     type="submit"
-                    className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-700 transition-all duration-200 ease-out cursor-pointer hover:-translate-y-0.5 hover:bg-rose-100 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-300 active:translate-y-0 active:scale-[0.99]"
+                    className="w-full rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-700 transition-all duration-200 ease-out cursor-pointer hover:-translate-y-0.5 hover:bg-rose-100 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-300 active:translate-y-0 active:scale-[0.99] md:w-auto"
                   >
                     Удалить аккаунт
                   </button>
