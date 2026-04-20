@@ -10,6 +10,7 @@ import {
 } from "@/lib/billing-tiers";
 import { requireAdminActor } from "@/lib/admin-auth";
 import { deleteUserByAdmin } from "@/lib/admin-user-delete";
+import { setUserAdminRoleByAdmin } from "@/lib/admin-user-role";
 import { issueAdminPasswordResetToken } from "@/lib/admin-password-reset";
 import { prisma } from "@/lib/db";
 import { HttpError } from "@/lib/http-error";
@@ -150,6 +151,22 @@ async function setUserActive(userId: string, formData: FormData) {
       adminSection: "clients",
       isActive,
     },
+  });
+
+  revalidatePath("/admin/clients");
+}
+
+async function setUserRole(userId: string, formData: FormData) {
+  "use server";
+  const admin = await requireAdminActor();
+  const nextRole = String(formData.get("role") ?? "").trim();
+  if (nextRole !== "ADMIN" && nextRole !== "USER") return;
+
+  await setUserAdminRoleByAdmin({
+    prisma,
+    actorId: admin.id,
+    userId,
+    nextRole,
   });
 
   revalidatePath("/admin/clients");
@@ -365,6 +382,17 @@ export default async function AdminClientsPage({
                           <button className={smallButtonClass}>
                             Тариф
                           </button>
+                        </form>
+                        <form action={setUserRole.bind(null, user.id)} className="flex gap-2">
+                          <select
+                            name="role"
+                            defaultValue={user.role === "ADMIN" ? "ADMIN" : "USER"}
+                            className={`${inputClass} min-w-0 flex-1`}
+                          >
+                            <option value="USER">Пользователь</option>
+                            <option value="ADMIN">Администратор</option>
+                          </select>
+                          <button className={smallButtonClass}>Роль</button>
                         </form>
                         <form
                           action={setUserLimits.bind(null, user.id)}
