@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
+import Image from "next/image";
 
 type ImageModel = {
   id: string;
@@ -240,17 +241,20 @@ export default function ImageStudio() {
           )}
         </div>
 
-        <div className="mt-5 flex min-h-[420px] items-center justify-center overflow-hidden rounded-3xl border border-white/80 bg-white/60">
+        <div className="relative mt-5 flex min-h-[420px] items-center justify-center overflow-hidden rounded-3xl border border-white/80 bg-white/60">
           {submitStatus === "loading" ? (
             <div className="text-center text-sm text-slate-500">
               <div className="mx-auto mb-4 size-12 animate-pulse rounded-full bg-primary/25" />
               Генерация может занять до минуты.
             </div>
           ) : result?.fileUrl ? (
-            <img
+            <Image
+              fill
+              unoptimized
               src={result.fileUrl}
               alt={result.prompt}
-              className="h-full max-h-[520px] w-full object-contain"
+              sizes="(max-width: 1024px) 100vw, 540px"
+              className="object-contain"
             />
           ) : (
             <div className="max-w-sm px-6 text-center text-sm leading-6 text-slate-500">
@@ -325,12 +329,15 @@ export default function ImageStudio() {
                 key={item.id}
                 className="group overflow-hidden rounded-3xl border border-white/80 bg-white/80 shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg"
               >
-                <div className="flex aspect-square items-center justify-center overflow-hidden bg-slate-100">
+                <div className="relative flex aspect-square items-center justify-center overflow-hidden bg-slate-100">
                   {item.fileUrl ? (
-                    <img
+                    <Image
+                      fill
+                      unoptimized
                       src={item.fileUrl}
                       alt={item.prompt}
-                      className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
+                      sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                      className="object-cover transition duration-300 group-hover:scale-[1.03]"
                     />
                   ) : (
                     <span className="text-sm text-slate-400">Нет файла</span>

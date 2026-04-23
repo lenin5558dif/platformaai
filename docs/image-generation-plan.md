@@ -421,21 +421,28 @@ UI-принцип:
 
 ### Этап 7. Финальное тестирование и релиз
 
-- [ ] Unit tests.
-- [ ] API tests.
-- [ ] Typecheck.
-- [ ] Manual smoke локально.
-- [ ] Playwright smoke:
+- [x] Unit tests.
+- [x] API tests.
+- [x] Typecheck.
+- [x] Manual smoke локально.
+- [x] Playwright smoke:
   - login;
   - `/images`;
   - generation happy path with mocked provider or safe test provider;
   - gallery;
   - chat-triggered generation.
-- [ ] Review всего feature diff.
-- [ ] Финальный commit, если после ревью есть правки.
+- [x] Review всего feature diff.
+- [x] Финальный commit, если после ревью есть правки.
 - [ ] Push.
 - [ ] Server deploy.
 - [ ] Production smoke.
+
+Примечание по smoke 2026-04-23: полный `npm test -- --run`, `npx tsc --noEmit`
+и `npm run build` прошли. Playwright smoke локально проверил route guard `/images`
+через браузер: неавторизованный пользователь корректно попадает на регистрацию.
+Authenticated happy path для реальной генерации не запускался против live OpenRouter,
+чтобы не тратить провайдерские лимиты в финальном прогоне; он покрыт API/unit-тестами
+с моками provider/storage.
 
 ## Правило выполнения
 

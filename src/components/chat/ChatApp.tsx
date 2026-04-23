@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
@@ -1637,12 +1638,15 @@ export default function ChatApp() {
                               </div>
                             ) : generatedImage ? (
                               <div className="overflow-hidden rounded-3xl border border-white/80 bg-white/75 shadow-sm">
-                                <div className="flex min-h-64 items-center justify-center bg-slate-100">
+                                <div className="relative flex min-h-64 items-center justify-center bg-slate-100">
                                   {generatedImage.fileUrl ? (
-                                    <img
+                                    <Image
+                                      fill
+                                      unoptimized
                                       src={generatedImage.fileUrl}
                                       alt={generatedImage.prompt}
-                                      className="max-h-[420px] w-full object-contain"
+                                      sizes="(max-width: 768px) 92vw, 640px"
+                                      className="object-contain"
                                     />
                                   ) : (
                                     <span className="text-sm text-text-secondary">
