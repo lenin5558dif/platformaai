@@ -15,6 +15,8 @@ import {
   getModelSpeedLabel,
   type ModelPricing,
 } from "@/lib/chat-ui";
+import { parseGeneratedImageMessage } from "@/lib/chat-generated-image";
+import { detectImageGenerationIntent } from "@/lib/image-intent";
 // import UserMenu from "@/components/layout/UserMenu"; // Replaced with inline specific UI
 
 type Chat = {
@@ -37,6 +39,8 @@ type ChatMessage = {
   createdAt?: string;
   tokenCount?: number;
 };
+
+const IMAGE_GENERATION_LOADING_CONTENT = "__PLATFORMAAI_IMAGE_LOADING__";
 
 type MessageRecord = {
   id: string;
@@ -877,6 +881,47 @@ export default function ChatApp() {
     }
   }
 
+  async function runImageGenerationInChat(chatId: string, text: string) {
+    shouldAutoScrollRef.current = true;
+    setMessages([
+      ...messages,
+      { role: "user", content: text },
+      { role: "assistant", content: IMAGE_GENERATION_LOADING_CONTENT },
+    ]);
+    setIsSending(true);
+    setStreamingChatId(chatId);
+
+    if (!activeChatIdRef.current) {
+      skipNextLoadRef.current = chatId;
+    }
+
+    try {
+      const response = await fetch("/api/ai/chat-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chatId,
+          prompt: text,
+          modelId: undefined,
+          aspectRatio: "1:1",
+          imageSize: "1K",
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data?.error ?? "Не удалось сгенерировать изображение.");
+      }
+    } finally {
+      setIsSending(false);
+      setStreamingChatId(null);
+      await loadChats();
+      if (activeChatIdRef.current === chatId) {
+        await loadChatDetails(chatId);
+      }
+    }
+  }
+
   function getErrorMessage(error: unknown, fallback: string) {
     if (error instanceof Error && error.message) {
       return error.message;
@@ -895,6 +940,16 @@ export default function ChatApp() {
     const chatId = await ensureChatId(text.slice(0, 40) || "Новый чат");
     if (!chatId) {
       setError("Не удалось создать чат.");
+      return;
+    }
+
+    const imageIntent = detectImageGenerationIntent(text);
+    if (imageIntent.isImageGeneration) {
+      try {
+        await runImageGenerationInChat(chatId, imageIntent.prompt);
+      } catch (err: unknown) {
+        setError(getErrorMessage(err, "Не удалось сгенерировать изображение."));
+      }
       return;
     }
 
@@ -925,6 +980,17 @@ export default function ChatApp() {
     shouldAutoScrollRef.current = true;
     const chatId = await ensureChatId(text.slice(0, 40) || "Новый чат");
     if (!chatId) return;
+
+    const imageIntent = detectImageGenerationIntent(text);
+    if (imageIntent.isImageGeneration) {
+      try {
+        await runImageGenerationInChat(chatId, imageIntent.prompt);
+      } catch (err: unknown) {
+        setError(getErrorMessage(err, "Не удалось сгенерировать изображение."));
+      }
+      return;
+    }
+
     const nextMessages: ChatMessage[] = [
       ...messages,
       { role: "user", content: text },
@@ -1497,6 +1563,9 @@ export default function ChatApp() {
               <>
                 {messages.map((message, index) => {
                   const isAI = message.role === "assistant";
+                  const generatedImage = isAI
+                    ? parseGeneratedImageMessage(message.content)
+                    : null;
                   const isEditing =
                     !isAI && Boolean(message.id) && editingMessageId === message.id;
                   const tokenCount =
@@ -1550,6 +1619,67 @@ export default function ChatApp() {
                                   <span className="size-1.5 rounded-full bg-primary/60 animate-bounce [animation-delay:-0.2s]" />
                                   <span className="size-1.5 rounded-full bg-primary/60 animate-bounce [animation-delay:-0.1s]" />
                                   <span className="size-1.5 rounded-full bg-primary/60 animate-bounce" />
+                                </div>
+                              </div>
+                            ) : message.content === IMAGE_GENERATION_LOADING_CONTENT ? (
+                              <div className="flex items-center gap-3 rounded-2xl border border-primary/20 bg-white/60 px-3 py-2">
+                                <span className="material-symbols-outlined animate-pulse text-[18px] text-primary">
+                                  imagesmode
+                                </span>
+                                <div className="flex flex-col gap-0.5">
+                                  <span className="text-sm font-semibold text-text-primary">
+                                    Генерирую изображение...
+                                  </span>
+                                  <span className="text-[11px] text-text-secondary">
+                                    Результат появится в чате и в галерее
+                                  </span>
+                                </div>
+                              </div>
+                            ) : generatedImage ? (
+                              <div className="overflow-hidden rounded-3xl border border-white/80 bg-white/75 shadow-sm">
+                                <div className="flex min-h-64 items-center justify-center bg-slate-100">
+                                  {generatedImage.fileUrl ? (
+                                    <img
+                                      src={generatedImage.fileUrl}
+                                      alt={generatedImage.prompt}
+                                      className="max-h-[420px] w-full object-contain"
+                                    />
+                                  ) : (
+                                    <span className="text-sm text-text-secondary">
+                                      Файл изображения недоступен
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="space-y-3 p-4">
+                                  <div>
+                                    <p className="text-sm font-semibold text-text-primary">
+                                      Изображение готово
+                                    </p>
+                                    <p className="mt-1 line-clamp-3 text-sm text-text-secondary">
+                                      {generatedImage.prompt}
+                                    </p>
+                                  </div>
+                                  <div className="flex flex-wrap gap-2">
+                                    {generatedImage.fileUrl && (
+                                      <a
+                                        className="inline-flex min-h-9 cursor-pointer items-center rounded-full border border-black/10 bg-white px-3 text-xs font-semibold text-text-primary transition-colors hover:border-primary/30 hover:text-primary"
+                                        href={generatedImage.fileUrl}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                      >
+                                        Открыть
+                                      </a>
+                                    )}
+                                    <Link
+                                      className="inline-flex min-h-9 cursor-pointer items-center rounded-full border border-black/10 bg-white px-3 text-xs font-semibold text-text-primary transition-colors hover:border-primary/30 hover:text-primary"
+                                      href="/images"
+                                    >
+                                      В галерею
+                                    </Link>
+                                    <span className="inline-flex min-h-9 items-center rounded-full bg-black/5 px-3 text-xs font-semibold text-text-secondary">
+                                      {generatedImage.modelId}
+                                    </span>
+                                  </div>
                                 </div>
                               </div>
                             ) : (

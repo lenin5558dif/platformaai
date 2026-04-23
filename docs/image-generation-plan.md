@@ -378,13 +378,13 @@ UI-принцип:
 
 Подэтап 5.3. Chat UI rendering
 
-- [ ] Показать generated image card в ленте.
-- [ ] Показать loading state генерации.
-- [ ] Добавить ссылку `Открыть в галерее`.
-- [ ] Не ломать обычный streaming text chat.
-- [ ] UI-тесты.
-- [ ] Review.
-- [ ] Commit.
+- [x] Показать generated image card в ленте.
+- [x] Показать loading state генерации.
+- [x] Добавить ссылку `Открыть в галерее`.
+- [x] Не ломать обычный streaming text chat.
+- [x] UI-тесты.
+- [x] Review.
+- [x] Commit.
 
 Критерии этапа:
 
