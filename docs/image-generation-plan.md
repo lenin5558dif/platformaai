@@ -433,7 +433,7 @@ UI-принцип:
   - chat-triggered generation.
 - [x] Review всего feature diff.
 - [x] Финальный commit, если после ревью есть правки.
-- [ ] Push.
+- [x] Push.
 - [ ] Server deploy.
 - [ ] Production smoke.
 
