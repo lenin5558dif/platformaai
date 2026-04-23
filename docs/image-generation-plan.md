@@ -405,13 +405,13 @@ UI-принцип:
 
 Подэтап 6.2. Operational safety
 
-- [ ] Добавить env/config для default image model.
-- [ ] Добавить feature flag `IMAGE_GENERATION_ENABLED`.
-- [ ] Добавить disabled model handling.
-- [ ] Добавить rate/error logging.
-- [ ] Тесты.
-- [ ] Review.
-- [ ] Commit.
+- [x] Добавить env/config для default image model.
+- [x] Добавить feature flag `IMAGE_GENERATION_ENABLED`.
+- [x] Добавить disabled model handling.
+- [x] Добавить rate/error logging.
+- [x] Тесты.
+- [x] Review.
+- [x] Commit.
 
 Критерии этапа:
 

@@ -10,6 +10,8 @@ services:
         condition: service_healthy
     ports:
       - "${APP_PORT:-3000}:3000"
+    volumes:
+      - generated_images:/app/generated-images
     environment:
       NODE_ENV: production
       NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
@@ -22,6 +24,9 @@ services:
       OPENROUTER_SITE_URL: ${OPENROUTER_SITE_URL:-http://localhost:3000}
       OPENROUTER_APP_NAME: ${OPENROUTER_APP_NAME:-PlatformaAI}
       OPENROUTER_MARKUP: ${OPENROUTER_MARKUP:-2}
+      DEFAULT_IMAGE_MODEL_ID: ${DEFAULT_IMAGE_MODEL_ID:-black-forest-labs/flux.2-klein-4b}
+      IMAGE_GENERATION_ENABLED: ${IMAGE_GENERATION_ENABLED:-1}
+      IMAGE_GENERATION_STORAGE_DIR: ${IMAGE_GENERATION_STORAGE_DIR:-/app/generated-images}
       USD_PER_CREDIT: ${USD_PER_CREDIT:-0.01}
       # Payment provider config for the app layer.
       YOOKASSA_SHOP_ID: ${YOOKASSA_SHOP_ID:-}
@@ -69,6 +74,9 @@ services:
       OPENROUTER_SITE_URL: ${OPENROUTER_SITE_URL:-http://localhost:3000}
       OPENROUTER_APP_NAME: ${OPENROUTER_APP_NAME:-PlatformaAI}
       OPENROUTER_MARKUP: ${OPENROUTER_MARKUP:-2}
+      DEFAULT_IMAGE_MODEL_ID: ${DEFAULT_IMAGE_MODEL_ID:-black-forest-labs/flux.2-klein-4b}
+      IMAGE_GENERATION_ENABLED: ${IMAGE_GENERATION_ENABLED:-1}
+      IMAGE_GENERATION_STORAGE_DIR: ${IMAGE_GENERATION_STORAGE_DIR:-/app/generated-images}
       USD_PER_CREDIT: ${USD_PER_CREDIT:-0.01}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_LOGIN_BOT_NAME: ${TELEGRAM_LOGIN_BOT_NAME:-platformaai_bot}
@@ -117,3 +125,4 @@ services:
 
 volumes:
   postgres_data:
+  generated_images:

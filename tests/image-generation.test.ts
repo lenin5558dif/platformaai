@@ -84,6 +84,7 @@ vi.mock("@/lib/telemetry", () => ({
 
 describe("image generation service", () => {
   beforeEach(() => {
+    delete process.env.IMAGE_GENERATION_ENABLED;
     state.user = {
       id: "user_1",
       balance: 500,
@@ -230,5 +231,23 @@ describe("image generation service", () => {
         error: "provider down",
       },
     });
+  });
+
+  test("respects the image generation feature flag", async () => {
+    process.env.IMAGE_GENERATION_ENABLED = "0";
+    const { generateImageForUser } = await import("../src/lib/image-generation");
+
+    await expect(
+      generateImageForUser({
+        userId: "user_1",
+        prompt: "Нарисуй город",
+      })
+    ).rejects.toMatchObject({
+      status: 503,
+      code: "IMAGE_GENERATION_DISABLED",
+    });
+
+    expect(state.imageGenerationCreate).not.toHaveBeenCalled();
+    expect(state.generateImageWithOpenRouter).not.toHaveBeenCalled();
   });
 });

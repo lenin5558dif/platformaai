@@ -155,6 +155,9 @@ Required environment variables:
 - `DATABASE_URL` — PostgreSQL connection string
 - `AUTH_SECRET` — NextAuth secret
 - `OPENROUTER_API_KEY` — OpenRouter API key
+- `DEFAULT_IMAGE_MODEL_ID` — default OpenRouter image model for `/images`
+- `IMAGE_GENERATION_ENABLED` — set `0` to disable image generation without redeploying code
+- `IMAGE_GENERATION_STORAGE_DIR` — filesystem directory for generated image files
 - `POSTGRES_PASSWORD` / `PGADMIN_PASSWORD` — Docker passwords
 - `UNISENDER_API_KEY` / `UNISENDER_SENDER_EMAIL` — primary transactional email delivery
 
@@ -312,6 +315,9 @@ npm run prisma:migrate:deploy
 - `DATABASE_URL` — подключение к PostgreSQL
 - `AUTH_SECRET` — секрет для NextAuth
 - `OPENROUTER_API_KEY` — ключ OpenRouter API
+- `DEFAULT_IMAGE_MODEL_ID` — image-модель OpenRouter по умолчанию для `/images`
+- `IMAGE_GENERATION_ENABLED` — `0`, чтобы выключить генерацию изображений без деплоя кода
+- `IMAGE_GENERATION_STORAGE_DIR` — папка на сервере для файлов сгенерированных изображений
 - `POSTGRES_PASSWORD` / `PGADMIN_PASSWORD` — пароли для Docker
 
 ### API Endpoints
