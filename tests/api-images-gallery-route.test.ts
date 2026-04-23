@@ -23,6 +23,19 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
+vi.mock("@/lib/image-storage", async () => {
+  const actual = await vi.importActual<typeof import("../src/lib/image-storage")>(
+    "../src/lib/image-storage"
+  );
+  return {
+    ...actual,
+    hasGeneratedImageFile: vi.fn((storagePath: string | null | undefined) =>
+      Boolean(storagePath && storagePath !== "/tmp/missing.png")
+    ),
+    resolveGeneratedImageStoragePath: vi.fn((storagePath: string) => storagePath),
+  };
+});
+
 vi.mock("node:fs/promises", () => ({
   readFile: vi.fn(async () => {
     if (state.readFileError) throw state.readFileError;
@@ -38,6 +51,7 @@ function generation(overrides: Record<string, unknown> = {}) {
     modelId: "image/free",
     status: "COMPLETED",
     mimeType: "image/png",
+    storagePath: "/tmp/gen_1.png",
     publicUrl: null,
     width: null,
     height: null,
@@ -85,6 +99,21 @@ describe("api images gallery routes", () => {
       id: "gen_1",
       cost: "0",
       fileUrl: "/api/images/gen_1/file",
+    });
+  });
+
+  test("does not expose broken gallery files as available", async () => {
+    state.records = [generation({ storagePath: "/tmp/missing.png" })];
+    state.findMany.mockResolvedValueOnce(state.records);
+    const { GET } = await import("../src/app/api/images/route");
+
+    const res = await GET(new Request("http://localhost/api/images"));
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.data[0]).toMatchObject({
+      id: "gen_1",
+      fileUrl: null,
     });
   });
 

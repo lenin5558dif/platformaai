@@ -68,7 +68,6 @@ type Model = {
 };
 
 const DEFAULT_MODEL = "openai/gpt-4o";
-const DEFAULT_IMAGE_MODEL = "black-forest-labs/flux.2-klein-4b";
 const COMPOSER_MAX_HEIGHT = 128;
 const AUTO_SCROLL_BOTTOM_THRESHOLD_PX = 120;
 
@@ -99,7 +98,7 @@ export default function ChatApp() {
   const [models, setModels] = useState<Model[]>([]);
   const [imageModels, setImageModels] = useState<PickerModel[]>([]);
   const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL);
-  const [selectedImageModel, setSelectedImageModel] = useState(DEFAULT_IMAGE_MODEL);
+  const [selectedImageModel, setSelectedImageModel] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [sourceFilter] = useState<"ALL" | "WEB" | "TELEGRAM">("ALL");
   const [searchQuery, setSearchQuery] = useState("");
@@ -395,9 +394,7 @@ export default function ChatApp() {
       const preferred =
         stored && mapped.some((model) => model.id === stored)
           ? stored
-          : mapped.some((model) => model.id === DEFAULT_IMAGE_MODEL)
-            ? DEFAULT_IMAGE_MODEL
-            : mapped[0].id;
+          : "";
       setSelectedImageModel(preferred);
     } catch {
       // ignore
@@ -882,6 +879,10 @@ export default function ChatApp() {
   }
 
   async function runImageGenerationInChat(chatId: string, text: string) {
+    if (!selectedImageModel || !imageModels.some((model) => model.id === selectedImageModel)) {
+      throw new Error("Выберите модель для изображений, и после этого я сгенерирую картинку.");
+    }
+
     shouldAutoScrollRef.current = true;
     setMessages([
       ...messages,
@@ -902,7 +903,7 @@ export default function ChatApp() {
         body: JSON.stringify({
           chatId,
           prompt: text,
-          modelId: selectedImageModel || undefined,
+          modelId: selectedImageModel,
           aspectRatio: "1:1",
           imageSize: "1K",
         }),

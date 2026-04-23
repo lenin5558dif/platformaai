@@ -118,7 +118,7 @@ export default function ModelPicker({
   }
 
   return (
-    <div className="relative" ref={containerRef}>
+    <div className="relative z-[80]" ref={containerRef}>
       <button
         type="button"
         className="inline-flex min-h-10 max-w-[18rem] cursor-pointer items-center justify-center gap-2 rounded-2xl border border-primary/20 bg-white/80 px-3 text-left text-sm font-semibold text-text-primary shadow-sm transition-colors hover:border-primary/40 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
@@ -137,7 +137,7 @@ export default function ModelPicker({
 
       {isOpen && (
         <div
-          className={`absolute top-full z-40 mt-3 w-[min(38rem,calc(100vw-1.5rem))] overflow-hidden rounded-3xl border border-white/70 bg-white/95 shadow-[0_24px_80px_rgba(69,49,40,0.20)] backdrop-blur-xl ${
+          className={`absolute top-full z-[90] mt-3 w-[min(38rem,calc(100vw-1.5rem))] overflow-hidden rounded-3xl border border-white/70 bg-white/95 shadow-[0_24px_80px_rgba(69,49,40,0.20)] backdrop-blur-xl ${
             align === "right" ? "right-0" : "left-0"
           }`}
         >

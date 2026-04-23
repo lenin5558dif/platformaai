@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -45,6 +46,27 @@ function extensionForMimeType(mimeType: string) {
   }
 }
 
+export function getGeneratedImagesBaseDir(baseDir?: string) {
+  return (
+    baseDir ??
+    process.env.IMAGE_GENERATION_STORAGE_DIR ??
+    path.join(process.cwd(), "generated-images")
+  );
+}
+
+export function resolveGeneratedImageStoragePath(storagePath: string, baseDir?: string) {
+  if (path.isAbsolute(storagePath)) {
+    return storagePath;
+  }
+
+  return path.join(getGeneratedImagesBaseDir(baseDir), storagePath);
+}
+
+export function hasGeneratedImageFile(storagePath: string | null | undefined, baseDir?: string) {
+  if (!storagePath) return false;
+  return existsSync(resolveGeneratedImageStoragePath(storagePath, baseDir));
+}
+
 export async function saveGeneratedImageDataUrl(params: {
   dataUrl: string;
   userId: string;
@@ -62,20 +84,19 @@ export async function saveGeneratedImageDataUrl(params: {
   const generationSegment =
     params.generationId?.replace(/[^a-zA-Z0-9_-]/g, "_") ??
     `${Date.now()}-${randomBytes(6).toString("hex")}`;
-  const baseDir =
-    params.baseDir ??
-    process.env.IMAGE_GENERATION_STORAGE_DIR ??
-    path.join(process.cwd(), "generated-images");
+  const baseDir = getGeneratedImagesBaseDir(params.baseDir);
   const userDir = path.join(baseDir, safeUserId);
   await mkdir(userDir, { recursive: true });
 
   const filename = `${generationSegment}.${extensionForMimeType(mimeType)}`;
-  const storagePath = path.join(userDir, filename);
-  await writeFile(storagePath, buffer);
+  const relativeStoragePath = path.join(safeUserId, filename);
+  const absoluteStoragePath = path.join(userDir, filename);
+  await writeFile(absoluteStoragePath, buffer);
 
   return {
     filename,
-    storagePath,
+    storagePath: relativeStoragePath,
+    absoluteStoragePath,
     mimeType,
     size: buffer.length,
   };

@@ -46,8 +46,8 @@ describe("image storage", () => {
       mimeType: "image/webp",
       size: 5,
     });
-    expect(result.storagePath).toBe(path.join(tempDir, "___user_1", "gen_1.webp"));
-    await expect(readFile(result.storagePath, "utf8")).resolves.toBe("image");
+    expect(result.storagePath).toBe(path.join("___user_1", "gen_1.webp"));
+    await expect(readFile(result.absoluteStoragePath, "utf8")).resolves.toBe("image");
   });
 
   test("rejects images over the configured size limit", async () => {

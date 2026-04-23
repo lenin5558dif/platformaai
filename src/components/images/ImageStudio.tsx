@@ -153,9 +153,9 @@ export default function ImageStudio() {
 
   return (
     <div className="space-y-5">
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,360px)_minmax(0,1fr)]">
+      <div className="relative z-10 grid gap-5 xl:grid-cols-[minmax(0,360px)_minmax(0,1fr)]">
         <form
-          className="rounded-3xl border border-white/70 bg-white/78 p-5 shadow-[0_18px_60px_rgba(69,49,40,0.08)] backdrop-blur sm:p-6"
+          className="relative z-20 rounded-3xl border border-white/70 bg-white/78 p-5 shadow-[0_18px_60px_rgba(69,49,40,0.08)] backdrop-blur sm:p-6"
           onSubmit={handleSubmit}
         >
           <div className="flex items-center justify-between gap-3">
@@ -260,7 +260,7 @@ export default function ImageStudio() {
           </button>
         </form>
 
-        <section className="rounded-3xl border border-white/70 bg-[linear-gradient(145deg,rgba(255,255,255,0.82),rgba(249,239,232,0.72))] p-5 shadow-[0_18px_60px_rgba(69,49,40,0.08)] sm:p-6">
+        <section className="relative z-0 rounded-3xl border border-white/70 bg-[linear-gradient(145deg,rgba(255,255,255,0.82),rgba(249,239,232,0.72))] p-5 shadow-[0_18px_60px_rgba(69,49,40,0.08)] sm:p-6">
           <div className="flex items-center justify-between gap-3">
             <h2 className="font-display text-2xl font-semibold text-slate-950">Результат</h2>
             {result && (

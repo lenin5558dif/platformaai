@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { resolveGeneratedImageStoragePath } from "@/lib/image-storage";
 
 export async function GET(
   _request: Request,
@@ -35,7 +36,7 @@ export async function GET(
   }
 
   try {
-    const file = await readFile(record.storagePath);
+    const file = await readFile(resolveGeneratedImageStoragePath(record.storagePath));
     return new NextResponse(file, {
       headers: {
         "Content-Type": record.mimeType,

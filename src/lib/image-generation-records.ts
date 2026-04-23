@@ -1,4 +1,5 @@
 import type { ImageGenerationStatus, Prisma } from "@prisma/client";
+import { hasGeneratedImageFile } from "@/lib/image-storage";
 
 export type ImageGenerationRecord = {
   id: string;
@@ -7,6 +8,7 @@ export type ImageGenerationRecord = {
   modelId: string;
   status: ImageGenerationStatus;
   mimeType: string | null;
+  storagePath?: string | null;
   publicUrl: string | null;
   width: number | null;
   height: number | null;
@@ -23,12 +25,14 @@ export type ImageGenerationRecord = {
 };
 
 export function serializeImageGeneration(record: ImageGenerationRecord) {
+  const hasFile =
+    record.status === "COMPLETED" &&
+    record.mimeType &&
+    hasGeneratedImageFile(record.storagePath ?? null);
+
   return {
     ...record,
     cost: record.cost.toString(),
-    fileUrl:
-      record.status === "COMPLETED" && record.mimeType
-        ? `/api/images/${record.id}/file`
-        : null,
+    fileUrl: hasFile ? `/api/images/${record.id}/file` : null,
   };
 }
