@@ -285,18 +285,18 @@ UI-принцип:
 
 Подэтап 3.1. `POST /api/images/generate`
 
-- [ ] Добавить request schema.
-- [ ] Проверить auth.
-- [ ] Проверить пользователя и тариф.
-- [ ] Применить DLP/model policy.
-- [ ] Выполнить billing preflight/reservation.
-- [ ] Вызвать provider layer.
-- [ ] Сохранить изображение в storage.
-- [ ] Создать `ImageGeneration`.
-- [ ] Commit/release billing.
-- [ ] Добавить API-тесты.
-- [ ] Review.
-- [ ] Commit.
+- [x] Добавить request schema.
+- [x] Проверить auth.
+- [x] Проверить пользователя и тариф.
+- [x] Применить DLP/model policy.
+- [x] Выполнить billing preflight/reservation.
+- [x] Вызвать provider layer.
+- [x] Сохранить изображение в storage.
+- [x] Создать `ImageGeneration`.
+- [x] Commit/release billing.
+- [x] Добавить API-тесты.
+- [x] Review.
+- [x] Commit.
 
 Подэтап 3.2. Gallery API
 
