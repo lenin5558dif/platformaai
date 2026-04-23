@@ -35,7 +35,7 @@ export default async function ImagesPage() {
   return (
     <AppShell
       title="Изображения"
-      subtitle="Отдельный инструмент для генерации и истории картинок."
+      subtitle="Генератор и история."
       user={{
         email: user?.email,
         role: user?.role,
@@ -44,27 +44,6 @@ export default async function ImagesPage() {
       }}
     >
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-5 pb-10">
-        <section className="overflow-hidden rounded-3xl border border-white/70 bg-[radial-gradient(circle_at_top_left,rgba(212,122,106,0.22),transparent_34%),linear-gradient(135deg,rgba(255,255,255,0.95),rgba(250,244,239,0.86))] p-5 shadow-[0_18px_60px_rgba(69,49,40,0.10)] sm:p-7">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div className="max-w-2xl">
-              <p className="mb-3 inline-flex rounded-full border border-primary/20 bg-white/70 px-3 py-1 text-xs font-semibold text-primary">
-                Image studio
-              </p>
-              <h2 className="font-display text-2xl font-semibold tracking-tight text-slate-950 sm:text-4xl">
-                Создавайте изображения отдельно от чата
-              </h2>
-              <p className="mt-3 text-sm leading-6 text-slate-600 sm:text-base">
-                Здесь будет форма генерации, выбор модели и галерея ваших результатов.
-                История сохранится после обновления страницы и будет связана с общим биллингом.
-              </p>
-            </div>
-            <div className="rounded-2xl border border-white/80 bg-white/65 p-4 text-sm text-slate-600 shadow-sm">
-              <p className="font-semibold text-slate-900">Статус</p>
-              <p className="mt-1">Backend API готов. Интерфейс формы подключается следующим шагом.</p>
-            </div>
-          </div>
-        </section>
-
         <ImageStudio />
       </div>
     </AppShell>

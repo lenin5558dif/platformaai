@@ -34,8 +34,22 @@ function isFreeModel(model: ImageModel) {
   );
 }
 
-function modelLabel(model: ImageModel) {
-  return model.name ? `${model.name} · ${model.id}` : model.id;
+function getModelLabel(model: ImageModel) {
+  return model.name ? model.name : model.id;
+}
+
+function getModelsFromPayload(payload: unknown) {
+  if (!payload || typeof payload !== "object") return [];
+  const record = payload as { data?: unknown };
+  if (Array.isArray(record.data)) return record.data as ImageModel[];
+  if (
+    record.data &&
+    typeof record.data === "object" &&
+    Array.isArray((record.data as { data?: unknown }).data)
+  ) {
+    return (record.data as { data: ImageModel[] }).data;
+  }
+  return [];
 }
 
 export default function ImageStudio() {
@@ -49,63 +63,71 @@ export default function ImageStudio() {
   const [modelsStatus, setModelsStatus] = useState<"loading" | "ready" | "error">("loading");
   const [galleryStatus, setGalleryStatus] = useState<"loading" | "ready" | "error">("loading");
   const [submitStatus, setSubmitStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
-  const [error, setError] = useState("");
+  const [modelsError, setModelsError] = useState("");
+  const [submitError, setSubmitError] = useState("");
+
+  async function loadModels() {
+    setModelsStatus("loading");
+    setModelsError("");
+
+    try {
+      const response = await fetch("/api/images/models", { cache: "no-store" });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload?.error ?? "Не удалось загрузить модели");
+      }
+
+      const nextModels = getModelsFromPayload(payload);
+      setModels(nextModels);
+      setSelectedModel((current) => {
+        if (current && nextModels.some((model) => model.id === current)) {
+          return current;
+        }
+        return nextModels[0]?.id ?? "";
+      });
+      setModelsStatus("ready");
+
+      if (nextModels.length === 0) {
+        setModelsError("Список моделей пуст. Проверьте тариф или настройки OpenRouter.");
+      }
+    } catch (error) {
+      setModels([]);
+      setSelectedModel("");
+      setModelsStatus("error");
+      setModelsError(error instanceof Error ? error.message : "Не удалось загрузить модели");
+    }
+  }
+
+  async function loadGallery() {
+    setGalleryStatus("loading");
+
+    try {
+      const response = await fetch("/api/images?limit=24", { cache: "no-store" });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload?.error ?? "Не удалось загрузить галерею");
+      }
+
+      setGallery((payload?.data ?? []) as ImageGeneration[]);
+      setGalleryStatus("ready");
+    } catch {
+      setGalleryStatus("error");
+    }
+  }
 
   useEffect(() => {
-    let cancelled = false;
-
-    async function loadModels() {
-      setModelsStatus("loading");
-      try {
-        const response = await fetch("/api/images/models", { cache: "no-store" });
-        const payload = await response.json();
-        if (!response.ok) {
-          throw new Error(payload?.error ?? "Не удалось загрузить модели");
-        }
-        const nextModels = (payload?.data?.data ?? []) as ImageModel[];
-        if (cancelled) return;
-        setModels(nextModels);
-        setSelectedModel((current) => current || nextModels[0]?.id || "");
-        setModelsStatus("ready");
-      } catch (loadError) {
-        if (cancelled) return;
-        setModelsStatus("error");
-        setError(loadError instanceof Error ? loadError.message : "Не удалось загрузить модели");
-      }
-    }
-
-    async function loadGallery() {
-      setGalleryStatus("loading");
-      try {
-        const response = await fetch("/api/images?limit=24", { cache: "no-store" });
-        const payload = await response.json();
-        if (!response.ok) {
-          throw new Error(payload?.error ?? "Не удалось загрузить галерею");
-        }
-        if (cancelled) return;
-        setGallery((payload?.data ?? []) as ImageGeneration[]);
-        setGalleryStatus("ready");
-      } catch {
-        if (cancelled) return;
-        setGalleryStatus("error");
-      }
-    }
-
     void loadModels();
     void loadGallery();
-
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const text = prompt.trim();
+
     if (!text || !selectedModel || submitStatus === "loading") return;
 
     setSubmitStatus("loading");
-    setError("");
+    setSubmitError("");
     setResult(null);
 
     try {
@@ -123,151 +145,160 @@ export default function ImageStudio() {
       if (!response.ok) {
         throw new Error(payload?.error ?? "Не удалось сгенерировать изображение");
       }
+
       const generation = payload.data as ImageGeneration;
       setResult(generation);
       setGallery((current) => [generation, ...current.filter((item) => item.id !== generation.id)]);
       setSubmitStatus("success");
-    } catch (submitError) {
+    } catch (error) {
       setSubmitStatus("error");
-      setError(submitError instanceof Error ? submitError.message : "Не удалось сгенерировать изображение");
+      setSubmitError(
+        error instanceof Error ? error.message : "Не удалось сгенерировать изображение"
+      );
     }
   }
 
+  const canSubmit = Boolean(prompt.trim() && selectedModel) && submitStatus !== "loading";
+
   return (
     <div className="space-y-5">
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,0.95fr)_minmax(360px,1.05fr)]">
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,360px)_minmax(0,1fr)]">
         <form
-        className="rounded-3xl border border-white/70 bg-white/75 p-5 shadow-[0_18px_60px_rgba(69,49,40,0.08)] backdrop-blur sm:p-6"
-        onSubmit={handleSubmit}
-      >
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary">
-            Генерация
-          </p>
-          <h2 className="mt-2 font-display text-2xl font-semibold text-slate-950">
-            Опишите изображение
-          </h2>
-          <p className="mt-2 text-sm leading-6 text-slate-600">
-            Чем точнее стиль, объект, фон и настроение, тем стабильнее результат.
-          </p>
-        </div>
-
-        <label className="mt-5 block">
-          <span className="text-sm font-semibold text-slate-800">Промпт</span>
-          <textarea
-            className="mt-2 min-h-40 w-full resize-y rounded-2xl border border-slate-200 bg-white/90 px-4 py-3 text-sm leading-6 text-slate-900 outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
-            placeholder="Например: уютная кофейня на Марсе, утренний свет, детальная иллюстрация..."
-            value={prompt}
-            onChange={(event) => setPrompt(event.target.value)}
-            maxLength={4000}
-          />
-        </label>
-
-        <label className="mt-4 block">
-          <span className="text-sm font-semibold text-slate-800">Модель</span>
-          <select
-            className="mt-2 h-12 w-full cursor-pointer rounded-2xl border border-slate-200 bg-white/90 px-4 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10 disabled:cursor-not-allowed disabled:opacity-60"
-            value={selectedModel}
-            onChange={(event) => setSelectedModel(event.target.value)}
-            disabled={modelsStatus !== "ready" || models.length === 0}
-          >
-            {modelsStatus === "loading" && <option>Загружаю модели...</option>}
-            {modelsStatus === "error" && <option>Модели недоступны</option>}
-            {models.map((model) => (
-              <option key={model.id} value={model.id}>
-                {modelLabel(model)}{isFreeModel(model) ? " · free" : ""}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          <label>
-            <span className="text-sm font-semibold text-slate-800">Пропорция</span>
-            <select
-              className="mt-2 h-12 w-full cursor-pointer rounded-2xl border border-slate-200 bg-white/90 px-4 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
-              value={aspectRatio}
-              onChange={(event) => setAspectRatio(event.target.value)}
-            >
-              {aspectRatios.map((ratio) => (
-                <option key={ratio} value={ratio}>{ratio}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span className="text-sm font-semibold text-slate-800">Размер</span>
-            <select
-              className="mt-2 h-12 w-full cursor-pointer rounded-2xl border border-slate-200 bg-white/90 px-4 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
-              value={imageSize}
-              onChange={(event) => setImageSize(event.target.value)}
-            >
-              {imageSizes.map((size) => (
-                <option key={size} value={size}>{size}</option>
-              ))}
-            </select>
-          </label>
-        </div>
-
-        {error && (
-          <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-            {error}
-          </div>
-        )}
-
-        <button
-          type="submit"
-          className="mt-5 inline-flex min-h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-2xl bg-primary px-5 text-sm font-bold text-white shadow-[0_18px_30px_rgba(212,122,106,0.24)] transition hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-60"
-          disabled={!prompt.trim() || !selectedModel || submitStatus === "loading"}
+          className="rounded-3xl border border-white/70 bg-white/78 p-5 shadow-[0_18px_60px_rgba(69,49,40,0.08)] backdrop-blur sm:p-6"
+          onSubmit={handleSubmit}
         >
-          {submitStatus === "loading" ? "Генерирую..." : "Сгенерировать"}
-          <span className="material-symbols-outlined text-[19px]">auto_awesome</span>
-        </button>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="font-display text-2xl font-semibold text-slate-950">Новая генерация</h2>
+            <button
+              type="button"
+              className="inline-flex min-h-10 cursor-pointer items-center justify-center rounded-full border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-700 transition hover:border-primary/30 hover:text-primary"
+              onClick={() => void loadModels()}
+            >
+              Обновить модели
+            </button>
+          </div>
+
+          <label className="mt-5 block">
+            <span className="text-sm font-semibold text-slate-800">Промпт</span>
+            <textarea
+              className="mt-2 min-h-44 w-full resize-y rounded-2xl border border-slate-200 bg-white/90 px-4 py-3 text-sm leading-6 text-slate-900 outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
+              placeholder="Опишите сцену, стиль, свет, ракурс и детали."
+              value={prompt}
+              onChange={(event) => setPrompt(event.target.value)}
+              maxLength={4000}
+            />
+          </label>
+
+          <div className="mt-4 space-y-4">
+            <label className="block">
+              <span className="text-sm font-semibold text-slate-800">Модель</span>
+              <select
+                className="mt-2 h-12 w-full cursor-pointer rounded-2xl border border-slate-200 bg-white/90 px-4 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10 disabled:cursor-not-allowed disabled:opacity-60"
+                value={selectedModel}
+                onChange={(event) => setSelectedModel(event.target.value)}
+                disabled={modelsStatus === "loading" || models.length === 0}
+              >
+                {modelsStatus === "loading" && <option value="">Загружаю модели...</option>}
+                {modelsStatus !== "loading" && models.length === 0 && (
+                  <option value="">Нет доступных моделей</option>
+                )}
+                {models.map((model) => (
+                  <option key={model.id} value={model.id}>
+                    {getModelLabel(model)}
+                    {isFreeModel(model) ? " · free" : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label>
+                <span className="text-sm font-semibold text-slate-800">Формат</span>
+                <select
+                  className="mt-2 h-12 w-full cursor-pointer rounded-2xl border border-slate-200 bg-white/90 px-4 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
+                  value={aspectRatio}
+                  onChange={(event) => setAspectRatio(event.target.value)}
+                >
+                  {aspectRatios.map((ratio) => (
+                    <option key={ratio} value={ratio}>
+                      {ratio}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                <span className="text-sm font-semibold text-slate-800">Размер</span>
+                <select
+                  className="mt-2 h-12 w-full cursor-pointer rounded-2xl border border-slate-200 bg-white/90 px-4 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
+                  value={imageSize}
+                  onChange={(event) => setImageSize(event.target.value)}
+                >
+                  {imageSizes.map((size) => (
+                    <option key={size} value={size}>
+                      {size}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          </div>
+
+          {modelsError && (
+            <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              {modelsError}
+            </div>
+          )}
+
+          {submitError && (
+            <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+              {submitError}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            className="mt-5 inline-flex min-h-12 w-full cursor-pointer items-center justify-center rounded-2xl bg-primary px-5 text-sm font-bold text-white shadow-[0_18px_30px_rgba(212,122,106,0.24)] transition hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={!canSubmit}
+          >
+            {submitStatus === "loading" ? "Генерирую..." : "Сгенерировать"}
+          </button>
         </form>
 
-        <section className="rounded-3xl border border-white/70 bg-[linear-gradient(145deg,rgba(255,255,255,0.78),rgba(249,239,232,0.72))] p-5 shadow-[0_18px_60px_rgba(69,49,40,0.08)] sm:p-6">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary">
-              Результат
-            </p>
-            <h2 className="mt-2 font-display text-2xl font-semibold text-slate-950">
-              Последняя генерация
-            </h2>
+        <section className="rounded-3xl border border-white/70 bg-[linear-gradient(145deg,rgba(255,255,255,0.82),rgba(249,239,232,0.72))] p-5 shadow-[0_18px_60px_rgba(69,49,40,0.08)] sm:p-6">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="font-display text-2xl font-semibold text-slate-950">Результат</h2>
+            {result && (
+              <span className="rounded-full border border-slate-200 bg-white/80 px-3 py-1 text-xs font-semibold text-slate-600">
+                {result.modelId}
+              </span>
+            )}
           </div>
-          {submitStatus === "success" && (
-            <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-              Готово
-            </span>
-          )}
-        </div>
 
-        <div className="relative mt-5 flex min-h-[420px] items-center justify-center overflow-hidden rounded-3xl border border-white/80 bg-white/60">
-          {submitStatus === "loading" ? (
-            <div className="text-center text-sm text-slate-500">
-              <div className="mx-auto mb-4 size-12 animate-pulse rounded-full bg-primary/25" />
-              Генерация может занять до минуты.
-            </div>
-          ) : result?.fileUrl ? (
-            <Image
-              fill
-              unoptimized
-              src={result.fileUrl}
-              alt={result.prompt}
-              sizes="(max-width: 1024px) 100vw, 540px"
-              className="object-contain"
-            />
-          ) : (
-            <div className="max-w-sm px-6 text-center text-sm leading-6 text-slate-500">
-              Здесь появится изображение после генерации.
-            </div>
-          )}
-        </div>
+          <div className="relative mt-5 flex min-h-[420px] items-center justify-center overflow-hidden rounded-3xl border border-white/80 bg-white/65">
+            {submitStatus === "loading" ? (
+              <div className="text-center text-sm text-slate-500">
+                <div className="mx-auto mb-4 size-12 animate-pulse rounded-full bg-primary/25" />
+                Генерирую изображение...
+              </div>
+            ) : result?.fileUrl ? (
+              <Image
+                fill
+                unoptimized
+                src={result.fileUrl}
+                alt={result.prompt}
+                sizes="(max-width: 1280px) 100vw, 780px"
+                className="object-contain"
+              />
+            ) : (
+              <span className="px-6 text-center text-sm text-slate-500">
+                Изображение появится здесь.
+              </span>
+            )}
+          </div>
 
-        {result && (
-          <div className="mt-4 rounded-2xl border border-white/80 bg-white/70 p-4 text-sm text-slate-600">
-            <p className="font-semibold text-slate-900">{result.modelId}</p>
-            <p className="mt-1 line-clamp-3">{result.prompt}</p>
-            <div className="mt-3 flex flex-wrap gap-2">
+          {result && (
+            <div className="mt-4 flex flex-wrap gap-2">
               {result.fileUrl && (
                 <a
                   className="inline-flex min-h-10 cursor-pointer items-center rounded-full border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-700 transition hover:border-primary/40 hover:text-primary"
@@ -275,31 +306,27 @@ export default function ImageStudio() {
                   target="_blank"
                   rel="noreferrer"
                 >
-                  Открыть файл
+                  Открыть
                 </a>
               )}
-              <span className="inline-flex min-h-10 items-center rounded-full bg-slate-100 px-4 text-xs font-semibold text-slate-600">
-                Стоимость: {result.cost}
+              <span className="inline-flex min-h-10 items-center rounded-full bg-white/80 px-4 text-xs font-semibold text-slate-600">
+                {result.cost} токенов
               </span>
             </div>
-          </div>
-        )}
+          )}
         </section>
       </div>
 
-      <section className="rounded-3xl border border-white/70 bg-white/70 p-5 shadow-[0_18px_60px_rgba(69,49,40,0.06)] sm:p-6">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary">
-              Галерея
-            </p>
-            <h2 className="mt-2 font-display text-2xl font-semibold text-slate-950">
-              История генераций
-            </h2>
-          </div>
-          <p className="text-sm text-slate-500">
-            {galleryStatus === "ready" ? `${gallery.length} изображений` : "Загружаю историю..."}
-          </p>
+      <section className="rounded-3xl border border-white/70 bg-white/72 p-5 shadow-[0_18px_60px_rgba(69,49,40,0.06)] sm:p-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="font-display text-2xl font-semibold text-slate-950">Галерея</h2>
+          <button
+            type="button"
+            className="inline-flex min-h-10 cursor-pointer items-center justify-center rounded-full border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-700 transition hover:border-primary/30 hover:text-primary"
+            onClick={() => void loadGallery()}
+          >
+            Обновить
+          </button>
         </div>
 
         {galleryStatus === "loading" && (
@@ -312,13 +339,13 @@ export default function ImageStudio() {
 
         {galleryStatus === "error" && (
           <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-            Не удалось загрузить историю. Новые генерации всё равно появятся после успешного запроса.
+            Не удалось загрузить галерею.
           </div>
         )}
 
         {galleryStatus === "ready" && gallery.length === 0 && (
           <div className="mt-5 rounded-3xl border border-dashed border-slate-300 bg-white/60 px-6 py-12 text-center text-sm text-slate-500">
-            Пока нет изображений. Сгенерируйте первое, и оно появится здесь.
+            Пока пусто.
           </div>
         )}
 
@@ -343,6 +370,7 @@ export default function ImageStudio() {
                     <span className="text-sm text-slate-400">Нет файла</span>
                   )}
                 </div>
+
                 <div className="p-4">
                   <p className="line-clamp-2 text-sm font-semibold leading-5 text-slate-900">
                     {item.prompt}
@@ -356,27 +384,26 @@ export default function ImageStudio() {
                       minute: "2-digit",
                     })}
                   </p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {item.fileUrl && (
-                      <>
-                        <a
-                          className="inline-flex min-h-9 cursor-pointer items-center rounded-full border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-primary/40 hover:text-primary"
-                          href={item.fileUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          Открыть
-                        </a>
-                        <a
-                          className="inline-flex min-h-9 cursor-pointer items-center rounded-full border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-primary/40 hover:text-primary"
-                          href={item.fileUrl}
-                          download
-                        >
-                          Скачать
-                        </a>
-                      </>
-                    )}
-                  </div>
+
+                  {item.fileUrl && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <a
+                        className="inline-flex min-h-9 cursor-pointer items-center rounded-full border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-primary/40 hover:text-primary"
+                        href={item.fileUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Открыть
+                      </a>
+                      <a
+                        className="inline-flex min-h-9 cursor-pointer items-center rounded-full border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-primary/40 hover:text-primary"
+                        href={item.fileUrl}
+                        download
+                      >
+                        Скачать
+                      </a>
+                    </div>
+                  )}
                 </div>
               </article>
             ))}
