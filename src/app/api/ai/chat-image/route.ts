@@ -4,8 +4,8 @@ import { auth } from "@/lib/auth";
 import { findOwnedChat } from "@/lib/chat-ownership";
 import { serializeGeneratedImageMessage } from "@/lib/chat-generated-image";
 import { prisma } from "@/lib/db";
-import { HttpError } from "@/lib/http-error";
 import { generateImageForUser } from "@/lib/image-generation";
+import { toImageGenerationErrorResponse } from "@/lib/image-generation-errors";
 
 const chatImageSchema = z.object({
   chatId: z.string().trim().min(1),
@@ -20,15 +20,8 @@ function errorResponse(error: unknown) {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
 
-  if (error instanceof HttpError) {
-    return NextResponse.json(
-      { error: error.message, code: error.code },
-      { status: error.status }
-    );
-  }
-
-  const message = error instanceof Error ? error.message : "Image generation error";
-  return NextResponse.json({ error: message }, { status: 500 });
+  const response = toImageGenerationErrorResponse(error);
+  return NextResponse.json(response.body, { status: response.status });
 }
 
 export async function POST(request: Request) {

@@ -101,4 +101,24 @@ describe("api images generate route", () => {
       code: "PAID_IMAGE_MODEL_REQUIRED",
     });
   });
+
+  test("maps OpenRouter insufficient credits to a user-facing message", async () => {
+    state.generateImageForUser.mockRejectedValue(
+      new Error(
+        'OpenRouter image generation error: {"error":{"message":"Insufficient credits. Add more using https://openrouter.ai/settings/credits","code":402}}'
+      )
+    );
+    const { POST } = await import("../src/app/api/images/generate/route");
+
+    const res = await POST(new Request("http://localhost/api/images/generate", {
+      method: "POST",
+      body: JSON.stringify({ prompt: "Нарисуй город" }),
+    }));
+
+    expect(res.status).toBe(402);
+    expect(await res.json()).toEqual({
+      error: "Недостаточно баланса OpenRouter. Пополните credits или выберите другую модель.",
+      code: "OPENROUTER_INSUFFICIENT_CREDITS",
+    });
+  });
 });

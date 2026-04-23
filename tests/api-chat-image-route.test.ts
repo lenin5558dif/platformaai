@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
+import { HttpError } from "../src/lib/http-error";
 
 const state = vi.hoisted(() => ({
   authenticated: true,
@@ -125,5 +126,43 @@ describe("api chat image route", () => {
 
     expect(res.status).toBe(404);
     expect(state.messageCreate).not.toHaveBeenCalled();
+  });
+
+  test("maps OpenRouter insufficient credits to a user-facing message", async () => {
+    state.generateImageForUser.mockRejectedValue(
+      new Error(
+        'OpenRouter image generation error: {"error":{"message":"Insufficient credits. Add more using https://openrouter.ai/settings/credits","code":402}}'
+      )
+    );
+    const { POST } = await import("../src/app/api/ai/chat-image/route");
+
+    const res = await POST(new Request("http://localhost/api/ai/chat-image", {
+      method: "POST",
+      body: JSON.stringify({ chatId: "chat_1", prompt: "Нарисуй город" }),
+    }));
+
+    expect(res.status).toBe(402);
+    expect(await res.json()).toEqual({
+      error: "Недостаточно баланса OpenRouter. Пополните credits или выберите другую модель.",
+      code: "OPENROUTER_INSUFFICIENT_CREDITS",
+    });
+  });
+
+  test("preserves service http errors", async () => {
+    state.generateImageForUser.mockRejectedValue(
+      new HttpError(402, "PAID_IMAGE_MODEL_REQUIRED", "Эта модель доступна только на платном тарифе.")
+    );
+    const { POST } = await import("../src/app/api/ai/chat-image/route");
+
+    const res = await POST(new Request("http://localhost/api/ai/chat-image", {
+      method: "POST",
+      body: JSON.stringify({ chatId: "chat_1", prompt: "Нарисуй город" }),
+    }));
+
+    expect(res.status).toBe(402);
+    expect(await res.json()).toEqual({
+      error: "Эта модель доступна только на платном тарифе.",
+      code: "PAID_IMAGE_MODEL_REQUIRED",
+    });
   });
 });

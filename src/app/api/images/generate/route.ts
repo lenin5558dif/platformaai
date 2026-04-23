@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
-import { mapBillingError } from "@/lib/billing-errors";
-import { HttpError } from "@/lib/http-error";
 import { generateImageForUser } from "@/lib/image-generation";
+import { toImageGenerationErrorResponse } from "@/lib/image-generation-errors";
 
 const generateImageSchema = z.object({
   prompt: z.string().trim().min(3).max(4000),
@@ -22,20 +21,8 @@ function errorResponse(error: unknown) {
     );
   }
 
-  if (error instanceof HttpError) {
-    return NextResponse.json(
-      { error: error.message, code: error.code },
-      { status: error.status }
-    );
-  }
-
-  const message = error instanceof Error ? error.message : "Image generation error";
-  const billing = mapBillingError(message);
-  if (billing.status !== 500 || message === "USER_NOT_FOUND") {
-    return NextResponse.json({ error: billing.error }, { status: billing.status });
-  }
-
-  return NextResponse.json({ error: message }, { status: 500 });
+  const response = toImageGenerationErrorResponse(error);
+  return NextResponse.json(response.body, { status: response.status });
 }
 
 export async function POST(request: Request) {
