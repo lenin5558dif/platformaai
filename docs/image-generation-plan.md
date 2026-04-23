@@ -327,15 +327,15 @@ UI-принцип:
 
 Подэтап 4.2. Форма генерации
 
-- [ ] Поле промпта.
-- [ ] Выбор модели.
-- [ ] Выбор aspect ratio.
-- [ ] Выбор image size, если доступен.
-- [ ] Submit через API.
-- [ ] Disabled/loading state.
-- [ ] UI-тесты.
-- [ ] Review.
-- [ ] Commit.
+- [x] Поле промпта.
+- [x] Выбор модели.
+- [x] Выбор aspect ratio.
+- [x] Выбор image size, если доступен.
+- [x] Submit через API.
+- [x] Disabled/loading state.
+- [x] UI-тесты.
+- [x] Review.
+- [x] Commit.
 
 Подэтап 4.3. Галерея
 

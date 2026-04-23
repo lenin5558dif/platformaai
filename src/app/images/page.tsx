@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import ImageStudio from "@/components/images/ImageStudio";
 import AppShell from "@/components/layout/AppShell";
 import { auth } from "@/lib/auth";
 import { getBillingTier, getBillingTierLabel } from "@/lib/billing-tiers";
@@ -64,21 +65,7 @@ export default async function ImagesPage() {
           </div>
         </section>
 
-        <section className="grid gap-4 md:grid-cols-3">
-          {[
-            ["Промпт", "Опишите идею, стиль и детали будущего изображения."],
-            ["Модель", "На бесплатном тарифе будут доступны только бесплатные image-модели."],
-            ["Галерея", "Все успешные генерации появятся здесь с быстрым открытием файла."],
-          ].map(([title, text]) => (
-            <div
-              key={title}
-              className="rounded-2xl border border-white/70 bg-white/70 p-5 shadow-sm"
-            >
-              <h3 className="font-display text-lg font-semibold text-slate-950">{title}</h3>
-              <p className="mt-2 text-sm leading-6 text-slate-600">{text}</p>
-            </div>
-          ))}
-        </section>
+        <ImageStudio />
       </div>
     </AppShell>
   );
