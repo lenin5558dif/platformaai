@@ -300,13 +300,13 @@ UI-принцип:
 
 Подэтап 3.2. Gallery API
 
-- [ ] `GET /api/images` для списка.
-- [ ] `GET /api/images/[id]` для деталей.
-- [ ] `GET /api/images/[id]/file` или public-serving strategy.
-- [ ] Проверить ownership.
-- [ ] Добавить тесты.
-- [ ] Review.
-- [ ] Commit.
+- [x] `GET /api/images` для списка.
+- [x] `GET /api/images/[id]` для деталей.
+- [x] `GET /api/images/[id]/file` или public-serving strategy.
+- [x] Проверить ownership.
+- [x] Добавить тесты.
+- [x] Review.
+- [x] Commit.
 
 Критерии этапа:
 
