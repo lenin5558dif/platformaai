@@ -81,16 +81,18 @@ describe("api images models route", () => {
     expect(res.status).toBe(401);
   });
 
-  test("returns only free enabled models for free tier", async () => {
+  test("does not expose image models for free tier", async () => {
     const { GET } = await import("../src/app/api/images/models/route");
 
     const res = await GET();
     const json = await res.json();
 
     expect(res.status).toBe(200);
-    expect(json.data.map((model: { id: string }) => model.id)).toEqual([
-      "free/image",
-    ]);
+    expect(json).toMatchObject({
+      data: [],
+      message: "Генерация изображений доступна только на платном тарифе.",
+      code: "IMAGE_GENERATION_REQUIRES_PAID_TIER",
+    });
   });
 
   test("returns paid image models for paid tier", async () => {

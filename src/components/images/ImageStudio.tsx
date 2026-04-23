@@ -79,7 +79,11 @@ export default function ImageStudio() {
       setModelsStatus("ready");
 
       if (nextModels.length === 0) {
-        setModelsError("Список моделей пуст. Проверьте тариф или настройки OpenRouter.");
+        setModelsError(
+          typeof payload?.message === "string"
+            ? payload.message
+            : "Список моделей пуст. Проверьте тариф или настройки OpenRouter."
+        );
       }
     } catch (error) {
       setModels([]);

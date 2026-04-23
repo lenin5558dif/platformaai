@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getBillingTier, isFreeBillingTier } from "@/lib/billing-tiers";
 import { prisma } from "@/lib/db";
-import { fetchImageModels, filterFreeImageModels } from "@/lib/image-models";
+import { fetchImageModels } from "@/lib/image-models";
 import { filterModels } from "@/lib/model-policy";
 import { getOrgModelPolicy } from "@/lib/org-settings";
 import { getPlatformConfig } from "@/lib/platform-config";
@@ -49,15 +49,21 @@ export async function GET() {
         .filter(Boolean)
     );
     const billingTier = getBillingTier(user?.settings ?? null, user?.balance);
+
+    if (isFreeBillingTier(billingTier)) {
+      return NextResponse.json({
+        data: [],
+        message: "Генерация изображений доступна только на платном тарифе.",
+        code: "IMAGE_GENERATION_REQUIRES_PAID_TIER",
+      });
+    }
+
     const models = await fetchImageModels({ apiKey: openRouterApiKey });
     const policyFiltered = filterModels(models, modelPolicy).filter(
       (model) => !disabledModels.has(model.id.trim().toLowerCase())
     );
-    const visibleModels = isFreeBillingTier(billingTier)
-      ? filterFreeImageModels(policyFiltered)
-      : policyFiltered;
 
-    return NextResponse.json({ data: visibleModels });
+    return NextResponse.json({ data: policyFiltered });
   } catch (error) {
     const message = error instanceof Error ? error.message : "OpenRouter image models error";
     const isMissingKey = message.includes("OPENROUTER_API_KEY");

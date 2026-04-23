@@ -187,11 +187,17 @@ describe("image generation service", () => {
     });
   });
 
-  test("blocks paid image models on free tier", async () => {
+  test("blocks all image generation on free tier", async () => {
     state.user = {
       ...state.user,
       balance: 0,
       settings: { billingTier: "free" },
+    };
+    state.imageModel = {
+      id: "free/image",
+      name: "Free image",
+      output_modalities: ["image"],
+      pricing: { prompt: "0", completion: "0" },
     };
     const { generateImageForUser } = await import("../src/lib/image-generation");
 
@@ -203,6 +209,7 @@ describe("image generation service", () => {
     ).rejects.toMatchObject({
       status: 402,
       code: "PAID_IMAGE_MODEL_REQUIRED",
+      message: "Генерация изображений доступна только на платном тарифе.",
     });
     expect(state.imageGenerationCreate).not.toHaveBeenCalled();
     expect(state.generateImageWithOpenRouter).not.toHaveBeenCalled();

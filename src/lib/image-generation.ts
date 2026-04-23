@@ -130,11 +130,11 @@ export async function generateImageForUser(params: GenerateImageForUserParams) {
   }
 
   const billingTier = getBillingTier(user.settings, user.balance);
-  if (isFreeBillingTier(billingTier) && !isFreeImageModel(imageModel)) {
+  if (isFreeBillingTier(billingTier)) {
     throw new HttpError(
       402,
       "PAID_IMAGE_MODEL_REQUIRED",
-      "Эта модель доступна только на платном тарифе."
+      "Генерация изображений доступна только на платном тарифе."
     );
   }
 

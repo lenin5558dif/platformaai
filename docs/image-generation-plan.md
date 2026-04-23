@@ -22,6 +22,25 @@
 - [x] Обновить тесты на поведение галереи.
 - [x] Повторно прогнать тесты и typecheck после фикса.
 
+## Проверка бесплатной генерации 2026-04-23
+
+- [x] Сверить документацию OpenRouter по free-моделям и image generation.
+- [x] Проверить `Models API` на наличие image-моделей с нулевым pricing.
+- [x] Проверить `/credits` для текущего OpenRouter-ключа на сервере.
+- [x] Сделать тестовые image-запросы к моделям с нулевым pricing.
+- [x] Проверить `openrouter/free` с `modalities: ["image"]`.
+- [x] Проверить server-tool `openrouter:image_generation` через `openrouter/free`.
+- [x] Зафиксировать продуктовый вывод: бесплатный тариф не получает image generation, потому что фактический бесплатный путь через OpenRouter не гарантирован.
+- [x] Заблокировать image generation на бесплатном тарифе до обращения в OpenRouter.
+- [x] Скрыть image-модели из списка выбора на бесплатном тарифе.
+- [x] Обновить тесты backend-ограничений.
+
+### Результат проверки
+
+`Models API` показывает часть image-моделей с `prompt: "0"` и `completion: "0"`, но реальные запросы к таким моделям вернули `402 Insufficient credits` при текущем состоянии OpenRouter-аккаунта. `openrouter/free` с image output вернул `404 No endpoints found that support the requested output modalities: image`. Server-tool `openrouter:image_generation` через `openrouter/free` не вернул изображение.
+
+Вывод для MVP: image generation считаем функцией платных тарифов. Нулевой pricing в каталоге OpenRouter не используем как обещание бесплатной генерации для конечного пользователя.
+
 ### Что сломалось
 
 OpenRouter теперь возвращает часть метаданных модели в `architecture.output_modalities`, а не только в корневом `output_modalities`. Из-за этого наш фильтр image-моделей отбрасывал весь каталог, `/api/images/models` отдавал пустой массив, селект блокировался, а генерация не могла стартовать.
