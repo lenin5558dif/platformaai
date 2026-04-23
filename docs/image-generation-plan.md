@@ -367,14 +367,14 @@ UI-принцип:
 
 Подэтап 5.2. Chat API integration
 
-- [ ] Добавить image-generation branch в chat flow или отдельный thin endpoint для chat-triggered generation.
-- [ ] Сохранять user message.
-- [ ] Сохранять assistant message с результатом.
-- [ ] Связывать `ImageGeneration` с `chatId/messageId`.
-- [ ] Учитывать billing/policy через общий service.
-- [ ] API-тесты.
-- [ ] Review.
-- [ ] Commit.
+- [x] Добавить image-generation branch в chat flow или отдельный thin endpoint для chat-triggered generation.
+- [x] Сохранять user message.
+- [x] Сохранять assistant message с результатом.
+- [x] Связывать `ImageGeneration` с `chatId/messageId`.
+- [x] Учитывать billing/policy через общий service.
+- [x] API-тесты.
+- [x] Review.
+- [x] Commit.
 
 Подэтап 5.3. Chat UI rendering
 

@@ -69,6 +69,10 @@ function toGenerationDto(generation: {
   return {
     ...generation,
     cost: generation.cost.toString(),
+    fileUrl:
+      generation.status === ImageGenerationStatus.COMPLETED && generation.mimeType
+        ? `/api/images/${generation.id}/file`
+        : null,
   };
 }
 
