@@ -1072,6 +1072,18 @@ export default function ChatApp() {
             {!isSidebarCollapsed && <span className="text-sm font-bold">Новый чат</span>}
           </button>
 
+          <Link
+            href="/images"
+            className={`mb-4 flex w-full items-center justify-center rounded-lg border border-black/10 bg-white/70 text-text-primary transition-colors hover:bg-white hover:text-primary ${isSidebarCollapsed ? "p-2.5" : "gap-2 p-3"}`}
+            onClick={closeSidebar}
+            title="Изображения"
+          >
+            <span className="material-symbols-outlined text-[20px]">
+              imagesmode
+            </span>
+            {!isSidebarCollapsed && <span className="text-sm font-bold">Изображения</span>}
+          </Link>
+
           {isSidebarCollapsed ? (
             <div className="mb-4 flex justify-center">
               <button

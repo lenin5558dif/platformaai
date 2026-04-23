@@ -6,6 +6,7 @@ type NavItem = {
 
 const B2C_ITEMS: NavItem[] = [
   { href: "/", label: "Чаты", icon: "chat" },
+  { href: "/images", label: "Изображения", icon: "image" },
   { href: "/settings", label: "Настройки", icon: "settings" },
 ];
 

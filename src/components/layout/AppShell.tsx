@@ -62,6 +62,16 @@ export default function AppShell({
               arrow_right_alt
             </span>
           </Link>
+          <Link
+            className="mt-2 inline-flex min-h-9 cursor-pointer items-center gap-1 text-[11px] font-semibold text-primary transition-colors motion-safe:duration-150 hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+            href="/images"
+            onClick={() => setIsMobileMenuOpen(false)}
+          >
+            Изображения
+            <span className="material-symbols-outlined text-[14px]">
+              imagesmode
+            </span>
+          </Link>
         </div>
       </div>
       <div className="border-t border-white/30 p-3">
