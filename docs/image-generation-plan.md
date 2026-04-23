@@ -254,14 +254,14 @@ UI-принцип:
 
 Подэтап 2.1. Discovery image-моделей
 
-- [ ] Добавить `src/lib/image-models.ts`.
-- [ ] Получать `/models?output_modalities=image`.
-- [ ] Фильтровать бесплатные модели по pricing.
-- [ ] Учитывать `output_modalities`.
-- [ ] Кешировать результат на короткое время.
-- [ ] Добавить unit-тесты.
-- [ ] Review.
-- [ ] Commit.
+- [x] Добавить `src/lib/image-models.ts`.
+- [x] Получать `/models?output_modalities=image`.
+- [x] Фильтровать бесплатные модели по pricing.
+- [x] Учитывать `output_modalities`.
+- [x] Кешировать результат на короткое время.
+- [x] Добавить unit-тесты.
+- [x] Review.
+- [x] Commit.
 
 Подэтап 2.2. Provider request/response parser
 
