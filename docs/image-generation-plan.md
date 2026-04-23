@@ -339,14 +339,14 @@ UI-принцип:
 
 Подэтап 4.3. Галерея
 
-- [ ] Сетка изображений.
-- [ ] Карточка с prompt/model/date.
-- [ ] Открытие результата.
-- [ ] Empty state.
-- [ ] Download/open actions.
-- [ ] UI-тесты.
-- [ ] Review.
-- [ ] Commit.
+- [x] Сетка изображений.
+- [x] Карточка с prompt/model/date.
+- [x] Открытие результата.
+- [x] Empty state.
+- [x] Download/open actions.
+- [x] UI-тесты.
+- [x] Review.
+- [x] Commit.
 
 Критерии этапа:
 

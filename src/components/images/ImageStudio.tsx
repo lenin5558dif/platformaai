@@ -44,7 +44,9 @@ export default function ImageStudio() {
   const [aspectRatio, setAspectRatio] = useState("1:1");
   const [imageSize, setImageSize] = useState("1K");
   const [result, setResult] = useState<ImageGeneration | null>(null);
+  const [gallery, setGallery] = useState<ImageGeneration[]>([]);
   const [modelsStatus, setModelsStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [galleryStatus, setGalleryStatus] = useState<"loading" | "ready" | "error">("loading");
   const [submitStatus, setSubmitStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [error, setError] = useState("");
 
@@ -71,7 +73,25 @@ export default function ImageStudio() {
       }
     }
 
+    async function loadGallery() {
+      setGalleryStatus("loading");
+      try {
+        const response = await fetch("/api/images?limit=24", { cache: "no-store" });
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload?.error ?? "Не удалось загрузить галерею");
+        }
+        if (cancelled) return;
+        setGallery((payload?.data ?? []) as ImageGeneration[]);
+        setGalleryStatus("ready");
+      } catch {
+        if (cancelled) return;
+        setGalleryStatus("error");
+      }
+    }
+
     void loadModels();
+    void loadGallery();
 
     return () => {
       cancelled = true;
@@ -102,7 +122,9 @@ export default function ImageStudio() {
       if (!response.ok) {
         throw new Error(payload?.error ?? "Не удалось сгенерировать изображение");
       }
-      setResult(payload.data as ImageGeneration);
+      const generation = payload.data as ImageGeneration;
+      setResult(generation);
+      setGallery((current) => [generation, ...current.filter((item) => item.id !== generation.id)]);
       setSubmitStatus("success");
     } catch (submitError) {
       setSubmitStatus("error");
@@ -111,8 +133,9 @@ export default function ImageStudio() {
   }
 
   return (
-    <div className="grid gap-5 lg:grid-cols-[minmax(0,0.95fr)_minmax(360px,1.05fr)]">
-      <form
+    <div className="space-y-5">
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,0.95fr)_minmax(360px,1.05fr)]">
+        <form
         className="rounded-3xl border border-white/70 bg-white/75 p-5 shadow-[0_18px_60px_rgba(69,49,40,0.08)] backdrop-blur sm:p-6"
         onSubmit={handleSubmit}
       >
@@ -198,9 +221,9 @@ export default function ImageStudio() {
           {submitStatus === "loading" ? "Генерирую..." : "Сгенерировать"}
           <span className="material-symbols-outlined text-[19px]">auto_awesome</span>
         </button>
-      </form>
+        </form>
 
-      <section className="rounded-3xl border border-white/70 bg-[linear-gradient(145deg,rgba(255,255,255,0.78),rgba(249,239,232,0.72))] p-5 shadow-[0_18px_60px_rgba(69,49,40,0.08)] sm:p-6">
+        <section className="rounded-3xl border border-white/70 bg-[linear-gradient(145deg,rgba(255,255,255,0.78),rgba(249,239,232,0.72))] p-5 shadow-[0_18px_60px_rgba(69,49,40,0.08)] sm:p-6">
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary">
@@ -255,6 +278,101 @@ export default function ImageStudio() {
                 Стоимость: {result.cost}
               </span>
             </div>
+          </div>
+        )}
+        </section>
+      </div>
+
+      <section className="rounded-3xl border border-white/70 bg-white/70 p-5 shadow-[0_18px_60px_rgba(69,49,40,0.06)] sm:p-6">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary">
+              Галерея
+            </p>
+            <h2 className="mt-2 font-display text-2xl font-semibold text-slate-950">
+              История генераций
+            </h2>
+          </div>
+          <p className="text-sm text-slate-500">
+            {galleryStatus === "ready" ? `${gallery.length} изображений` : "Загружаю историю..."}
+          </p>
+        </div>
+
+        {galleryStatus === "loading" && (
+          <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {[0, 1, 2].map((item) => (
+              <div key={item} className="h-64 animate-pulse rounded-3xl bg-white/70" />
+            ))}
+          </div>
+        )}
+
+        {galleryStatus === "error" && (
+          <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            Не удалось загрузить историю. Новые генерации всё равно появятся после успешного запроса.
+          </div>
+        )}
+
+        {galleryStatus === "ready" && gallery.length === 0 && (
+          <div className="mt-5 rounded-3xl border border-dashed border-slate-300 bg-white/60 px-6 py-12 text-center text-sm text-slate-500">
+            Пока нет изображений. Сгенерируйте первое, и оно появится здесь.
+          </div>
+        )}
+
+        {gallery.length > 0 && (
+          <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {gallery.map((item) => (
+              <article
+                key={item.id}
+                className="group overflow-hidden rounded-3xl border border-white/80 bg-white/80 shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg"
+              >
+                <div className="flex aspect-square items-center justify-center overflow-hidden bg-slate-100">
+                  {item.fileUrl ? (
+                    <img
+                      src={item.fileUrl}
+                      alt={item.prompt}
+                      className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
+                    />
+                  ) : (
+                    <span className="text-sm text-slate-400">Нет файла</span>
+                  )}
+                </div>
+                <div className="p-4">
+                  <p className="line-clamp-2 text-sm font-semibold leading-5 text-slate-900">
+                    {item.prompt}
+                  </p>
+                  <p className="mt-2 truncate text-xs text-slate-500">{item.modelId}</p>
+                  <p className="mt-1 text-xs text-slate-400">
+                    {new Date(item.createdAt).toLocaleString("ru-RU", {
+                      day: "2-digit",
+                      month: "2-digit",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {item.fileUrl && (
+                      <>
+                        <a
+                          className="inline-flex min-h-9 cursor-pointer items-center rounded-full border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-primary/40 hover:text-primary"
+                          href={item.fileUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Открыть
+                        </a>
+                        <a
+                          className="inline-flex min-h-9 cursor-pointer items-center rounded-full border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-primary/40 hover:text-primary"
+                          href={item.fileUrl}
+                          download
+                        >
+                          Скачать
+                        </a>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </article>
+            ))}
           </div>
         )}
       </section>
