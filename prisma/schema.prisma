@@ -100,6 +100,12 @@ enum FeedbackStatus {
   REVIEWED
 }
 
+enum ImageGenerationStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
 model User {
   id          String      @id @default(cuid())
   email       String?     @unique
@@ -115,6 +121,7 @@ model User {
   costCenter  CostCenter? @relation(fields: [costCenterId], references: [id])
   chats       Chat[]
   attachments Attachment[]
+  imageGenerations ImageGeneration[]
   messages    Message[]
   transactions Transaction[]
   accounts    Account[]
@@ -362,6 +369,7 @@ model Chat {
   user      User     @relation(fields: [userId], references: [id])
   messages  Message[]
   attachments Attachment[]
+  imageGenerations ImageGeneration[]
 
   @@index([userId])
 }
@@ -380,6 +388,7 @@ model Message {
   chat       Chat        @relation(fields: [chatId], references: [id])
   user       User        @relation(fields: [userId], references: [id])
   costCenter CostCenter? @relation(fields: [costCenterId], references: [id])
+  imageGenerations ImageGeneration[]
 
   @@index([chatId])
   @@index([userId])
@@ -403,6 +412,42 @@ model Attachment {
 
   @@index([userId])
   @@index([chatId])
+}
+
+model ImageGeneration {
+  id                String                @id @default(cuid())
+  userId            String
+  chatId            String?
+  messageId         String?
+  prompt            String
+  revisedPrompt     String?
+  modelId           String
+  status            ImageGenerationStatus @default(PENDING)
+  mimeType          String?
+  storagePath       String?
+  publicUrl         String?
+  width             Int?
+  height            Int?
+  aspectRatio       String?
+  imageSize         String?
+  cost              Decimal               @default(0.0) @db.Decimal(12, 4)
+  tokenCount        Int                   @default(0)
+  providerRequestId String?
+  error             String?
+  metadata          Json?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  user              User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chat              Chat?                 @relation(fields: [chatId], references: [id], onDelete: SetNull)
+  message           Message?              @relation(fields: [messageId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([chatId])
+  @@index([messageId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([modelId])
 }
 
 model Transaction {

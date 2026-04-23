@@ -226,14 +226,14 @@ UI-принцип:
 
 Подэтап 1.1. Prisma schema
 
-- [ ] Добавить enum `ImageGenerationStatus`.
-- [ ] Добавить model `ImageGeneration`.
-- [ ] Связать с `User`, `Chat`, `Message`.
-- [ ] Создать миграцию.
-- [ ] Прогнать `prisma generate`.
-- [ ] Добавить unit-тесты на helper-форматирование статусов, если появятся.
-- [ ] Review.
-- [ ] Commit.
+- [x] Добавить enum `ImageGenerationStatus`.
+- [x] Добавить model `ImageGeneration`.
+- [x] Связать с `User`, `Chat`, `Message`.
+- [x] Создать миграцию.
+- [x] Прогнать `prisma generate`.
+- [x] Добавить unit-тесты на helper-форматирование статусов, если появятся. Не потребовались: helper не добавлялся.
+- [x] Review.
+- [x] Commit.
 
 Подэтап 1.2. Storage helper
 
