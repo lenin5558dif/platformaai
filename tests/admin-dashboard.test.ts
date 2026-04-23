@@ -74,4 +74,19 @@ describe("admin-dashboard api groups", () => {
       true
     );
   });
+
+  it("documents image generation endpoints separately from vision analysis", () => {
+    const groups = getAdminApiGroups();
+    const openrouter = groups.find((group) => group.serviceId === "openrouter");
+
+    expect(openrouter?.endpoints.some((item) => item.path === "/api/images/generate")).toBe(
+      true
+    );
+    expect(openrouter?.endpoints.some((item) => item.path === "/api/ai/chat-image")).toBe(
+      true
+    );
+    expect(
+      openrouter?.endpoints.find((item) => item.path === "/api/ai/image")?.description
+    ).toContain("Описание загруженного изображения");
+  });
 });

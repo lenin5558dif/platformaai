@@ -28,7 +28,19 @@ export default async function AdminDashboardPage() {
   const weekAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
   const twoWeeksAgo = new Date(now - 14 * 24 * 60 * 60 * 1000);
 
-  const [usersTotal, usersActive, tokensTotal, last24h, last7d, refillsTotal, feedbackTotal, feedbackNew] = await Promise.all([
+  const [
+    usersTotal,
+    usersActive,
+    tokensTotal,
+    last24h,
+    last7d,
+    refillsTotal,
+    feedbackTotal,
+    feedbackNew,
+    imagesTotal,
+    images24h,
+    imagesFailed,
+  ] = await Promise.all([
     prisma.user.count(),
     prisma.user.count({ where: { isActive: true } }),
     prisma.message.aggregate({
@@ -53,6 +65,16 @@ export default async function AdminDashboardPage() {
     }),
     prisma.feedback.count(),
     prisma.feedback.count({ where: { status: "NEW" } }),
+    prisma.imageGeneration.aggregate({
+      _sum: { cost: true },
+      _count: { _all: true },
+    }),
+    prisma.imageGeneration.aggregate({
+      where: { createdAt: { gte: dayAgo } },
+      _sum: { cost: true },
+      _count: { _all: true },
+    }),
+    prisma.imageGeneration.count({ where: { status: "FAILED" } }),
   ]);
 
   const activityRows = await prisma.$queryRaw<ActivityRow[]>`
@@ -172,6 +194,36 @@ export default async function AdminDashboardPage() {
           </p>
           <p className="mt-1 text-xs text-text-secondary">
             Новых отзывов: {formatNumber(feedbackNew)}
+          </p>
+        </div>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div className="rounded-2xl bg-white/80 border border-white/50 shadow-glass-sm p-5">
+          <p className="text-xs text-text-secondary">Генерации изображений</p>
+          <p className="text-2xl font-semibold text-text-main">
+            {formatNumber(imagesTotal._count?._all ?? 0)}
+          </p>
+          <p className="mt-1 text-xs text-text-secondary">
+            Расход: {formatCredits(imagesTotal._sum?.cost?.toString())}
+          </p>
+        </div>
+        <div className="rounded-2xl bg-white/80 border border-white/50 shadow-glass-sm p-5">
+          <p className="text-xs text-text-secondary">Изображения за 24 часа</p>
+          <p className="text-2xl font-semibold text-text-main">
+            {formatNumber(images24h._count?._all ?? 0)}
+          </p>
+          <p className="mt-1 text-xs text-text-secondary">
+            Расход: {formatCredits(images24h._sum?.cost?.toString())}
+          </p>
+        </div>
+        <div className="rounded-2xl bg-white/80 border border-white/50 shadow-glass-sm p-5">
+          <p className="text-xs text-text-secondary">Ошибки изображений</p>
+          <p className="text-2xl font-semibold text-text-main">
+            {formatNumber(imagesFailed)}
+          </p>
+          <p className="mt-1 text-xs text-text-secondary">
+            Записи со статусом FAILED
           </p>
         </div>
       </div>
