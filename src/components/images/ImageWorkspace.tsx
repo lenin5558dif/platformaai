@@ -15,22 +15,24 @@ type ImageWorkspaceProps = {
 
 export default function ImageWorkspace({ user }: ImageWorkspaceProps) {
   return (
-    <div className="relative z-10 flex h-[100dvh] w-full overflow-hidden bg-[#f0f0f5] text-text-main font-display">
+    <div className="relative z-10 flex h-[100dvh] w-full overflow-hidden text-text-main font-display">
       <WorkspaceSidebar activeTool="images" user={user} />
       <main className="relative flex h-full min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-20 border-b border-white/50 bg-white/50 px-3 py-3 backdrop-blur-sm sm:px-5">
-          <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3">
+        <header className="pointer-events-none absolute left-0 right-0 top-0 z-30 px-3 pb-3 pt-[calc(env(safe-area-inset-top)+0.75rem)] md:px-6 md:py-4">
+          <div className="pointer-events-auto mx-auto flex w-full max-w-6xl items-center justify-between gap-3 glass-panel rounded-xl px-3 py-3 shadow-lg sm:px-4">
             <div className="min-w-0">
-              <h1 className="truncate font-display text-xl font-semibold text-text-primary">
+              <h1 className="truncate text-base font-bold leading-tight text-text-primary md:text-lg">
                 Изображения
               </h1>
               <p className="text-xs text-text-secondary">Генератор и галерея</p>
             </div>
-            <ToolTabs active="images" />
+            <div className="shrink-0">
+              <ToolTabs active="images" />
+            </div>
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6">
+        <div className="flex-1 overflow-y-auto px-3 pb-6 pt-[104px] sm:px-4 md:px-6 md:pt-[108px]">
           <div className="mx-auto w-full max-w-6xl pb-10">
             <ImageStudio />
           </div>

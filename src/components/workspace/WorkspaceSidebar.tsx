@@ -54,8 +54,8 @@ export default function WorkspaceSidebar({ activeTool, user }: WorkspaceSidebarP
   const chatGroups = useMemo(() => getChatGroups(visibleChats), [visibleChats]);
 
   return (
-    <aside className="hidden h-full w-72 shrink-0 flex-col glass-panel md:flex">
-      <div className="p-5 pb-3">
+    <aside className="hidden h-full w-72 shrink-0 flex-col glass-panel border-r-0 border-r-black/5 md:flex">
+      <div className="p-4 pb-2 md:p-6 md:pb-2">
         <Link href="/" className="block cursor-pointer">
           <h1 className="text-xl font-bold tracking-tight text-text-primary">
             Platforma<span className="text-primary">AI</span>
@@ -66,10 +66,10 @@ export default function WorkspaceSidebar({ activeTool, user }: WorkspaceSidebarP
         <div className="mt-5 grid grid-cols-2 gap-2">
           <Link
             href="/"
-            className={`inline-flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-xl border px-3 text-sm font-semibold transition-colors ${
+            className={`inline-flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border px-3 text-sm font-semibold transition-colors ${
               activeTool === "text"
-                ? "border-primary/30 bg-primary/10 text-primary"
-                : "border-black/10 bg-white/60 text-text-secondary hover:bg-white hover:text-text-primary"
+                ? "border-primary/20 bg-primary/10 text-primary"
+                : "border-black/10 bg-white/70 text-text-primary hover:bg-white hover:text-primary"
             }`}
           >
             <span className="material-symbols-outlined text-[18px]">article</span>
@@ -77,10 +77,10 @@ export default function WorkspaceSidebar({ activeTool, user }: WorkspaceSidebarP
           </Link>
           <Link
             href="/images"
-            className={`inline-flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-xl border px-3 text-sm font-semibold transition-colors ${
+            className={`inline-flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border px-3 text-sm font-semibold transition-colors ${
               activeTool === "images"
-                ? "border-primary/30 bg-primary/10 text-primary"
-                : "border-black/10 bg-white/60 text-text-secondary hover:bg-white hover:text-text-primary"
+                ? "border-primary/20 bg-primary/10 text-primary"
+                : "border-black/10 bg-white/70 text-text-primary hover:bg-white hover:text-primary"
             }`}
           >
             <span className="material-symbols-outlined text-[18px]">imagesmode</span>
@@ -90,7 +90,7 @@ export default function WorkspaceSidebar({ activeTool, user }: WorkspaceSidebarP
 
         <Link
           href="/"
-          className="mt-4 flex min-h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-bold text-white shadow-[0_14px_28px_rgba(212,122,106,0.22)] transition-colors hover:bg-primary/90"
+          className="mt-4 flex min-h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-bold text-white shadow-[0_0_15px_rgba(212,122,106,0.2)] transition-colors hover:bg-primary/90"
         >
           <span className="material-symbols-outlined text-[20px]">add</span>
           Новый чат
@@ -101,7 +101,7 @@ export default function WorkspaceSidebar({ activeTool, user }: WorkspaceSidebarP
             search
           </span>
           <input
-            className="h-10 w-full rounded-xl border border-black/10 bg-white/70 pl-9 pr-3 text-sm text-text-primary outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
+            className="h-10 w-full rounded-lg border border-black/10 bg-white/70 pl-9 pr-3 text-sm text-text-primary outline-none transition focus:border-primary focus:ring-1 focus:ring-primary"
             placeholder="Поиск по чатам"
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
@@ -109,9 +109,9 @@ export default function WorkspaceSidebar({ activeTool, user }: WorkspaceSidebarP
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-3 pb-4">
-        <p className="px-2 pb-2 text-xs font-semibold uppercase tracking-[0.18em] text-text-secondary/70">
-          Чаты
+      <div className="flex-1 overflow-y-auto px-4 pb-4">
+        <p className="mb-3 px-2 text-xs font-medium uppercase tracking-wider text-text-secondary/70">
+          Недавние чаты
         </p>
         <div className="space-y-2">
           {chatGroups.map((group) => (
@@ -120,30 +120,38 @@ export default function WorkspaceSidebar({ activeTool, user }: WorkspaceSidebarP
                 <Link
                   key={chat.id}
                   href={`/?chatId=${chat.id}`}
-                  className="group flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 transition-colors hover:bg-black/5"
+                  className="group flex cursor-pointer items-center gap-3 rounded-lg px-3 py-3 transition-colors hover:bg-black/5"
                 >
-                  <span className="material-symbols-outlined text-[19px] text-text-secondary transition-colors group-hover:text-primary">
+                  <span className="material-symbols-outlined text-[20px] text-text-secondary transition-colors group-hover:text-primary">
                     {chat.source === "TELEGRAM" ? "send" : "chat_bubble"}
                   </span>
-                  <span className="min-w-0 flex-1 truncate text-sm font-semibold text-text-primary">
-                    {chat.title}
-                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-text-primary">
+                      {chat.title}
+                    </p>
+                    <p className="truncate text-[10px] text-text-secondary">
+                      {new Date(chat.updatedAt).toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </p>
+                  </div>
                 </Link>
               ))}
             </div>
           ))}
           {!visibleChats.length && (
-            <div className="rounded-xl border border-dashed border-black/10 px-3 py-6 text-center text-xs text-text-secondary">
-              Чатов пока нет.
+            <div className="px-3 text-xs text-text-secondary">
+              Нет недавних чатов.
             </div>
           )}
         </div>
       </div>
 
-      <div className="border-t border-black/10 p-4">
+      <div className="border-t border-black/10 p-4 pt-3">
         <Link
           href="/settings"
-          className="flex cursor-pointer items-center gap-3 rounded-xl border border-black/10 bg-black/5 px-3 py-2.5 transition-colors hover:bg-white"
+          className="flex cursor-pointer items-center gap-3 rounded-lg border border-black/10 bg-black/5 px-3 py-2 transition-colors hover:bg-white"
         >
           <div className="flex size-9 items-center justify-center rounded-full bg-white text-sm font-bold text-text-secondary">
             {(user?.displayName || user?.email || "U")[0]?.toUpperCase()}
