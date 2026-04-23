@@ -43,7 +43,11 @@ export async function GET(request: Request) {
     take: limit,
   });
 
+  const visibleRecords = records
+    .map(serializeImageGeneration)
+    .filter((record) => record.fileUrl !== null || record.status !== "COMPLETED");
+
   return NextResponse.json({
-    data: records.map(serializeImageGeneration),
+    data: visibleRecords,
   });
 }

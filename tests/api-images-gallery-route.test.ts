@@ -102,7 +102,7 @@ describe("api images gallery routes", () => {
     });
   });
 
-  test("does not expose broken gallery files as available", async () => {
+  test("hides broken completed files from gallery", async () => {
     state.records = [generation({ storagePath: "/tmp/missing.png" })];
     state.findMany.mockResolvedValueOnce(state.records);
     const { GET } = await import("../src/app/api/images/route");
@@ -111,10 +111,7 @@ describe("api images gallery routes", () => {
     const json = await res.json();
 
     expect(res.status).toBe(200);
-    expect(json.data[0]).toMatchObject({
-      id: "gen_1",
-      fileUrl: null,
-    });
+    expect(json.data).toEqual([]);
   });
 
   test("returns image details with ownership check", async () => {
