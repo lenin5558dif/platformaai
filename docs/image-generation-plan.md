@@ -265,15 +265,15 @@ UI-принцип:
 
 Подэтап 2.2. Provider request/response parser
 
-- [ ] Добавить `src/lib/image-generation-provider.ts`.
-- [ ] Формировать payload с `modalities`.
-- [ ] Поддержать `image_config.aspect_ratio`.
-- [ ] Поддержать `image_config.image_size`.
-- [ ] Достать `message.images`.
-- [ ] Обработать отсутствие images.
-- [ ] Добавить тесты на успешный и ошибочный ответ.
-- [ ] Review.
-- [ ] Commit.
+- [x] Добавить `src/lib/image-generation-provider.ts`.
+- [x] Формировать payload с `modalities`.
+- [x] Поддержать `image_config.aspect_ratio`.
+- [x] Поддержать `image_config.image_size`.
+- [x] Достать `message.images`.
+- [x] Обработать отсутствие images.
+- [x] Добавить тесты на успешный и ошибочный ответ.
+- [x] Review.
+- [x] Commit.
 
 Критерии этапа:
 
