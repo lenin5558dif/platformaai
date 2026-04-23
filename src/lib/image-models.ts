@@ -6,6 +6,10 @@ export type OpenRouterImageModel = {
   name: string;
   input_modalities?: string[];
   output_modalities?: string[];
+  architecture?: {
+    input_modalities?: string[];
+    output_modalities?: string[];
+  };
   pricing?: Record<string, string | undefined>;
 };
 
@@ -32,8 +36,30 @@ function parsePricingValue(value?: string) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-export function isImageGenerationModel(model: Pick<OpenRouterImageModel, "output_modalities">) {
-  return model.output_modalities?.some((modality) => modality.toLowerCase() === "image") ?? false;
+export function isImageGenerationModel(
+  model: Pick<OpenRouterImageModel, "output_modalities" | "architecture">
+) {
+  return getOutputModalities(model).some((modality) => modality.toLowerCase() === "image");
+}
+
+function getOutputModalities(
+  model: Pick<OpenRouterImageModel, "output_modalities" | "architecture">
+) {
+  return model.output_modalities ?? model.architecture?.output_modalities ?? [];
+}
+
+function getInputModalities(
+  model: Pick<OpenRouterImageModel, "input_modalities" | "architecture">
+) {
+  return model.input_modalities ?? model.architecture?.input_modalities ?? [];
+}
+
+function normalizeImageModel(model: OpenRouterImageModel): OpenRouterImageModel {
+  return {
+    ...model,
+    input_modalities: getInputModalities(model),
+    output_modalities: getOutputModalities(model),
+  };
 }
 
 export function isFreeImageModel(model: Pick<OpenRouterImageModel, "id" | "pricing">) {
@@ -89,7 +115,9 @@ export async function fetchImageModels(params?: {
   }
 
   const payload = await response.json();
-  const data = ((payload?.data ?? []) as OpenRouterImageModel[]).filter(isImageGenerationModel);
+  const data = ((payload?.data ?? []) as OpenRouterImageModel[])
+    .map(normalizeImageModel)
+    .filter(isImageGenerationModel);
   const entry = { data, fetchedAt: Date.now() };
 
   if (apiKey) {

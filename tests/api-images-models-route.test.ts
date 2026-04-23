@@ -88,7 +88,7 @@ describe("api images models route", () => {
     const json = await res.json();
 
     expect(res.status).toBe(200);
-    expect(json.data.data.map((model: { id: string }) => model.id)).toEqual([
+    expect(json.data.map((model: { id: string }) => model.id)).toEqual([
       "free/image",
     ]);
   });
@@ -105,7 +105,7 @@ describe("api images models route", () => {
     const json = await res.json();
 
     expect(res.status).toBe(200);
-    expect(json.data.data.map((model: { id: string }) => model.id)).toEqual([
+    expect(json.data.map((model: { id: string }) => model.id)).toEqual([
       "free/image",
       "paid/image",
     ]);

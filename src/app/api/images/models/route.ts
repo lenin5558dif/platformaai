@@ -57,11 +57,7 @@ export async function GET() {
       ? filterFreeImageModels(policyFiltered)
       : policyFiltered;
 
-    return NextResponse.json({
-      data: {
-        data: visibleModels,
-      },
-    });
+    return NextResponse.json({ data: visibleModels });
   } catch (error) {
     const message = error instanceof Error ? error.message : "OpenRouter image models error";
     const isMissingKey = message.includes("OPENROUTER_API_KEY");

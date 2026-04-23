@@ -26,13 +26,17 @@ describe("image models", () => {
           {
             id: "image/free",
             name: "Free Image",
-            output_modalities: ["image"],
+            architecture: {
+              output_modalities: ["image"],
+            },
             pricing: { prompt: "0", completion: "0" },
           },
           {
             id: "text/free",
             name: "Text Free",
-            output_modalities: ["text"],
+            architecture: {
+              output_modalities: ["text"],
+            },
             pricing: { prompt: "0", completion: "0" },
           },
         ],
@@ -50,6 +54,7 @@ describe("image models", () => {
       })
     );
     expect(models.map((model) => model.id)).toEqual(["image/free"]);
+    expect(models[0]?.output_modalities).toEqual(["image"]);
   });
 
   test("filters free image models and excludes unknown negative router pricing", async () => {
