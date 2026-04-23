@@ -10,14 +10,13 @@ import rehypeHighlight from "rehype-highlight";
 import {
   estimateTokens,
   estimateUsdCost,
-  formatPricing,
   getChatGroups,
-  getModelCostPerMillion,
-  getModelSpeedLabel,
   type ModelPricing,
 } from "@/lib/chat-ui";
 import { parseGeneratedImageMessage } from "@/lib/chat-generated-image";
 import { detectImageGenerationIntent } from "@/lib/image-intent";
+import ModelPicker, { type PickerModel } from "@/components/workspace/ModelPicker";
+import ToolTabs from "@/components/workspace/ToolTabs";
 // import UserMenu from "@/components/layout/UserMenu"; // Replaced with inline specific UI
 
 type Chat = {
@@ -69,6 +68,7 @@ type Model = {
 };
 
 const DEFAULT_MODEL = "openai/gpt-4o";
+const DEFAULT_IMAGE_MODEL = "black-forest-labs/flux.2-klein-4b";
 const COMPOSER_MAX_HEIGHT = 128;
 const AUTO_SCROLL_BOTTOM_THRESHOLD_PX = 120;
 
@@ -97,7 +97,9 @@ export default function ChatApp() {
   const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [models, setModels] = useState<Model[]>([]);
+  const [imageModels, setImageModels] = useState<PickerModel[]>([]);
   const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL);
+  const [selectedImageModel, setSelectedImageModel] = useState(DEFAULT_IMAGE_MODEL);
   const [error, setError] = useState<string | null>(null);
   const [sourceFilter] = useState<"ALL" | "WEB" | "TELEGRAM">("ALL");
   const [searchQuery, setSearchQuery] = useState("");
@@ -111,11 +113,6 @@ export default function ChatApp() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const [modelMenuOpen, setModelMenuOpen] = useState(false);
-  const [modelFilter, setModelFilter] = useState<
-    "all" | "cheap" | "fast" | "long"
-  >("all");
-  const [modelQuery, setModelQuery] = useState("");
   const [isOnline, setIsOnline] = useState(true);
   const [streamingChatId, setStreamingChatId] = useState<string | null>(null);
   const [apiKeyState, setApiKeyState] = useState<"ok" | "missing" | "invalid">(
@@ -139,7 +136,6 @@ export default function ChatApp() {
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const composerContainerRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLElement>(null);
-  const modelMenuRef = useRef<HTMLDivElement>(null);
   const appliedPromptRef = useRef<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -283,39 +279,6 @@ export default function ChatApp() {
     return `$${estimatedUsd.toFixed(4)}`;
   }, [estimatedUsd, selectedModelInfo]);
 
-  const modelCostThreshold = useMemo(() => {
-    const costs = models
-      .map(getModelCostPerMillion)
-      .filter((value) => Number.isFinite(value))
-      .sort((a, b) => a - b);
-    if (!costs.length) return Number.POSITIVE_INFINITY;
-    const index = Math.floor(costs.length * 0.3);
-    return costs[index] ?? costs[costs.length - 1];
-  }, [models]);
-
-  const filteredModels = useMemo(() => {
-    const query = modelQuery.trim().toLowerCase();
-    return models.filter((model) => {
-      if (query) {
-        const haystack = `${model.name} ${model.id}`.toLowerCase();
-        if (!haystack.includes(query)) {
-          return false;
-        }
-      }
-      if (modelFilter === "all") return true;
-      if (modelFilter === "long") {
-        return (model.contextLength ?? 0) >= 100_000;
-      }
-      if (modelFilter === "fast") {
-        return getModelSpeedLabel(model.id) === "fast";
-      }
-      if (modelFilter === "cheap") {
-        return getModelCostPerMillion(model) <= modelCostThreshold;
-      }
-      return true;
-    });
-  }, [models, modelFilter, modelQuery, modelCostThreshold]);
-
   const loadChats = useCallback(async () => {
     try {
       const params = new URLSearchParams();
@@ -401,6 +364,46 @@ export default function ChatApp() {
     }
   }, [hasLoadedModelPreference]);
 
+  const loadImageModels = useCallback(async () => {
+    try {
+      const response = await fetch("/api/images/models");
+      if (!response.ok) return;
+      const payload = await response.json();
+      const list = Array.isArray(payload?.data)
+        ? payload.data
+        : Array.isArray(payload?.data?.data)
+          ? payload.data.data
+          : [];
+      const mapped: PickerModel[] = list.map(
+        (model: {
+          id: string;
+          name?: string;
+          pricing?: Record<string, string | undefined>;
+        }) => ({
+          id: model.id,
+          name: model.name ?? model.id,
+          pricing: model.pricing,
+        })
+      );
+      setImageModels(mapped);
+
+      if (!mapped.length) return;
+      const stored =
+        typeof window !== "undefined"
+          ? window.localStorage.getItem("platformaai:image-model")
+          : null;
+      const preferred =
+        stored && mapped.some((model) => model.id === stored)
+          ? stored
+          : mapped.some((model) => model.id === DEFAULT_IMAGE_MODEL)
+            ? DEFAULT_IMAGE_MODEL
+            : mapped[0].id;
+      setSelectedImageModel(preferred);
+    } catch {
+      // ignore
+    }
+  }, []);
+
   const loadChatDetails = useCallback(async (chatId: string) => {
     try {
       const response = await fetch(`/api/chats/${chatId}`);
@@ -468,7 +471,6 @@ export default function ChatApp() {
   const handleSelectModel = useCallback(
     async (modelId: string) => {
       setSelectedModel(modelId);
-      setModelMenuOpen(false);
       if (activeChatId) {
         await updateChatMeta(activeChatId, { modelId });
         setChats((prev) =>
@@ -480,6 +482,10 @@ export default function ChatApp() {
     },
     [activeChatId, updateChatMeta]
   );
+
+  const handleSelectImageModel = useCallback((modelId: string) => {
+    setSelectedImageModel(modelId);
+  }, []);
 
   const handleToggleFavorite = useCallback(
     async (chat: Chat) => {
@@ -507,7 +513,8 @@ export default function ChatApp() {
   useEffect(() => {
     void loadChats();
     void loadModels();
-  }, [loadChats, loadModels]);
+    void loadImageModels();
+  }, [loadChats, loadImageModels, loadModels]);
 
   useEffect(() => {
     function handleStatusChange() {
@@ -527,26 +534,6 @@ export default function ChatApp() {
     if (!activeChat?.modelId) return;
     setSelectedModel(activeChat.modelId);
   }, [activeChat]);
-
-  useEffect(() => {
-    if (!modelMenuOpen) return;
-    function handleClick(event: MouseEvent) {
-      if (!modelMenuRef.current) return;
-      if (modelMenuRef.current.contains(event.target as Node)) return;
-      setModelMenuOpen(false);
-    }
-    function handleKey(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        setModelMenuOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClick);
-    document.addEventListener("keydown", handleKey);
-    return () => {
-      document.removeEventListener("mousedown", handleClick);
-      document.removeEventListener("keydown", handleKey);
-    };
-  }, [modelMenuOpen]);
 
   useEffect(() => {
     async function loadProfile() {
@@ -631,7 +618,6 @@ export default function ChatApp() {
   }, [
     attachments.length,
     isSending,
-    modelMenuOpen,
     needsEmailVerification,
     showOnboarding,
   ]);
@@ -647,6 +633,13 @@ export default function ChatApp() {
     setAttachments([]);
     setError(null);
     setInput(promptParam);
+  }, [searchParams]);
+
+  useEffect(() => {
+    const chatIdParam = searchParams.get("chatId");
+    if (!chatIdParam) return;
+    setIsDraft(false);
+    setActiveChatId(chatIdParam);
   }, [searchParams]);
 
   useEffect(() => {
@@ -707,6 +700,12 @@ export default function ChatApp() {
     if (!selectedModel) return;
     window.localStorage.setItem("platformaai:model", selectedModel);
   }, [selectedModel]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!selectedImageModel) return;
+    window.localStorage.setItem("platformaai:image-model", selectedImageModel);
+  }, [selectedImageModel]);
 
   useEffect(() => {
     if (isSending) {
@@ -903,7 +902,7 @@ export default function ChatApp() {
         body: JSON.stringify({
           chatId,
           prompt: text,
-          modelId: undefined,
+          modelId: selectedImageModel || undefined,
           aspectRatio: "1:1",
           imageSize: "1K",
         }),
@@ -1375,21 +1374,23 @@ export default function ChatApp() {
                 </h2>
               </div>
 
-              <div className="flex shrink-0 items-center gap-2">
-                <div className="relative" ref={modelMenuRef}>
+              <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                <div className="hidden sm:block">
+                  <ToolTabs active="text" />
+                </div>
                 {apiKeyState === "ok" ? (
-                  <button
-                    type="button"
-                    className="inline-flex h-9 max-w-[11rem] items-center justify-center gap-x-2 rounded-lg border border-primary/20 bg-primary/10 pl-2 pr-3 text-left transition-colors hover:bg-primary/20"
-                    onClick={() => setModelMenuOpen(!modelMenuOpen)}
-                  >
-                    <span className="material-symbols-outlined text-primary text-[18px]">smart_toy</span>
-                    <p className="hidden truncate text-xs font-bold text-primary sm:block">
-                      {selectedModelInfo?.name ?? "GPT-4"}
-                    </p>
-                  </button>
+                  <ModelPicker
+                    textModels={models}
+                    imageModels={imageModels}
+                    selectedTextModel={selectedModel}
+                    selectedImageModel={selectedImageModel}
+                    activeTab="text"
+                    align="right"
+                    onSelectText={(modelId) => void handleSelectModel(modelId)}
+                    onSelectImage={handleSelectImageModel}
+                  />
                 ) : (
-                  <div className="inline-flex h-9 items-center justify-center gap-x-2 rounded-lg border border-amber-300 bg-amber-50 pl-2 pr-3">
+                  <div className="inline-flex h-10 items-center justify-center gap-x-2 rounded-2xl border border-amber-300 bg-amber-50 pl-2 pr-3">
                     <span className="material-symbols-outlined text-amber-700 text-[18px]">
                       key
                     </span>
@@ -1398,59 +1399,6 @@ export default function ChatApp() {
                     </p>
                   </div>
                 )}
-
-                {apiKeyState === "ok" && modelMenuOpen && (
-                  <div className="absolute right-0 top-full z-20 mt-2 w-[min(18rem,calc(100vw-1.5rem))] rounded-xl border border-white/60 bg-white/90 p-2 shadow-glass-lg backdrop-blur-md sm:w-72">
-                    <div className="px-1 pb-2">
-                      <div className="relative">
-                        <span className="material-symbols-outlined text-[16px] text-text-secondary absolute left-3 top-1/2 -translate-y-1/2">
-                          search
-                        </span>
-                        <input
-                          className="w-full rounded-lg border border-black/10 bg-white/80 py-2 pl-9 pr-3 text-sm text-text-primary placeholder:text-text-secondary focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                          placeholder="Поиск моделей"
-                          value={modelQuery}
-                          onChange={(event) => setModelQuery(event.target.value)}
-                        />
-                      </div>
-                      <div className="mt-2 flex flex-wrap gap-1">
-                        {([
-                          { id: "all", label: "Все" },
-                          { id: "fast", label: "Быстрые" },
-                          { id: "cheap", label: "Дешевые" },
-                          { id: "long", label: "Длинный контекст" },
-                        ] as const).map((filter) => (
-                          <button
-                            key={filter.id}
-                            type="button"
-                            className={`rounded-full px-2.5 py-1 text-[10px] font-medium transition-colors ${modelFilter === filter.id ? "bg-primary/15 text-primary" : "text-text-secondary hover:text-text-primary hover:bg-black/5"}`}
-                            onClick={() => setModelFilter(filter.id)}
-                          >
-                            {filter.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="max-h-60 overflow-y-auto px-1 pb-1">
-                      {filteredModels.map((model) => (
-                        <button
-                          key={model.id}
-                          className={`mb-1 w-full rounded-lg px-3 py-2.5 text-left text-sm transition-colors ${selectedModel === model.id ? "bg-primary/10 text-primary font-medium" : "text-text-main hover:bg-black/5"}`}
-                          onClick={() => void handleSelectModel(model.id)}
-                        >
-                          <div className="flex flex-col gap-0.5">
-                            <span>{model.name}</span>
-                            <span className="text-[10px] text-text-secondary">
-                              {formatPricing(model.pricing)}
-                            </span>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-
               </div>
             </div>
           </div>

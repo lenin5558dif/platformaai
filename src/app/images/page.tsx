@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
-import ImageStudio from "@/components/images/ImageStudio";
-import AppShell from "@/components/layout/AppShell";
+import ImageWorkspace from "@/components/images/ImageWorkspace";
 import { auth } from "@/lib/auth";
 import { getBillingTier, getBillingTierLabel } from "@/lib/billing-tiers";
 import { prisma } from "@/lib/db";
@@ -33,19 +32,13 @@ export default async function ImagesPage() {
   const planName = getBillingTierLabel(getBillingTier(user?.settings ?? null, user?.balance));
 
   return (
-    <AppShell
-      title="Изображения"
-      subtitle="Генератор и история."
+    <ImageWorkspace
       user={{
         email: user?.email,
         role: user?.role,
         displayName,
         planName,
       }}
-    >
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-5 pb-10">
-        <ImageStudio />
-      </div>
-    </AppShell>
+    />
   );
 }

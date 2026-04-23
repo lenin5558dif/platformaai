@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import Image from "next/image";
+import ModelPicker from "@/components/workspace/ModelPicker";
 
 type ImageModel = {
   id: string;
@@ -23,16 +24,6 @@ type ImageGeneration = {
 
 const aspectRatios = ["1:1", "16:9", "9:16", "4:3", "3:4"];
 const imageSizes = ["1K", "2K"];
-
-function isFreeModel(model: ImageModel) {
-  const values = Object.values(model.pricing ?? {})
-    .map((value) => (typeof value === "string" ? Number(value) : Number.NaN))
-    .filter((value) => Number.isFinite(value));
-  return (
-    model.id.toLowerCase().endsWith(":free") ||
-    (values.some((value) => value === 0) && values.every((value) => value === 0))
-  );
-}
 
 function getModelLabel(model: ImageModel) {
   return model.name ? model.name : model.id;
@@ -190,26 +181,30 @@ export default function ImageStudio() {
           </label>
 
           <div className="mt-4 space-y-4">
-            <label className="block">
+            <div>
               <span className="text-sm font-semibold text-slate-800">Модель</span>
-              <select
-                className="mt-2 h-12 w-full cursor-pointer rounded-2xl border border-slate-200 bg-white/90 px-4 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10 disabled:cursor-not-allowed disabled:opacity-60"
-                value={selectedModel}
-                onChange={(event) => setSelectedModel(event.target.value)}
-                disabled={modelsStatus === "loading" || models.length === 0}
-              >
-                {modelsStatus === "loading" && <option value="">Загружаю модели...</option>}
-                {modelsStatus !== "loading" && models.length === 0 && (
-                  <option value="">Нет доступных моделей</option>
-                )}
-                {models.map((model) => (
-                  <option key={model.id} value={model.id}>
-                    {getModelLabel(model)}
-                    {isFreeModel(model) ? " · free" : ""}
-                  </option>
-                ))}
-              </select>
-            </label>
+              <div className="mt-2">
+                <ModelPicker
+                  textModels={[]}
+                  imageModels={models.map((model) => ({
+                    id: model.id,
+                    name: getModelLabel(model),
+                    pricing: model.pricing,
+                  }))}
+                  selectedImageModel={selectedModel}
+                  activeTab="images"
+                  align="left"
+                  triggerLabel={
+                    modelsStatus === "loading"
+                      ? "Загружаю модели..."
+                      : (models.find((model) => model.id === selectedModel)?.name ??
+                          selectedModel) ||
+                        "Выбрать модель"
+                  }
+                  onSelectImage={setSelectedModel}
+                />
+              </div>
+            </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
               <label>
