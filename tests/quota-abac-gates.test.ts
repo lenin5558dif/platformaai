@@ -106,6 +106,10 @@ vi.mock("@/lib/cache", () => ({
   setCachedResponse: vi.fn(),
 }));
 
+vi.mock("@/lib/summary", () => ({
+  updateChatSummary: vi.fn(async () => {}),
+}));
+
 vi.mock("@/lib/openrouter", () => ({
   getOpenRouterBaseUrl: vi.fn(() => "https://openrouter.ai/api/v1"),
   getOpenRouterHeaders: vi.fn(() => ({
@@ -266,6 +270,49 @@ describe("ABAC gate - quota hold lifecycle", () => {
     fetchSpy.mockRestore();
   });
 
+  it("persists the actual OpenRouter model from non-streaming fallback response", async () => {
+    const dummyHold = {
+      orgId: "org-1",
+      idempotencyKey: "test-key",
+      daily: { reservations: [{ id: "r1" }] },
+    };
+    mockReserveAiQuotaHold.mockResolvedValue(dummyHold);
+    mockSpendCredits.mockResolvedValue({});
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch" as any).mockImplementation(async () => ({
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      json: async () => ({
+        model: "anthropic/claude-3-haiku",
+        choices: [{ message: { content: "Hello from managed fallback" } }],
+        usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+      }),
+    }));
+
+    const req = new Request("http://localhost/api/ai/chat", {
+      method: "POST",
+      body: JSON.stringify({
+        model: "openai/gpt-4o-mini",
+        fallbackModels: ["anthropic/claude-3-haiku"],
+        messages: [{ role: "user", content: "hi" }],
+        chatId: "chat-1",
+        stream: false,
+      }),
+    });
+
+    const res = await chatPost(req);
+
+    expect(res.status).toBe(200);
+    expect(mockPrismaDb.message.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        modelId: "anthropic/claude-3-haiku",
+      }),
+    });
+
+    fetchSpy.mockRestore();
+  });
+
   it("calls releaseAiQuotaHold when preflightCredits throws (no quota hold)", async () => {
     // reserveAiQuotaHold returns null, so preflightCredits is called
     mockReserveAiQuotaHold.mockResolvedValue(null);
@@ -302,7 +349,7 @@ describe("ABAC gate - quota hold lifecycle", () => {
     fetchSpy.mockRestore();
   });
 
-  it("tries fallback model when the first provider request throws", async () => {
+  it("passes fallback models to OpenRouter for managed fallback", async () => {
     const dummyHold = {
       orgId: "org-1",
       idempotencyKey: "test-key",
@@ -313,9 +360,6 @@ describe("ABAC gate - quota hold lifecycle", () => {
 
     const fetchSpy = vi
       .spyOn(globalThis, "fetch" as any)
-      .mockImplementationOnce(async () => {
-        throw new Error("Network error");
-      })
       .mockImplementationOnce(async () => ({
         ok: true,
         status: 200,
@@ -340,9 +384,104 @@ describe("ABAC gate - quota hold lifecycle", () => {
     const res = await chatPost(req);
 
     expect(res.status).toBe(200);
-    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const requestInit = fetchSpy.mock.calls[0]?.[1] as RequestInit;
+    expect(JSON.parse(requestInit.body as string)).toMatchObject({
+      model: "openai/gpt-4o-mini",
+      models: ["anthropic/claude-3-haiku"],
+    });
     expect(mockCommitAiQuotaHold).toHaveBeenCalledTimes(1);
     expect(mockReleaseAiQuotaHold).not.toHaveBeenCalled();
+
+    fetchSpy.mockRestore();
+  });
+
+  it("tries local fallback when the primary OpenRouter fetch throws", async () => {
+    const dummyHold = {
+      orgId: "org-1",
+      idempotencyKey: "test-key",
+      daily: { reservations: [{ id: "r1" }] },
+    };
+    mockReserveAiQuotaHold.mockResolvedValue(dummyHold);
+    mockSpendCredits.mockResolvedValue({});
+
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch" as any)
+      .mockImplementationOnce(async () => {
+        throw new Error("Network error");
+      })
+      .mockImplementationOnce(async () => ({
+        ok: true,
+        status: 200,
+        headers: new Headers(),
+        json: async () => ({
+          choices: [{ message: { content: "Hello from local fallback" } }],
+          usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+        }),
+      }));
+
+    const req = new Request("http://localhost/api/ai/chat", {
+      method: "POST",
+      body: JSON.stringify({
+        model: "openai/gpt-4o-mini",
+        fallbackModels: ["anthropic/claude-3-haiku"],
+        messages: [{ role: "user", content: "hi" }],
+        chatId: "chat-1",
+        stream: false,
+      }),
+    });
+
+    const res = await chatPost(req);
+
+    expect(res.status).toBe(200);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    const fallbackRequestInit = fetchSpy.mock.calls[1]?.[1] as RequestInit;
+    expect(JSON.parse(fallbackRequestInit.body as string)).toMatchObject({
+      model: "anthropic/claude-3-haiku",
+    });
+    expect(mockCommitAiQuotaHold).toHaveBeenCalledTimes(1);
+    expect(mockReleaseAiQuotaHold).not.toHaveBeenCalled();
+
+    fetchSpy.mockRestore();
+  });
+
+  it("does not hide OpenRouter insufficient credits behind fallback logic", async () => {
+    const dummyHold = {
+      orgId: "org-1",
+      idempotencyKey: "test-key",
+      daily: { reservations: [{ id: "r1" }] },
+    };
+    mockReserveAiQuotaHold.mockResolvedValue(dummyHold);
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch" as any).mockImplementation(async () => ({
+      ok: false,
+      status: 402,
+      headers: new Headers(),
+      text: async () =>
+        JSON.stringify({
+          error: {
+            message: "Insufficient credits. Add more using https://openrouter.ai/settings/credits",
+            code: 402,
+          },
+        }),
+    }));
+
+    const req = new Request("http://localhost/api/ai/chat", {
+      method: "POST",
+      body: JSON.stringify({
+        model: "openai/gpt-5-mini",
+        fallbackModels: ["openrouter/free"],
+        messages: [{ role: "user", content: "hi" }],
+        chatId: "chat-1",
+        stream: false,
+      }),
+    });
+
+    const res = await chatPost(req);
+
+    expect(res.status).toBe(402);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(mockReleaseAiQuotaHold).toHaveBeenCalledWith({ hold: dummyHold });
 
     fetchSpy.mockRestore();
   });
@@ -392,6 +531,70 @@ describe("ABAC gate - quota hold lifecycle", () => {
     expect(mockReleaseAiQuotaHold).toHaveBeenCalledTimes(1);
     expect(mockCommitAiQuotaHold).not.toHaveBeenCalled();
     expect(mockPrismaDb.message.create).not.toHaveBeenCalled();
+
+    fetchSpy.mockRestore();
+  });
+
+  it("persists the actual OpenRouter model from streaming chunks", async () => {
+    const dummyHold = {
+      orgId: "org-1",
+      idempotencyKey: "test-key",
+      daily: { reservations: [{ id: "r1" }] },
+    };
+    mockReserveAiQuotaHold.mockResolvedValue(dummyHold);
+    mockSpendCredits.mockResolvedValue({});
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch" as any).mockImplementation(async () => {
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(
+            new TextEncoder().encode(
+              `data: ${JSON.stringify({
+                model: "anthropic/claude-3-haiku",
+                choices: [{ delta: { content: "streamed" } }],
+              })}\n\n`
+            )
+          );
+          controller.enqueue(
+            new TextEncoder().encode(
+              `data: ${JSON.stringify({
+                usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+                choices: [{ delta: {} }],
+              })}\n\n`
+            )
+          );
+          controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
+          controller.close();
+        },
+      });
+
+      return new Response(stream, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
+    });
+
+    const req = new Request("http://localhost/api/ai/chat", {
+      method: "POST",
+      body: JSON.stringify({
+        model: "openai/gpt-4o-mini",
+        fallbackModels: ["anthropic/claude-3-haiku"],
+        messages: [{ role: "user", content: "hi" }],
+        chatId: "chat-1",
+        stream: true,
+      }),
+    });
+
+    const res = await chatPost(req);
+    await res.text();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(mockPrismaDb.message.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        content: "streamed",
+        modelId: "anthropic/claude-3-haiku",
+      }),
+    });
 
     fetchSpy.mockRestore();
   });

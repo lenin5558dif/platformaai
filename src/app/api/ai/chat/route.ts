@@ -51,6 +51,26 @@ import {
 
 const OPENROUTER_CHAT_TIMEOUT_MS = 30_000;
 
+function buildOpenRouterChatBody(params: {
+  model: string;
+  fallbackModels?: string[];
+  messages: Array<{ role: "system" | "user" | "assistant"; content: string }>;
+  temperature?: number;
+  maxTokens?: number;
+  stream: boolean;
+  includeUsage?: boolean;
+}) {
+  return {
+    model: params.model,
+    ...(params.fallbackModels?.length ? { models: params.fallbackModels } : {}),
+    messages: params.messages,
+    temperature: params.temperature,
+    max_tokens: params.maxTokens,
+    stream: params.stream,
+    ...(params.includeUsage ? { stream_options: { include_usage: true } } : {}),
+  };
+}
+
 export async function POST(request: Request) {
   const session = await auth();
 
@@ -572,45 +592,50 @@ export async function POST(request: Request) {
   let usedModel = body.model;
   let lastFetchError: unknown = null;
 
-  for (const [index, modelId] of modelsToTry.entries()) {
-    usedModel = modelId;
+  try {
+    response = await fetchWithTimeout(`${baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: requestHeaders,
+      body: JSON.stringify(buildOpenRouterChatBody({
+        model: body.model,
+        fallbackModels: allowedFallbacks,
+        messages: trimmedMessages,
+        temperature: body.temperature,
+        maxTokens: body.max_tokens,
+        stream: streamMode,
+        includeUsage: streamMode,
+      })),
+      timeoutMs: OPENROUTER_CHAT_TIMEOUT_MS,
+      timeoutLabel: "OpenRouter chat completion",
+    });
+  } catch (error) {
+    lastFetchError = error;
+    response = null;
 
-    try {
-      response = await fetchWithTimeout(`${baseUrl}/chat/completions`, {
-        method: "POST",
-        headers: requestHeaders,
-        body: JSON.stringify({
-          model: modelId,
-          messages: trimmedMessages,
-          temperature: body.temperature,
-          max_tokens: body.max_tokens,
-          stream: streamMode,
-          stream_options: { include_usage: true },
-        }),
-        timeoutMs: OPENROUTER_CHAT_TIMEOUT_MS,
-        timeoutLabel: "OpenRouter chat completion",
-      });
-      lastFetchError = null;
-    } catch (error) {
-      lastFetchError = error;
-      response = null;
-
-      if (index < modelsToTry.length - 1) {
-        await new Promise((resolve) => setTimeout(resolve, 400));
-        continue;
+    const fallback = modelsToTry.find((modelId) => modelId !== body.model);
+    if (fallback) {
+      usedModel = fallback;
+      try {
+        response = await fetchWithTimeout(`${baseUrl}/chat/completions`, {
+          method: "POST",
+          headers: requestHeaders,
+          body: JSON.stringify(buildOpenRouterChatBody({
+            model: fallback,
+            messages: trimmedMessages,
+            temperature: body.temperature,
+            maxTokens: body.max_tokens,
+            stream: streamMode,
+            includeUsage: streamMode,
+          })),
+          timeoutMs: OPENROUTER_CHAT_TIMEOUT_MS,
+          timeoutLabel: "OpenRouter chat local fallback",
+        });
+        lastFetchError = null;
+      } catch (fallbackError) {
+        lastFetchError = fallbackError;
+        response = null;
       }
-      break;
     }
-
-    if (response.ok) {
-      break;
-    }
-
-    if (![429, 503].includes(response.status) || index === modelsToTry.length - 1) {
-      break;
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, 400));
   }
 
   if ((!response || !response.ok) && lastFetchError) {
@@ -707,6 +732,9 @@ export async function POST(request: Request) {
     let usage = data?.usage;
     let assistantContent = data?.choices?.[0]?.message?.content ?? "";
     let telemetryHeaders: Headers | null = response.headers;
+    if (typeof data?.model === "string" && data.model.trim()) {
+      usedModel = data.model;
+    }
 
     if (!assistantContent.trim() && modelsToTry.length > 1) {
       const fallback = modelsToTry.find((modelId) => modelId !== usedModel);
@@ -716,13 +744,13 @@ export async function POST(request: Request) {
           fallbackResponse = await fetchWithTimeout(`${baseUrl}/chat/completions`, {
             method: "POST",
             headers: requestHeaders,
-            body: JSON.stringify({
+            body: JSON.stringify(buildOpenRouterChatBody({
               model: fallback,
               messages: trimmedMessages,
               temperature: body.temperature,
-              max_tokens: body.max_tokens,
+              maxTokens: body.max_tokens,
               stream: false,
-            }),
+            })),
             timeoutMs: OPENROUTER_CHAT_TIMEOUT_MS,
             timeoutLabel: "OpenRouter chat fallback",
           });
@@ -1001,6 +1029,9 @@ export async function POST(request: Request) {
 
             try {
               const parsed = JSON.parse(payload);
+              if (typeof parsed?.model === "string" && parsed.model.trim()) {
+                usedModel = parsed.model;
+              }
               const delta = parsed?.choices?.[0]?.delta?.content;
               if (delta) {
                 assistantText += delta;
@@ -1023,13 +1054,13 @@ export async function POST(request: Request) {
               fallbackResponse = await fetchWithTimeout(`${baseUrl}/chat/completions`, {
                 method: "POST",
                 headers: requestHeaders,
-                body: JSON.stringify({
+                body: JSON.stringify(buildOpenRouterChatBody({
                   model: fallback,
                   messages: trimmedMessages,
                   temperature: body.temperature,
-                  max_tokens: body.max_tokens,
+                  maxTokens: body.max_tokens,
                   stream: false,
-                }),
+                })),
                 timeoutMs: OPENROUTER_CHAT_TIMEOUT_MS,
                 timeoutLabel: "OpenRouter chat stream fallback",
               });
