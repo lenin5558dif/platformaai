@@ -1010,16 +1010,14 @@ const stopBot = (signal: "SIGINT" | "SIGTERM") => {
   }
 };
 
-bot
-  .launch()
-  .then(() => {
-    botRunning = true;
-    console.info("Telegram bot started");
-  })
-  .catch((error) => {
-    console.error("Telegram bot launch failed", error);
-    process.exit(1);
-  });
+botRunning = true;
+console.info("Telegram bot launch requested");
+
+bot.launch().catch((error) => {
+  botRunning = false;
+  console.error("Telegram bot launch failed", error);
+  process.exit(1);
+});
 
 process.once("SIGINT", () => stopBot("SIGINT"));
 process.once("SIGTERM", () => stopBot("SIGTERM"));
