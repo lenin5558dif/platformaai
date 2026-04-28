@@ -995,7 +995,31 @@ bot.on("voice", async (ctx) => {
   }
 });
 
-bot.launch();
+let botRunning = false;
 
-process.once("SIGINT", () => bot.stop("SIGINT"));
-process.once("SIGTERM", () => bot.stop("SIGTERM"));
+const stopBot = (signal: "SIGINT" | "SIGTERM") => {
+  if (!botRunning) {
+    return;
+  }
+
+  try {
+    bot.stop(signal);
+    botRunning = false;
+  } catch (error) {
+    console.error("Telegram bot stop failed", error);
+  }
+};
+
+bot
+  .launch()
+  .then(() => {
+    botRunning = true;
+    console.info("Telegram bot started");
+  })
+  .catch((error) => {
+    console.error("Telegram bot launch failed", error);
+    process.exit(1);
+  });
+
+process.once("SIGINT", () => stopBot("SIGINT"));
+process.once("SIGTERM", () => stopBot("SIGTERM"));
